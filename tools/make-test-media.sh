@@ -102,6 +102,70 @@ ffmpeg -y -loglevel error \
   -metadata:s:t:0 mimetype=application/x-truetype-font \
   "$OUT/episode-opus.mkv"
 
+# ── Royalty-free corpus ─────────────────────────────────────────────────────
+# Chromium builds without proprietary codecs (Playwright's included) cannot
+# decode H.264 or AAC, so the same content is also produced as VP9 + Opus.
+# That keeps the browser end of the pipeline testable in CI, and it exercises
+# the VP9 configuration-record synthesis and the OpusHead-to-dOps conversion,
+# neither of which the H.264 path touches.
+if [ "${SKIP_VP9:-0}" != "1" ]; then
+  echo "==> VP9 + Opus source (${VP9_DURATION:-30}s)"
+  VP9_DURATION="${VP9_DURATION:-30}"
+  ffmpeg -y -loglevel error -t "$VP9_DURATION" -i "$OUT/source.mp4" \
+    -vf "scale=1280:720" \
+    -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 -b:v 1800k \
+    -g 48 -keyint_min 48 \
+    -c:a libopus -b:a 96k -ar 48000 -ac 2 \
+    -t "$VP9_DURATION" \
+    "$OUT/source-vp9.webm"
+
+  echo "==> VP9 MKV with embedded ASS + attached fonts"
+  ffmpeg -y -loglevel error \
+    -i "$OUT/source-vp9.webm" -i "$OUT/subtitle.ass" \
+    -attach "$OUT/fonts/DejaVuSans.ttf" \
+    -attach "$OUT/fonts/DejaVuSerif.ttf" \
+    -attach "$OUT/fonts/DejaVuSansMono.ttf" \
+    -map 0:v:0 -map 0:a:0 -map 1:0 \
+    -c:v copy -c:a copy -c:s ass \
+    -metadata:s:t:0 mimetype=application/x-truetype-font \
+    -metadata:s:t:1 mimetype=application/x-truetype-font \
+    -metadata:s:t:2 mimetype=application/x-truetype-font \
+    -metadata:s:s:0 language=tur -metadata:s:s:0 title="Türkçe" \
+    -metadata:s:a:0 language=jpn -metadata:s:a:0 title="Japonca" \
+    -t "$VP9_DURATION" \
+    -f matroska "$OUT/episode-vp9.mkv"
+
+  echo "==> VP9 HLS ladder (fMP4 segments)"
+  # MPEG-TS cannot carry VP9, so these variants use fMP4 segments — which is
+  # also the modern HLS packaging, and worth having covered either way.
+  make_vp9_variant() {
+    local height=$1 width=$2 bitrate=$3
+    local dir="$OUT/hls-vp9/${height}p"
+    mkdir -p "$dir"
+    ffmpeg -y -loglevel error -t "$VP9_DURATION" -i "$OUT/source.mp4" \
+      -vf "scale=${width}:${height}" \
+      -c:v libvpx-vp9 -deadline realtime -cpu-used 8 -row-mt 1 -b:v "$bitrate" \
+      -g 48 -keyint_min 48 \
+      -c:a libopus -b:a 96k -ar 48000 -ac 2 \
+      -f hls -hls_time 2 -hls_playlist_type vod -hls_list_size 0 \
+      -hls_segment_type fmp4 -hls_fmp4_init_filename "init.mp4" \
+      -hls_segment_filename "$dir/seg%03d.m4s" \
+      "$dir/index.m3u8"
+    echo "    ${height}p done"
+  }
+  make_vp9_variant 360 640 "400k"
+  make_vp9_variant 720 1280 "1600k"
+
+  {
+    echo "#EXTM3U"
+    echo "#EXT-X-VERSION:7"
+    echo '#EXT-X-STREAM-INF:BANDWIDTH=520000,RESOLUTION=640x360,CODECS="vp09.00.20.08,opus",FRAME-RATE=24.000'
+    echo "360p/index.m3u8"
+    echo '#EXT-X-STREAM-INF:BANDWIDTH=1800000,RESOLUTION=1280x720,CODECS="vp09.00.31.08,opus",FRAME-RATE=24.000'
+    echo "720p/index.m3u8"
+  } > "$OUT/hls-vp9/master.m3u8"
+fi
+
 echo
 echo "Done. Corpus in $OUT:"
 du -h -d 2 "$OUT" | sort -k2

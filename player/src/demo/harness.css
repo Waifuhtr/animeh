@@ -1,0 +1,140 @@
+/*
+ * Test harness chrome.
+ *
+ * Deliberately close to the layout the WordPress admin panel will use, so the
+ * plugin can reuse this markup rather than growing a second design.
+ */
+:root {
+  color-scheme: dark;
+  --bg: #08080c;
+  --panel: #14141c;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f5f5f7;
+  --muted: #9ca3af;
+  --accent: #8b5cf6;
+  --ok: #4ade80;
+  --bad: #f87171;
+  --warn: #fbbf24;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.wrap {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1024px) {
+  .wrap { grid-template-columns: minmax(0, 1fr) 340px; align-items: start; }
+  .head, .player-slot { grid-column: 1 / -1; }
+}
+
+.head h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -0.01em; }
+.head p { margin: 0; color: var(--muted); }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+}
+
+.panel h2 {
+  margin: 0 0 12px;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.field { display: grid; gap: 6px; margin-bottom: 12px; }
+.field label { font-size: 12px; color: var(--muted); }
+
+select, input[type='text'], input[type='number'] {
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: #0e0e15;
+  color: var(--text);
+  font: inherit;
+  min-height: 40px;
+}
+
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row > * { flex: 1; min-width: 0; }
+
+button.primary {
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: 44px;
+}
+button.primary:hover { background: #a78bfa; }
+
+button.ghost {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  min-height: 40px;
+}
+button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
+
+.checks { display: grid; gap: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.check { display: flex; align-items: baseline; gap: 8px; }
+.check .mark { width: 1em; flex: none; }
+.check[data-state='ok'] .mark { color: var(--ok); }
+.check[data-state='bad'] .mark { color: var(--bad); }
+.check[data-state='warn'] .mark { color: var(--warn); }
+.check[data-state='pending'] .mark { color: var(--muted); }
+.check .name { flex: 1; }
+.check .detail { color: var(--muted); }
+
+.stats { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 12px; }
+.stats dt { color: var(--muted); }
+.stats dd { margin: 0; font-family: ui-monospace, Menlo, monospace; text-align: right; }
+
+.log {
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--muted);
+}
+.log div { border-bottom: 1px solid rgba(255, 255, 255, 0.04); padding: 2px 0; }
+.log .err { color: var(--bad); }
+.log .warn { color: var(--warn); }
+.log .ok { color: var(--ok); }
+
+.hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
+kbd {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}

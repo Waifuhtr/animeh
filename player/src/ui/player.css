@@ -1,0 +1,539 @@
+/*
+ * Animeh player skin.
+ *
+ * Dark, purple-accented, built from scratch rather than adapted from an
+ * existing streaming skin. Layout targets a phone first: touch targets stay at
+ * 44px, and controls sit clear of the rounded corners and gesture areas that
+ * eat the edges of a modern handset.
+ */
+
+.animeh {
+  --ap-bg: #08080c;
+  --ap-surface: rgba(20, 20, 28, 0.92);
+  --ap-surface-solid: #14141c;
+  --ap-elevated: #1e1e2a;
+  --ap-accent: #8b5cf6;
+  --ap-accent-strong: #a78bfa;
+  --ap-text: #f5f5f7;
+  --ap-text-muted: #9ca3af;
+  --ap-danger: #f87171;
+  --ap-warning: #fbbf24;
+  --ap-radius: 14px;
+  --ap-control: 44px;
+
+  position: relative;
+  width: 100%;
+  background: var(--ap-bg);
+  color: var(--ap-text);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  overflow: hidden;
+  border-radius: var(--ap-radius);
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.animeh:fullscreen { border-radius: 0; }
+
+.animeh__stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  /* Controls size themselves against the player box, not the viewport: an
+     inline 16:9 player on a phone is barely 220px tall, and window-width
+     media queries cannot see that. */
+  container-type: size;
+  container-name: animeh-stage;
+}
+
+.animeh:fullscreen .animeh__stage {
+  height: 100%;
+  aspect-ratio: auto;
+}
+
+.animeh__video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: contain;
+  background: #000;
+}
+
+/* libass draws here; it must never intercept a tap meant for the video. */
+.animeh__subtitles {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* ── Controls shell ─────────────────────────────────────────────────────── */
+
+.animeh__controls {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  opacity: 1;
+  transition: opacity 220ms ease;
+  /* The scrims keep white glyphs legible over a bright frame without
+     dimming the middle of the picture. */
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.35) 14%, transparent 28%),
+    linear-gradient(to top, rgba(0, 0, 0, 0.85), rgba(0, 0, 0, 0.4) 16%, transparent 36%);
+}
+
+.animeh__controls[data-hidden='true'] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.animeh[data-locked='true'] .animeh__controls > *:not(.animeh__lock-layer) {
+  display: none;
+}
+
+.animeh__top,
+.animeh__bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+}
+
+.animeh__top { justify-content: space-between; }
+.animeh__bottom { flex-direction: column; align-items: stretch; gap: 4px; }
+
+.animeh__title-block { min-width: 0; flex: 1; }
+
+.animeh__title {
+  font-size: 15px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.animeh__subtitle-line {
+  font-size: 12px;
+  color: var(--ap-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.animeh__btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--ap-text);
+  width: var(--ap-control);
+  height: var(--ap-control);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+  transition: background-color 150ms ease, transform 150ms ease, color 150ms ease;
+}
+
+.animeh__btn:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+.animeh__btn:active:not(:disabled) { transform: scale(0.92); }
+.animeh__btn:focus-visible { outline: 2px solid var(--ap-accent-strong); outline-offset: 2px; }
+.animeh__btn:disabled { opacity: 0.35; cursor: default; }
+.animeh__btn[data-active='true'] { color: var(--ap-accent-strong); }
+.animeh__btn svg { width: 22px; height: 22px; }
+
+.animeh__btn--primary {
+  width: 68px;
+  height: 68px;
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(8px);
+}
+.animeh__btn--primary svg { width: 32px; height: 32px; }
+.animeh__btn--primary:hover:not(:disabled) { background: rgba(255, 255, 255, 0.22); }
+
+.animeh__center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  pointer-events: none;
+}
+.animeh__center > * { pointer-events: auto; }
+
+/* ── Progress ───────────────────────────────────────────────────────────── */
+
+.animeh__scrubber {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px;
+}
+
+.animeh__time {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--ap-text-muted);
+  flex: none;
+  min-width: 42px;
+  text-align: center;
+}
+
+.animeh__track {
+  position: relative;
+  flex: 1;
+  height: var(--ap-control);
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.animeh__rail {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  overflow: hidden;
+  transition: height 150ms ease;
+}
+
+.animeh__track:hover .animeh__rail,
+.animeh__track:focus-visible .animeh__rail { height: 6px; }
+
+.animeh__buffer {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  background: rgba(255, 255, 255, 0.32);
+  border-radius: inherit;
+}
+
+.animeh__played {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  background: var(--ap-accent);
+  border-radius: inherit;
+}
+
+.animeh__thumb {
+  position: absolute;
+  top: 50%;
+  width: 13px;
+  height: 13px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.35);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms ease;
+}
+
+.animeh__track:hover .animeh__thumb,
+.animeh__track:focus-visible .animeh__thumb,
+.animeh__track[data-dragging='true'] .animeh__thumb { opacity: 1; }
+
+/* Chapter-style markers for the opening and ending ranges. */
+.animeh__marker {
+  position: absolute;
+  inset-block: 0;
+  background: rgba(251, 191, 36, 0.55);
+}
+
+.animeh__button-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.animeh__spacer { flex: 1; }
+
+/* ── Volume ─────────────────────────────────────────────────────────────── */
+
+.animeh__volume {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.animeh__volume-slider {
+  width: 0;
+  opacity: 0;
+  transition: width 180ms ease, opacity 180ms ease;
+  accent-color: var(--ap-accent);
+  cursor: pointer;
+}
+
+.animeh__volume:hover .animeh__volume-slider,
+.animeh__volume:focus-within .animeh__volume-slider { width: 72px; opacity: 1; }
+
+/* ── Menus ──────────────────────────────────────────────────────────────── */
+
+.animeh__menu {
+  position: absolute;
+  right: 12px;
+  bottom: 96px;
+  min-width: 190px;
+  max-height: 58%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--ap-surface);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--ap-radius);
+  padding: 6px;
+  z-index: 5;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.55);
+}
+
+.animeh__menu[hidden] { display: none; }
+
+.animeh__menu-title {
+  padding: 8px 12px 6px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ap-text-muted);
+}
+
+.animeh__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ap-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.animeh__menu-item:hover { background: rgba(255, 255, 255, 0.08); }
+.animeh__menu-item[aria-checked='true'] { color: var(--ap-accent-strong); }
+.animeh__menu-item svg { width: 16px; height: 16px; flex: none; opacity: 0; }
+.animeh__menu-item[aria-checked='true'] svg { opacity: 1; }
+.animeh__menu-item-label { flex: 1; }
+
+.animeh__menu-item-note {
+  font-size: 11px;
+  color: var(--ap-text-muted);
+}
+
+/* ── Overlays ───────────────────────────────────────────────────────────── */
+
+.animeh__spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.animeh__spinner[hidden] { display: none; }
+
+.animeh__spinner::after {
+  content: '';
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: var(--ap-accent);
+  animation: animeh-spin 800ms linear infinite;
+}
+
+@keyframes animeh-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .animeh__spinner::after { animation-duration: 2s; }
+  .animeh__controls { transition: none; }
+}
+
+.animeh__banner {
+  position: absolute;
+  top: 62px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--ap-surface);
+  backdrop-filter: blur(12px);
+  font-size: 12px;
+  z-index: 4;
+  max-width: calc(100% - 32px);
+}
+
+.animeh__banner[hidden] { display: none; }
+.animeh__banner svg { width: 16px; height: 16px; flex: none; }
+.animeh__banner[data-tone='warning'] { color: var(--ap-warning); }
+.animeh__banner[data-tone='danger'] { color: var(--ap-danger); }
+
+.animeh__error {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  text-align: center;
+  background: rgba(8, 8, 12, 0.92);
+  backdrop-filter: blur(6px);
+}
+
+.animeh__error[hidden] { display: none; }
+.animeh__error svg { width: 40px; height: 40px; color: var(--ap-danger); }
+.animeh__error-message { max-width: 30ch; color: var(--ap-text); }
+.animeh__error-code { font-size: 11px; color: var(--ap-text-muted); font-family: ui-monospace, monospace; }
+
+.animeh__action {
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 11px 22px;
+  background: var(--ap-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  min-height: var(--ap-control);
+}
+
+.animeh__action:hover { background: var(--ap-accent-strong); }
+.animeh__action--ghost { background: rgba(255, 255, 255, 0.12); }
+.animeh__action--ghost:hover { background: rgba(255, 255, 255, 0.2); }
+
+/* Floating "skip opening" pill. */
+.animeh__skip {
+  position: absolute;
+  right: 16px;
+  bottom: 104px;
+  z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: var(--ap-surface);
+  backdrop-filter: blur(12px);
+  color: var(--ap-text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  animation: animeh-rise 220ms ease;
+}
+
+.animeh__skip[hidden] { display: none; }
+.animeh__skip svg { width: 18px; height: 18px; }
+
+@keyframes animeh-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Lock mode leaves exactly one affordance visible. */
+.animeh__lock-layer {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: none;
+}
+
+.animeh[data-locked='true'] .animeh__lock-layer { display: block; }
+
+/* ── Debug overlay ──────────────────────────────────────────────────────── */
+
+.animeh__debug {
+  position: absolute;
+  left: 12px;
+  top: 62px;
+  z-index: 5;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(8, 8, 12, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ap-text-muted);
+  max-width: 280px;
+  pointer-events: none;
+}
+
+.animeh__debug[hidden] { display: none; }
+.animeh__debug b { color: var(--ap-text); font-weight: 600; }
+.animeh__debug .warn { color: var(--ap-warning); }
+
+/* ── Small screens ──────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .animeh__volume-slider { display: none; }
+  .animeh__menu { left: 12px; right: 12px; min-width: 0; }
+}
+
+/*
+ * Short player boxes.
+ *
+ * Below ~340px of height the three control rows start colliding, so the whole
+ * set shrinks: smaller targets, tighter padding, and the episode line drops
+ * away since the title alone still identifies what is playing. Touch targets
+ * stay at 36px, which is the floor before they get hard to hit.
+ */
+@container animeh-stage (max-height: 340px) {
+  .animeh { --ap-control: 36px; }
+  .animeh__top,
+  .animeh__bottom { padding: 4px 8px; }
+  .animeh__title { font-size: 13px; }
+  .animeh__subtitle-line { display: none; }
+  /* Confine the transport row between the two bars. At full size it can sit
+     centred over the whole frame, but in a short box that puts it on top of
+     the scrubber. */
+  .animeh__center {
+    gap: 6px;
+    top: 36px;
+    bottom: 62px;
+  }
+  .animeh__btn--primary { width: 46px; height: 46px; }
+  .animeh__btn--primary svg { width: 22px; height: 22px; }
+  .animeh__btn svg { width: 19px; height: 19px; }
+  .animeh__time { font-size: 11px; min-width: 34px; }
+  .animeh__skip { bottom: 62px; right: 10px; padding: 7px 13px; font-size: 12px; }
+  .animeh__banner { top: 44px; font-size: 11px; padding: 6px 11px; }
+  .animeh__menu { bottom: 62px; }
+  .animeh__scrubber { gap: 6px; }
+}
+
+/* Very short boxes drop the episode-navigation buttons: at this size the
+   centre row cannot hold five targets without them overlapping. */
+@container animeh-stage (max-height: 250px) {
+  .animeh__center { gap: 2px; top: 32px; bottom: 56px; }
+  .animeh__btn--primary { width: 42px; height: 42px; }
+  .animeh__top, .animeh__bottom { padding: 3px 6px; }
+}

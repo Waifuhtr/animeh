@@ -7,3 +7,5 @@ media/
 !media/.gitkeep
 .env
 .env.*
+player/public/jassub/
+player/shots/

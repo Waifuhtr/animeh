@@ -24,8 +24,16 @@ export interface EngineEvents {
   audioTracksChanged: AudioTrackInfo[]
   /** Subtitle tracks found *inside* the container. */
   subtitleTracksChanged: SubtitleTrackInfo[]
-  /** Cue text for an embedded subtitle track, in its native format. */
+  /** A complete subtitle script for a track, in its native format. */
   subtitleData: { trackId: string; content: string }
+  /**
+   * One subtitle event, as containers that interleave subtitles deliver them.
+   * `payload` is the Matroska block body — the ASS field list minus timing,
+   * which is exactly the form libass consumes.
+   */
+  subtitleBlock: { trackId: string; payload: string; startMs: number; durationMs: number }
+  /** The static header (styles, resolution) of an embedded subtitle track. */
+  subtitleHeader: { trackId: string; header: string; format: 'ass' | 'ssa' | 'srt' | 'vtt' }
   /** Fonts found *inside* the container. */
   fontsFound: EmbeddedFont[]
   /** Engine is fetching. Drives the spinner independently of media element state. */

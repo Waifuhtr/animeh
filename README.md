@@ -9,11 +9,12 @@ sonra WordPress backend, sonra Android uygulaması.
 
 ## Yapı
 
-| Dizin     | İçerik                                                            |
-| --------- | ----------------------------------------------------------------- |
-| `docs/`   | Mimari ve tasarım belgeleri                                        |
-| `player/` | `@animeh/player` — özel oynatıcı (TypeScript, framework'süz)        |
-| `tools/`  | Geliştirme yardımcıları (test medyası üretimi)                      |
+| Dizin                | İçerik                                                     |
+| -------------------- | ---------------------------------------------------------- |
+| `docs/`              | Mimari ve tasarım belgeleri                                 |
+| `player/`            | `@animeh/player` — özel oynatıcı (TypeScript, framework'süz) |
+| `wordpress-plugin/`  | WordPress eklentisi (player test paneli, font kayıt defteri) |
+| `tools/`             | Geliştirme yardımcıları (test medyası, eklenti paketleme)    |
 
 ## Durum
 
@@ -21,7 +22,16 @@ sonra WordPress backend, sonra Android uygulaması.
 çözümleme, özel kontroller ve zayıf bağlantı politikası uygulanmış ve
 doğrulanmış durumda — 26 birim testi, Chromium'da 63 oynatma kontrolü.
 
-Ayrıntı: [`docs/01-player-architecture.md`](docs/01-player-architecture.md) ·
-Kullanım: [`player/README.md`](player/README.md)
+**Aşama 2 (WordPress test eklentisi) çalışıyor.** Player test paneli, font
+kayıt defteri ve eksik font yükleme akışı, Range destekli hız kısıtlama
+proxy'si — 35 PHP birim testi, tarayıcıda 27 panel kontrolü.
 
-Sıradaki: Aşama 2 — WordPress player test eklentisi.
+| | |
+| --- | --- |
+| Player mimarisi | [`docs/01-player-architecture.md`](docs/01-player-architecture.md) |
+| Player kullanımı | [`player/README.md`](player/README.md) |
+| Eklenti | [`docs/02-wordpress-test-plugin.md`](docs/02-wordpress-test-plugin.md) |
+
+Kurulabilir eklenti paketi: `./tools/build-plugin.sh` → `dist/animeh-<sürüm>.zip`
+
+Sıradaki: Aşama 3 — WordPress backend (anime, bölüm, kullanıcı, API).

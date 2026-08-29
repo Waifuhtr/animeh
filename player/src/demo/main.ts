@@ -1,16 +1,17 @@
 import '../ui/player.css'
+import '../panel/panel.css'
 import './harness.css'
 import { createPlayer, type MountedPlayer } from '../index.ts'
-import { formatBitrate, formatBytes, formatTime } from '../ui/player-ui.ts'
+import { CheckList, LogView, StatsTable, renderFontReport, statsRows } from '../panel/index.ts'
 import type { FontReport } from '../fonts/registry.ts'
 import type { MediaSourceDescriptor, PlayerSnapshot } from '../core/types.ts'
 
 /**
  * Player test harness.
  *
- * Mirrors the WordPress admin panel described in the project brief — pick a
- * source, start the player, watch the checks and the buffering numbers — so
- * the plugin can adopt this layout instead of inventing a second one.
+ * Mirrors the WordPress admin panel — pick a source, start the player, watch
+ * the checks and the buffering numbers — and shares its widgets with it
+ * (`src/panel/`), so the two layouts cannot drift apart.
  */
 
 const SOURCES: Record<string, MediaSourceDescriptor> = {
@@ -102,7 +103,7 @@ const SOURCES: Record<string, MediaSourceDescriptor> = {
       animeId: 'demo',
       episodeId: 'demo-mkv-opus',
       animeTitle: 'Animeh Test Serisi',
-      episodeTitle: 'MKV — Opus ses',
+      episodeTitle: 'MKV — H.264 + Opus ses',
       season: 1,
       episodeNumber: 3,
       hasNext: false,
@@ -156,69 +157,43 @@ app.innerHTML = `
 
     <section class="panel">
       <h2>Sonuçlar</h2>
-      <div class="checks" id="checks"></div>
+      <div class="ap-checks" id="checks"></div>
     </section>
 
     <section class="panel">
       <h2>Ölçümler</h2>
-      <dl class="stats" id="stats"></dl>
+      <dl class="ap-stats" id="stats"></dl>
     </section>
 
     <section class="panel">
       <h2>Günlük</h2>
-      <div class="log" id="log"></div>
+      <div class="ap-log" id="log"></div>
     </section>
   </div>
 `
 
 const slot = document.querySelector<HTMLElement>('#player-slot')!
-const checksEl = document.querySelector<HTMLElement>('#checks')!
-const statsEl = document.querySelector<HTMLElement>('#stats')!
-const logEl = document.querySelector<HTMLElement>('#log')!
+const checks = new CheckList(document.querySelector<HTMLElement>('#checks')!)
+const statsTable = new StatsTable(document.querySelector<HTMLElement>('#stats')!)
+const logView = new LogView(document.querySelector<HTMLElement>('#log')!)
 
-type CheckState = 'pending' | 'ok' | 'bad' | 'warn'
-const checks = new Map<string, { label: string; state: CheckState; detail: string }>()
-
-function setCheck(key: string, label: string, state: CheckState, detail = ''): void {
-  checks.set(key, { label, state, detail })
-  renderChecks()
-}
-
-function renderChecks(): void {
-  const marks: Record<CheckState, string> = { pending: '·', ok: '✓', bad: '✗', warn: '!' }
-  checksEl.replaceChildren(
-    ...[...checks.values()].map((check) => {
-      const row = document.createElement('div')
-      row.className = 'check'
-      row.dataset.state = check.state
-      row.innerHTML = `<span class="mark">${marks[check.state]}</span><span class="name"></span><span class="detail"></span>`
-      row.querySelector('.name')!.textContent = check.label
-      row.querySelector('.detail')!.textContent = check.detail
-      return row
-    }),
-  )
-}
-
-function log(message: string, tone: '' | 'ok' | 'warn' | 'err' = ''): void {
-  const line = document.createElement('div')
-  if (tone) line.className = tone
-  const time = new Date().toLocaleTimeString('tr-TR', { hour12: false })
-  line.textContent = `${time}  ${message}`
-  logEl.prepend(line)
-  while (logEl.childElementCount > 300) logEl.lastElementChild?.remove()
-}
+const log = (message: string, tone: 'info' | 'ok' | 'warn' | 'error' = 'info') =>
+  logView.append(message, tone)
 
 let mounted: MountedPlayer | null = null
+/** Last report, exposed for scripted checks so they assert on data, not copy. */
+let lastFontReport: FontReport | null = null
 
 async function start(): Promise<void> {
   await mounted?.destroy()
   mounted = null
   checks.clear()
-  logEl.replaceChildren()
+  logView.clear()
+  lastFontReport = null
 
-  const key = (document.querySelector<HTMLSelectElement>('#source')!).value
-  const kbps = Number((document.querySelector<HTMLInputElement>('#kbps')!).value)
-  const fail = Number((document.querySelector<HTMLInputElement>('#fail')!).value)
+  const key = document.querySelector<HTMLSelectElement>('#source')!.value
+  const kbps = Number(document.querySelector<HTMLInputElement>('#kbps')!.value)
+  const fail = Number(document.querySelector<HTMLInputElement>('#fail')!.value)
 
   const base = SOURCES[key]
   if (!base) return
@@ -236,13 +211,17 @@ async function start(): Promise<void> {
     fonts: base.fonts?.map((font) => ({ ...font, url: font.url + suffix })),
   }
 
-  setCheck('source', 'Kaynak', 'pending', source.url)
-  setCheck('container', 'Konteyner', 'pending')
-  setCheck('video', 'Video', 'pending')
-  setCheck('audio', 'Ses', 'pending')
-  setCheck('subtitle', 'Altyazı', 'pending')
-  setCheck('renderer', 'ASS renderer', 'pending')
-  setCheck('fonts', 'Fontlar', 'pending')
+  for (const [checkKey, label] of [
+    ['source', 'Kaynak'],
+    ['container', 'Konteyner'],
+    ['video', 'Video'],
+    ['audio', 'Ses'],
+    ['subtitle', 'Altyazı'],
+    ['renderer', 'ASS renderer'],
+    ['fonts', 'Fontlar'],
+  ] as const) {
+    checks.set({ key: checkKey, label, state: 'pending', detail: checkKey === 'source' ? source.url : '' })
+  }
 
   const player = createPlayer(slot, {
     subtitles: {
@@ -256,97 +235,56 @@ async function start(): Promise<void> {
   mounted = player
 
   player.player.events.on('error', (error) => {
-    log(`${error.code}: ${error.message}`, error.fatal ? 'err' : 'warn')
-    if (error.code === 'SUBTITLE_ERROR') setCheck('subtitle', 'Altyazı', 'bad', error.code)
-    if (error.fatal) setCheck('video', 'Video', 'bad', error.code)
+    log(`${error.code}: ${error.message}`, error.fatal ? 'error' : 'warn')
+    if (error.code === 'SUBTITLE_ERROR') {
+      checks.update('subtitle', 'bad', error.code)
+    }
+    if (error.fatal) checks.update('video', 'bad', error.code)
   })
 
-  player.player.events.on('fontReport', (report: FontReport) => {
-    renderFontReport(report)
-  })
-
+  player.player.events.on('fontReport', (report: FontReport) => showFontReport(report))
   player.player.events.on('navigate', (direction) => log(`bölüm isteği: ${direction}`))
   player.player.events.on('ended', () => log('oynatma tamamlandı', 'ok'))
 
   let sawFirstFrame = false
   player.player.subscribe((snapshot) => {
-    renderStats(snapshot, player)
+    statsTable.render(statsRows(snapshot, player.player.stats()))
+
     if (!sawFirstFrame && snapshot.phase === 'playing') {
       sawFirstFrame = true
-      const stats = player.player.stats()
-      setCheck('video', 'Video', 'ok', `${stats.startupTimeMs ?? '?'} ms içinde başladı`)
-      log(`ilk kare ${stats.startupTimeMs} ms içinde`, 'ok')
+      const startup = player.player.stats().startupTimeMs
+      checks.update('video', 'ok', `${startup ?? '?'} ms içinde başladı`)
+      log(`ilk kare ${startup} ms içinde`, 'ok')
     }
     if (snapshot.qualities.length > 0 && checks.get('container')?.state === 'pending') {
       const top = [...snapshot.qualities].sort((a, b) => b.height - a.height)[0]!
-      setCheck(
-        'container',
-        'Konteyner',
-        'ok',
-        `${source.type?.toUpperCase()} · ${snapshot.qualities.length} kalite · en yüksek ${top.label}`,
-      )
+      const detail = `${source.type?.toUpperCase()} · ${snapshot.qualities.length} kalite · en yüksek ${top.label}`
+      checks.update('container', 'ok', detail)
     }
     if (snapshot.audioTracks.length > 0 && checks.get('audio')?.state === 'pending') {
       const track = snapshot.audioTracks[0]!
-      setCheck('audio', 'Ses', 'ok', `${track.codec ?? ''} ${track.label}`.trim())
+      checks.update('audio', 'ok', `${track.codec ?? ''} ${track.label}`.trim())
     }
     if (snapshot.subtitleTracks.length > 0 && checks.get('subtitle')?.state === 'pending') {
       const track = snapshot.subtitleTracks[0]!
-      setCheck(
-        'subtitle',
-        'Altyazı',
-        'ok',
-        `${track.format.toUpperCase()} · ${track.origin === 'embedded' ? 'gömülü' : 'harici'}`,
-      )
+      const origin = track.origin === 'embedded' ? 'gömülü' : 'harici'
+      checks.update('subtitle', 'ok', `${track.format.toUpperCase()} · ${origin}`)
     }
   })
 
   log(`yükleniyor: ${source.url}`)
   await player.player.load(source)
-  setCheck('source', 'Kaynak', 'ok', source.url)
+  checks.update('source', 'ok', source.url)
   await player.player.play()
 }
 
-function renderFontReport(report: FontReport): void {
-  setCheck('renderer', 'ASS renderer', 'ok', 'libass (wasm)')
-  const detail = `${report.resolved.length}/${report.required.length} bulundu`
-  setCheck('fonts', 'Fontlar', report.missing.length === 0 ? 'ok' : 'warn', detail)
-
-  for (const entry of report.resolved) {
-    setCheck(`font:${entry.family}`, `  ${entry.family}`, 'ok', entry.origin)
-  }
-  for (const family of report.missing) {
-    setCheck(`font:${family}`, `  ${family}`, 'bad', 'bulunamadı')
-  }
+function showFontReport(report: FontReport): void {
+  lastFontReport = report
+  checks.update('renderer', 'ok', 'libass (wasm)')
+  renderFontReport(checks, report)
   if (report.missing.length > 0) {
     log(`eksik font: ${report.missing.join(', ')}`, 'warn')
   }
-}
-
-function renderStats(snapshot: PlayerSnapshot, player: MountedPlayer): void {
-  const stats = player.player.stats()
-  const quality = snapshot.qualities.find((level) => level.id === snapshot.activeQualityId)
-  const rows: [string, string][] = [
-    ['Durum', snapshot.phase],
-    ['Konum', `${formatTime(snapshot.position)} / ${formatTime(snapshot.duration)}`],
-    ['Tampon', `${snapshot.bufferAhead.toFixed(1)} sn`],
-    ['Aktif kalite', quality ? `${quality.label}${snapshot.autoQuality ? ' (oto)' : ''}` : '—'],
-    ['Başlangıç süresi', stats.startupTimeMs === null ? '—' : `${stats.startupTimeMs} ms`],
-    ['Yeniden tamponlama', `${stats.rebufferCount}× · ${(stats.rebufferMs / 1000).toFixed(1)} sn`],
-    ['Ortalama hız', formatBitrate(stats.throughputBps)],
-    ['İndirilen', formatBytes(stats.bytesLoaded)],
-    ['Düşen kare', String(stats.droppedFrames)],
-    ['Ağ', `${snapshot.network.kind}${snapshot.network.saveData ? ' · veri tasarrufu' : ''}`],
-  ]
-  statsEl.replaceChildren(
-    ...rows.flatMap(([label, value]) => {
-      const dt = document.createElement('dt')
-      dt.textContent = label
-      const dd = document.createElement('dd')
-      dd.textContent = value
-      return [dt, dd]
-    }),
-  )
 }
 
 document.querySelector('#start')!.addEventListener('click', () => void start())
@@ -367,5 +305,17 @@ document.querySelector('#drop')!.addEventListener('click', () => {
 
 // Expose the mounted player for scripted checks.
 Object.defineProperty(globalThis, 'animehHarness', {
-  get: () => ({ mounted, checks: [...checks.values()], start }),
+  get: () => ({ mounted, checks: checks.entries(), fontReport: lastFontReport, start }),
 })
+
+declare global {
+  // eslint-disable-next-line no-var
+  var animehHarness: {
+    mounted: MountedPlayer | null
+    checks: ReturnType<CheckList['entries']>
+    fontReport: FontReport | null
+    start: () => Promise<void>
+  }
+}
+
+export type { PlayerSnapshot }

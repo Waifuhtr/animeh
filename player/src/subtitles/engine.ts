@@ -212,6 +212,18 @@ export class SubtitleEngine {
     return this.#lastReport
   }
 
+  /**
+   * Re-run font resolution for the families the current script needs.
+   *
+   * The resolver's answers can change underneath us — an operator uploading a
+   * missing face is the whole point of the font report — so there has to be a
+   * way to ask again without reloading the subtitle track.
+   */
+  async refreshFonts(): Promise<FontReport | null> {
+    await this.#refreshFontReport()
+    return this.#lastReport
+  }
+
   async destroy(): Promise<void> {
     this.#destroyed = true
     this.events.removeAll()

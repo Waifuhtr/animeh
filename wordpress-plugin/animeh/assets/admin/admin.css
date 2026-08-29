@@ -1,0 +1,156 @@
+/*
+ * Admin panel chrome.
+ *
+ * Sits inside WordPress's own admin styles, so it borrows their spacing and
+ * button conventions rather than fighting them. Only the panel widgets and the
+ * player carry the dark treatment — a video and its checks read better against
+ * dark, and everything else stays recognisably WordPress.
+ */
+
+.animeh-admin__lede {
+	max-width: 70ch;
+	color: #50575e;
+}
+
+.animeh-grid {
+	display: grid;
+	gap: 16px;
+	grid-template-columns: minmax(0, 1fr);
+	margin-top: 16px;
+	align-items: start;
+}
+
+@media (min-width: 1100px) {
+	.animeh-grid {
+		grid-template-columns: minmax(0, 1fr) minmax(320px, 400px);
+	}
+
+	/* The player and its source form span both columns: the video wants the
+	   width, and the form under it reads better full-width than squeezed. */
+	.animeh-card--player {
+		grid-column: 1 / -1;
+	}
+}
+
+.animeh-grid--single {
+	grid-template-columns: minmax(0, 1fr);
+}
+
+.animeh-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 6px;
+	padding: 16px;
+	box-shadow: 0 1px 1px rgba(0, 0, 0, 0.04);
+}
+
+.animeh-card h2 {
+	margin: 0 0 12px;
+	font-size: 12px;
+	letter-spacing: 0.08em;
+	text-transform: uppercase;
+	color: #646970;
+}
+
+.animeh-card--player {
+	background: #101018;
+	border-color: #2c2c3a;
+	padding: 12px;
+}
+
+.animeh-player-slot {
+	min-height: 200px;
+}
+
+/* Panel widgets ship their own palette; they need a dark ground to sit on. */
+.animeh-card .ap-checks,
+.animeh-card .ap-stats,
+.animeh-card .ap-log {
+	background: #14141c;
+	border-radius: 6px;
+	padding: 12px;
+}
+
+.animeh-card .ap-log {
+	max-height: 260px;
+}
+
+.animeh-field {
+	display: grid;
+	gap: 4px;
+	margin-bottom: 12px;
+	min-width: 0;
+}
+
+.animeh-field label {
+	font-size: 12px;
+	color: #646970;
+}
+
+.animeh-field input,
+.animeh-field select {
+	width: 100%;
+	max-width: none;
+}
+
+.animeh-row {
+	display: flex;
+	gap: 8px;
+	align-items: end;
+	flex-wrap: wrap;
+}
+
+.animeh-row > .animeh-field {
+	flex: 1 1 160px;
+	margin-bottom: 0;
+}
+
+.animeh-row > select {
+	flex: 1 1 auto;
+	min-width: 0;
+}
+
+.animeh-hint {
+	font-size: 12px;
+	color: #646970;
+	margin: 8px 0 12px;
+}
+
+.animeh-error {
+	color: #b32d2e;
+	font-size: 13px;
+	margin: 10px 0 0;
+}
+
+.animeh-muted {
+	color: #646970;
+	font-size: 12px;
+}
+
+.animeh-count {
+	color: #646970;
+	font-weight: 400;
+	text-transform: none;
+	letter-spacing: 0;
+}
+
+.animeh-table {
+	margin-top: 4px;
+}
+
+.animeh-table td,
+.animeh-table th {
+	vertical-align: middle;
+}
+
+.animeh-table__actions {
+	text-align: right;
+	width: 1%;
+	white-space: nowrap;
+}
+
+#animeh-start {
+	width: 100%;
+	margin-top: 4px;
+	text-align: center;
+}

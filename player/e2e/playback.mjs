@@ -156,24 +156,26 @@ async function runSource(page, key, label, opts = {}) {
   if (opts.expectFonts === false) {
     // Scenarios that only exercise transport skip the font assertions.
   }
-  const fontRows = await page.evaluate(() =>
-    globalThis.animehHarness.checks
-      .filter((c) => c.label.trim().startsWith('DejaVu') || c.label.includes('Nonexistent'))
-      .map((c) => ({ label: c.label.trim(), state: c.state, detail: c.detail })),
+  // Assert against the report itself rather than the rendered copy, which is
+  // localised and free to change.
+  const report = await page.evaluate(() => globalThis.animehHarness.fontReport)
+  const resolved = report?.resolved ?? []
+  const missing = report?.missing ?? []
+  check(
+    'fonts resolved',
+    resolved.length === 3,
+    resolved.map((r) => `${r.family} (${r.origin})`).join(', '),
   )
-  const resolved = fontRows.filter((row) => row.state === 'ok')
-  const missing = fontRows.filter((row) => row.state === 'bad')
-  check('fonts resolved', resolved.length === 3, resolved.map((r) => `${r.label} (${r.detail})`).join(', '))
   check(
     'missing font reported',
-    missing.length === 1 && missing[0]?.label === 'Animeh Nonexistent Gothic',
-    missing.map((r) => r.label).join(', ') || 'none',
+    missing.length === 1 && missing[0] === 'Animeh Nonexistent Gothic',
+    missing.join(', ') || 'none',
   )
   if (opts.expectEmbeddedFonts) {
     check(
       'fonts came from the container',
-      resolved.every((row) => row.detail === 'embedded'),
-      resolved.map((r) => r.detail).join(', '),
+      resolved.every((row) => row.origin === 'embedded'),
+      resolved.map((r) => r.origin).join(', '),
     )
   }
 

@@ -1,5 +1,6 @@
 /*
- * Test harness chrome.
+ * Test harness chrome. Panel widgets themselves are styled by
+ * `src/panel/panel.css`, which the WordPress admin page shares.
  *
  * Deliberately close to the layout the WordPress admin panel will use, so the
  * plugin can reuse this markup rather than growing a second design.
@@ -103,32 +104,8 @@ button.ghost {
 }
 button.ghost:hover { background: rgba(255, 255, 255, 0.06); }
 
-.checks { display: grid; gap: 6px; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
-.check { display: flex; align-items: baseline; gap: 8px; }
-.check .mark { width: 1em; flex: none; }
-.check[data-state='ok'] .mark { color: var(--ok); }
-.check[data-state='bad'] .mark { color: var(--bad); }
-.check[data-state='warn'] .mark { color: var(--warn); }
-.check[data-state='pending'] .mark { color: var(--muted); }
-.check .name { flex: 1; }
-.check .detail { color: var(--muted); }
 
-.stats { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 12px; }
-.stats dt { color: var(--muted); }
-.stats dd { margin: 0; font-family: ui-monospace, Menlo, monospace; text-align: right; }
 
-.log {
-  max-height: 220px;
-  overflow-y: auto;
-  font-family: ui-monospace, Menlo, monospace;
-  font-size: 11px;
-  line-height: 1.7;
-  color: var(--muted);
-}
-.log div { border-bottom: 1px solid rgba(255, 255, 255, 0.04); padding: 2px 0; }
-.log .err { color: var(--bad); }
-.log .warn { color: var(--warn); }
-.log .ok { color: var(--ok); }
 
 .hint { color: var(--muted); font-size: 12px; margin: 10px 0 0; }
 kbd {

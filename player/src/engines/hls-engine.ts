@@ -325,6 +325,34 @@ export class HlsEngine implements MediaEngine {
     this.#hls.currentLevel = id ?? -1
   }
 
+  /**
+   * Restrict automatic adaptation to renditions at or below `height`.
+   * Adaptation keeps running underneath the cap rather than being pinned.
+   */
+  setQualityCeiling(height: number | null): void {
+    const hls = this.#hls
+    if (!hls) return
+    if (height === null) {
+      hls.autoLevelCapping = -1
+      return
+    }
+    // Highest level that fits under the cap; fall back to the lowest so a cap
+    // below every rendition still plays rather than stalling.
+    let capped = -1
+    let lowest = 0
+    let lowestHeight = Number.POSITIVE_INFINITY
+    hls.levels.forEach((level, index) => {
+      if (level.height <= height && (capped < 0 || level.height > hls.levels[capped]!.height)) {
+        capped = index
+      }
+      if (level.height < lowestHeight) {
+        lowestHeight = level.height
+        lowest = index
+      }
+    })
+    hls.autoLevelCapping = capped >= 0 ? capped : lowest
+  }
+
   getAudioTracks(): AudioTrackInfo[] {
     return this.#audioTracks
   }

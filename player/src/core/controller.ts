@@ -92,11 +92,14 @@ export class AnimehPlayer {
   #detachers: (() => void)[] = []
   /** Set while a programmatic seek is in flight, to suppress resume writes. */
   #seeking = false
+  /** Saved height ceiling for automatic adaptation; null means no cap. */
+  #preferredHeight: number | null
 
   constructor(options: AnimehPlayerOptions) {
     this.#options = options
     this.#video = options.video
     this.#resumeStore = options.resumeStore ?? new LocalResumeStore()
+    this.#preferredHeight = options.preferredHeight ?? null
     this.#network.bindEstimator(this.#estimator)
     this.subtitles = new SubtitleEngine(options.subtitles)
     this.subtitles.attach(options.video, options.subtitleCanvas)
@@ -157,7 +160,7 @@ export class AnimehPlayer {
           network: () => this.#network.snapshot(),
           estimateBps: () => this.#network.estimateBps(),
           viewportHeight: () => this.#video.clientHeight || globalThis.innerHeight,
-          preferredHeight: () => this.#options.preferredHeight ?? null,
+          preferredHeight: () => this.#preferredHeight,
         })
       case 'mkv':
         return new MkvEngine({
@@ -375,6 +378,22 @@ export class AnimehPlayer {
     this.#selectedQualityId = id
     this.#engine?.setQuality(id)
     this.#emit()
+  }
+
+  /**
+   * Cap automatic adaptation by height, or `null` to lift the cap.
+   *
+   * Unlike `setQuality` this leaves the player in auto mode — it narrows what
+   * auto is allowed to choose, which is what a "max 720p" setting means.
+   */
+  setPreferredHeight(height: number | null): void {
+    this.#preferredHeight = height
+    this.#engine?.setQualityCeiling?.(height)
+    this.#emit()
+  }
+
+  get preferredHeight(): number | null {
+    return this.#preferredHeight
   }
 
   setAudioTrack(id: string): void {

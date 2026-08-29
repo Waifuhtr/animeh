@@ -63,6 +63,15 @@ export interface MediaEngine {
 
   /** `null` selects automatic bitrate adaptation. */
   setQuality(id: number | null): void
+
+  /**
+   * Cap what automatic adaptation is allowed to reach, by height.
+   *
+   * Distinct from `setQuality`: that pins one rendition and turns adaptation
+   * off, this leaves adaptation running inside a ceiling. Optional, because a
+   * single-rendition source has nothing to cap.
+   */
+  setQualityCeiling?(height: number | null): void
   getQualities(): QualityLevel[]
   /** The level currently being fetched, auto or manual. */
   getActiveQualityId(): number | null

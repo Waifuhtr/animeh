@@ -34,17 +34,29 @@ export interface FontReport {
 }
 
 /**
- * Resolves a font, or reports that it cannot be found.
+ * Looks up a font the registry does not already hold.
+ *
+ * Two kinds of implementation are expected, and they are told apart by
+ * `origin`: one backed by our own backend's font registry (`server`), and one
+ * backed by a licensed public catalogue (`public`). The distinction is not
+ * cosmetic — the font report is what an operator reads to decide whether to go
+ * upload a file, and "your backend has this" is a different answer from "some
+ * public catalogue has something by this name".
  *
  * Implementations must only consult sources whose licences permit
  * redistribution. There is deliberately no built-in web resolver: guessing a
  * face from an arbitrary site risks shipping a font nobody has the right to
  * serve, and a wrong-but-present font is harder to notice than a missing one.
  */
-export interface PublicFontResolver {
+export interface FontResolver {
   readonly name: string
+  /** Which source this resolver speaks for. */
+  readonly origin: Extract<FontOrigin, 'server' | 'public'>
   resolve(family: string, signal?: AbortSignal): Promise<{ url: string } | { data: Uint8Array } | null>
 }
+
+/** @deprecated Use {@link FontResolver}, which declares its own origin. */
+export type PublicFontResolver = FontResolver
 
 /**
  * Font resolution for ASS rendering.
@@ -56,11 +68,14 @@ export interface PublicFontResolver {
  */
 export class FontRegistry {
   #entries = new Map<string, FontEntry>()
-  #publicResolver: PublicFontResolver | null = null
+  #resolver: FontResolver | null = null
 
-  /** Enable a licensed public source. None is configured by default. */
-  setPublicResolver(resolver: PublicFontResolver | null): void {
-    this.#publicResolver = resolver
+  /**
+   * Attach a lookup for families we do not already hold.
+   * None is configured by default: the player never reaches out on its own.
+   */
+  setResolver(resolver: FontResolver | null): void {
+    this.#resolver = resolver
   }
 
   /**
@@ -121,18 +136,18 @@ export class FontRegistry {
         continue
       }
 
-      if (this.#publicResolver) {
+      if (this.#resolver) {
         try {
-          const found = await this.#publicResolver.resolve(family, signal)
+          const found = await this.#resolver.resolve(family, signal)
           if (found) {
             const entry: FontEntry = {
               family,
-              origin: 'public',
-              provider: this.#publicResolver.name,
+              origin: this.#resolver.origin,
+              provider: this.#resolver.name,
               ...('url' in found ? { url: found.url } : { data: found.data }),
             }
             this.#put(entry)
-            resolved.push({ family, origin: 'public', provider: entry.provider })
+            resolved.push({ family, origin: entry.origin, provider: entry.provider })
             continue
           }
         } catch {

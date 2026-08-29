@@ -1,0 +1,101 @@
+/*
+ * Test panel widgets.
+ *
+ * Shared by the development harness and the WordPress admin page. Colours come
+ * from custom properties so the WordPress side can hand over its own palette
+ * without forking the stylesheet.
+ */
+.ap-checks,
+.ap-stats,
+.ap-log {
+  --ap-panel-text: #f5f5f7;
+  --ap-panel-muted: #9ca3af;
+  --ap-panel-ok: #4ade80;
+  --ap-panel-warn: #fbbf24;
+  --ap-panel-bad: #f87171;
+  --ap-panel-accent: #8b5cf6;
+  --ap-panel-hairline: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Checks ─────────────────────────────────────────────────────────────── */
+
+.ap-checks {
+  display: grid;
+  gap: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--ap-panel-text);
+}
+
+.ap-check {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ap-check[data-nested='true'] { padding-inline-start: 18px; }
+
+.ap-check__mark { width: 1em; flex: none; text-align: center; }
+.ap-check[data-state='ok'] .ap-check__mark { color: var(--ap-panel-ok); }
+.ap-check[data-state='warn'] .ap-check__mark { color: var(--ap-panel-warn); }
+.ap-check[data-state='bad'] .ap-check__mark { color: var(--ap-panel-bad); }
+.ap-check[data-state='pending'] .ap-check__mark { color: var(--ap-panel-muted); }
+
+.ap-check__name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.ap-check__detail { color: var(--ap-panel-muted); text-align: right; }
+
+.ap-check__action {
+  appearance: none;
+  flex: none;
+  border: 1px solid var(--ap-panel-accent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ap-panel-accent);
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 10px;
+  min-height: 26px;
+  cursor: pointer;
+}
+
+.ap-check__action:hover { background: var(--ap-panel-accent); color: #fff; }
+
+/* ── Stats ──────────────────────────────────────────────────────────────── */
+
+.ap-stats {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 12px;
+  font-size: 12px;
+  margin: 0;
+  color: var(--ap-panel-text);
+}
+
+.ap-stats dt { color: var(--ap-panel-muted); }
+.ap-stats dd {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  text-align: right;
+}
+
+/* ── Log ────────────────────────────────────────────────────────────────── */
+
+.ap-log {
+  max-height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.7;
+  color: var(--ap-panel-muted);
+}
+
+.ap-log__line {
+  padding: 2px 0;
+  border-bottom: 1px solid var(--ap-panel-hairline);
+  overflow-wrap: anywhere;
+}
+
+.ap-log__line--ok { color: var(--ap-panel-ok); }
+.ap-log__line--warn { color: var(--ap-panel-warn); }
+.ap-log__line--error { color: var(--ap-panel-bad); }

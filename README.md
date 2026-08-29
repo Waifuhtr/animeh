@@ -1,19 +1,27 @@
 # Animeh
 
-Anime streaming platform — Kotlin/Compose Android app, WordPress backend, Tenrai metadata,
-Backblaze B2 storage, and a custom high-performance video player.
+Anime izleme platformu — Kotlin/Compose Android uygulaması, WordPress backend,
+Tenrai metadata, Backblaze B2 depolama ve özel yüksek performanslı video
+oynatıcı.
 
-Development order (see `docs/`): **player first**, then the WordPress player-test plugin,
-then the WordPress backend, then the Android app.
+Geliştirme sırası: **önce player**, sonra WordPress player test eklentisi,
+sonra WordPress backend, sonra Android uygulaması.
 
-## Layout
+## Yapı
 
-| Path      | What                                                                 |
-| --------- | -------------------------------------------------------------------- |
-| `docs/`   | Architecture and design documents                                     |
-| `player/` | `@animeh/player` — the custom player engine (TypeScript, no framework) |
-| `tools/`  | Development helpers (test media generation, etc.)                      |
+| Dizin     | İçerik                                                            |
+| --------- | ----------------------------------------------------------------- |
+| `docs/`   | Mimari ve tasarım belgeleri                                        |
+| `player/` | `@animeh/player` — özel oynatıcı (TypeScript, framework'süz)        |
+| `tools/`  | Geliştirme yardımcıları (test medyası üretimi)                      |
 
-## Status
+## Durum
 
-Phase 1 (player) is in progress. See `docs/01-player-architecture.md`.
+**Aşama 1 (player) çalışıyor.** HLS ve MKV oynatma, ASS altyazı, font
+çözümleme, özel kontroller ve zayıf bağlantı politikası uygulanmış ve
+doğrulanmış durumda — 26 birim testi, Chromium'da 63 oynatma kontrolü.
+
+Ayrıntı: [`docs/01-player-architecture.md`](docs/01-player-architecture.md) ·
+Kullanım: [`player/README.md`](player/README.md)
+
+Sıradaki: Aşama 2 — WordPress player test eklentisi.

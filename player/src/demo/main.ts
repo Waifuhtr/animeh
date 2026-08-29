@@ -96,6 +96,28 @@ const SOURCES: Record<string, MediaSourceDescriptor> = {
       hasPrevious: true,
     },
   },
+  progressive: {
+    url: '/media/source-vp9.webm',
+    type: 'auto',
+    subtitles: [
+      { id: 'tr', language: 'tr', label: 'Türkçe', url: '/media/subtitle.ass', format: 'ass', default: true },
+    ],
+    fonts: [
+      { family: 'DejaVu Sans', url: '/media/fonts/DejaVuSans.ttf' },
+      { family: 'DejaVu Serif', url: '/media/fonts/DejaVuSerif.ttf' },
+      { family: 'DejaVu Sans Mono', url: '/media/fonts/DejaVuSansMono.ttf' },
+    ],
+    episode: {
+      animeId: 'demo',
+      episodeId: 'demo-progressive',
+      animeTitle: 'Animeh Test Serisi',
+      episodeTitle: 'Tek dosya — tarayıcı doğrudan oynatır',
+      season: 1,
+      episodeNumber: 6,
+      hasNext: false,
+      hasPrevious: true,
+    },
+  },
   mkvOpus: {
     url: '/media/episode-opus.mkv',
     type: 'mkv',
@@ -131,6 +153,7 @@ app.innerHTML = `
           <option value="mkv">MKV — gömülü ASS altyazı + 3 font</option>
           <option value="mkvVp9">MKV — VP9 + Opus (telifsiz kodekler)</option>
           <option value="hlsVp9">HLS — VP9 + Opus, fMP4 segmentler</option>
+          <option value="progressive">Tek dosya (MP4/WebM) — tarayıcı doğrudan oynatır</option>
           <option value="mkvOpus">MKV — H.264 + Opus ses</option>
         </select>
       </div>

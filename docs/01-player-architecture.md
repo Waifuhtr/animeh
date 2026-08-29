@@ -33,7 +33,7 @@ motorun kendisi olacak.
 │  └──────────┴───────────┴──────────┴────────┘ │
 ├───────────────────────────────────────────────┤
 │ MediaEngine                                   │  src/core/engine.ts
-│   HlsEngine · MkvEngine                       │  src/engines/
+│   HlsEngine · MkvEngine · ProgressiveEngine   │  src/engines/
 ├───────────────────────────────────────────────┤
 │ NetworkMonitor · ThroughputEstimator · Policy │  src/net/
 ├───────────────────────────────────────────────┤
@@ -90,7 +90,33 @@ Ayrım şuralarda önemli:
 UI durumu (kilit, tam ekran, açık menü) motor durumundan ayrı tutulur — brief'in
 12. maddesindeki "UI state ile media engine state karıştırılmasın" kuralı.
 
-## 5. HLS
+## 5. Motor seçimi
+
+`sniffContainer()` URL'den hangi motorun devreye gireceğine karar verir:
+
+| Uzantı | Motor | Neden |
+| --- | --- | --- |
+| `.m3u8`, `.m3u` | `HlsEngine` | uyarlanabilir bitrate, çoklu rendition |
+| `.mkv`, `.mka` | `MkvEngine` | **hiçbir tarayıcı Matroska demux etmiyor** — ve gömülü ASS + fontları çıkarmanın tek yolu bu |
+| diğer hepsi | `ProgressiveEngine` | tarayıcı kendisi demux ediyor; `src` atamak yeterli |
+
+`ProgressiveEngine` kasıtlı olarak ince: `video.src` atar ve çekilmeyi tarayıcıya
+bırakır. MP4 ve WebM için kendi demuxer'ımızı yazmak daha yavaş, daha çok pil
+tüketen ve **daha az kodek destekleyen** bir sonuç verirdi. `MkvEngine`'in
+karmaşıklığı yalnızca Matroska'da hak ediliyor: orada demux etmezsek altyazı ve
+fontlar elimize hiç geçmez.
+
+WebM de Matroska'dır ama `ProgressiveEngine`'e gider: her tarayıcı native
+oynatır, ASS veya font attachment taşıyamaz, ve sıklıkla VP8 ya da Vorbis
+kullanır — ikisinin de remux edilecek bir MP4 karşılığı yok.
+
+`ProgressiveEngine` bant genişliğini tampon büyümesinden tahmin eder: çekmeyi
+tarayıcı yaptığı için ölçülecek istek boyutu yok, ama dolan tampon ile dosyanın
+ortalama bitrate'i birlikte gerçek bir sayı verir. Örnekleme yalnızca tampon
+büyürken yapılır — tarayıcı yeterince ileriye okuyup durduğunda bunu bant
+genişliği çöküşü sanmamak için.
+
+## 6. HLS
 
 `HlsEngine` hls.js'i yalnızca taşıma olarak kullanır. Politika bizim:
 
@@ -103,7 +129,7 @@ UI durumu (kilit, tam ekran, açık menü) motor durumundan ayrı tutulur — br
   Manifest ucuzdur, peşine düşülür; yüklenmeyen bir fragment yerine daha düşük
   bitrate'li olanı koymak daha iyidir.
 
-## 6. MKV desteği
+## 7. MKV desteği
 
 Tarayıcıların hiçbiri MKV'yi MSE'ye demux etmez. Bu yüzden konteyner
 `src/mkv/` altında bizim tarafımızdan çözülür ve akış anında parçalı MP4'e
@@ -129,7 +155,7 @@ altyazısını ve o altyazının kullandığı fontları kendi içinde taşır.*
 demux'tan hem altyazı hem fontlar çıktığı için böyle bir dosya için font arama
 sorunu tamamen ortadan kalkar.
 
-### 6.1 Çözülen üç zor nokta
+### 7.1 Çözülen üç zor nokta
 
 **Küme boyutu.** Mux'lar 5 saniyelik, 1080p'de birkaç MB'lık kümeler yazar. Tam
 kümeyi beklemek ilk kare için megabaytlarca indirme demekti — tam da kaçınmaya
@@ -150,7 +176,7 @@ ekleyince tüm sunum zaman çizgisi 84 ms öteleniyordu. Çözüm: her offset'e 
 Böylece medya zaman çizgisi konteynerin zaman çizgisiyle birebir aynı kalır —
 arama, kaldığın yer ve altyazı senkronu için hiçbir yerde telafi gerekmez.
 
-### 6.2 Desteklenen kodekler
+### 7.2 Desteklenen kodekler
 
 | | Destekleniyor | Desteklenmiyor (açıkça raporlanır) |
 | --- | --- | --- |
@@ -162,19 +188,19 @@ Desteklenmeyen bir **ses** parçası oynatmayı durdurmaz: video devam eder, hat
 raporlanır. Bu, hangi parçanın yeniden kodlanması gerektiğini söyleyen bir
 mesajdır — sessiz bir başarısızlık değil.
 
-### 6.3 Arama
+### 7.3 Arama
 
 `Cues` öğesi zaman → küme ofseti indeksidir; SeekHead üzerinden ayrıca çekilir.
 Arama, hedeften önceki en yakın cue'ya gidip demuxer ve remuxer'ı sıfırlar.
 Cues yoksa arama sınırlıdır ve `seekable` false döner.
 
-### 6.4 MKV'nin kabul edilen sınırı
+### 7.4 MKV'nin kabul edilen sınırı
 
 Tek dosya MKV **tek renditiondır**; uyarlanabilir bitrate yoktur. Bağlantı
 dosyanın bitrate'inin altına düşerse yapılabilecek tek şey tamponu korumaktır.
 Bu yüzden production akış yolu HLS'tir; MKV doğrudan dosya kaynakları içindir.
 
-## 7. Düşük bağlantı politikası
+## 8. Düşük bağlantı politikası
 
 `src/net/policy.ts` bağlantıyı üç kademeye ayırır ve her şey bu değere bağlanır.
 
@@ -200,7 +226,7 @@ ortalama tünele girildiğinde tepki verir, yavaş olanı tek bir yavaş segment
 yüzünden bitrate'in yalpalamasını engeller. Küçüğünü almak tahmini karamsar
 yapar — telefonda yanılmak istediğiniz yön budur.
 
-## 8. Altyazı ve ASS
+## 9. Altyazı ve ASS
 
 Render libass (WebAssembly) ile yapılır. Karaoke zamanlaması, `\pos`, döndürme,
 glif kenarlıkları ve çizim komutları formatın varlık sebebidir; DOM tabanlı bir
@@ -218,7 +244,7 @@ Bizim olan kısım libass'ın etrafı:
 - **SRT ve WebVTT** minimal bir ASS'e çevrilir. Tek render yolu, tek konumlama
   ve ölçekleme davranışı demektir.
 
-## 9. Font yönetimi
+## 10. Font yönetimi
 
 Bir script fontu **iki yerde** ister: stillerin `Fontname` sütunu ve replik
 içindeki `\fn` override'ları. İkisini birden toplamayan bir tarama, bazı
@@ -257,7 +283,7 @@ Eksik font çıktısı doğrudan brief'in 15. maddesindeki panele beslenir:
   Animeh Nonexistent Gothic          [Font Yükle]
 ```
 
-## 10. Hata yönetimi
+## 11. Hata yönetimi
 
 `PlayerError` teknik ayrıntı ile kullanıcı mesajını ayrı tutar. Arayüz yalnızca
 `userMessage` gösterir; `code` destek talebinde neyin bozulduğunu söylemek için
@@ -279,7 +305,7 @@ Kurtarma merdiveni:
 
 Ağ geri geldiğinde (`online` olayı) kurtarma otomatik tetiklenir.
 
-## 11. Arayüz
+## 12. Arayüz
 
 Framework'süz düz DOM. Aynı işaretleme bir WordPress admin sayfasında, bağımsız
 test panelinde ve ileride bir WebView'da çalışmak zorunda; hiçbirinin bir
@@ -302,14 +328,14 @@ hedefler küçülür, bölüm satırı kalkar, orta sıra iki bar arasına sık�
 Klavye: `space`/`k` oynat, `←`/`→` 10 sn, `↑`/`↓` ses, `m` sessiz, `f` tam
 ekran, `c` altyazı döngüsü, `d` hata ayıklama, `Escape` menü kapat.
 
-## 12. Kaldığın yerden devam
+## 13. Kaldığın yerden devam
 
 `ResumeStore` bir arayüzdür. Geliştirmede `localStorage`, production'da
 WordPress'in izleme geçmişi endpoint'i — ilerlemenin cihazlar arasında takip
 etmesi gerektiği için. 5 saniyede bir ve duraklama/bitiş anlarında yazılır.
 Sondan 30 saniye "tamamlandı" sayılır, böylece jeneriğin ortasına dönülmez.
 
-## 13. Test altyapısı
+## 14. Test altyapısı
 
 Test medyası `tools/make-test-media.sh` ile üretilir (git'e girmez):
 4 kaliteli H.264/AAC HLS merdiveni, gömülü ASS ve 3 attached font taşıyan MKV,
@@ -324,14 +350,15 @@ Mevcut durum:
 
 | | |
 | --- | --- |
-| Birim testleri | 26 / 26 geçiyor |
-| Tarayıcı kontrolleri | 63 / 63 geçiyor |
+| Birim testleri | 30 / 30 geçiyor |
+| Tarayıcı kontrolleri | 75 / 75 geçiyor |
 
 Birim testleri gerçek dosyalar üzerinde çalışır: MKV başlık çözümleme, parçalı
 küme okuma, ve remux edilen çıktının ffprobe tarafından **kare kare** decode
-edilmesi + her sunum zaman damgasının korunması. Tarayıcı kontrolleri beş
+edilmesi + her sunum zaman damgasının korunması. Tarayıcı kontrolleri altı
 senaryoyu kapsar: temiz MKV, temiz HLS, 3 Mbps MKV, 700 kbps HLS (ABR 360p'ye
-iniyor), ve ilk iki isteği başarısız olan HLS.
+iniyor), ilk iki isteği başarısız olan HLS, ve tarayıcının doğrudan oynattığı
+tek dosya.
 
 ### Ortam notu
 
@@ -340,7 +367,7 @@ Bu yüzden tarayıcı doğrulaması VP9+Opus korpusuyla yapılır. H.264/AAC yol
 ffprobe turu ile ayrıca doğrulanmıştır. Gerçek Chrome/Edge ve Android
 (Media3) her iki kodeği de destekler.
 
-## 14. Sonraki adımlar
+## 15. Sonraki adımlar
 
 ### Aşama 2 — WordPress test eklentisi
 
@@ -375,10 +402,12 @@ Android build bu oturumda **yapılamadı**: `dl.google.com` bu ortamın çıkı�
 politikasında engelli, dolayısıyla Android SDK ve Google Maven (androidx/media3)
 erişilemez durumda.
 
-## 15. Bilinen sınırlar
+## 16. Bilinen sınırlar
 
 - MKV'de mid-file ses parçası değiştirme uygulanmadı (yeniden remux gerektirir);
   arayüz bunu sessizce yapmak yerine açıkça söyler.
+- `ProgressiveEngine` kalite seçimi sunmaz — tek dosyada seçilecek bir şey yok.
+  Gömülü altyazıları da çıkarmaz; harici altyazı controller tarafından yüklenir.
 - Görüntü tabanlı altyazılar (VobSub, PGS) desteklenmiyor.
 - MKV için `Cues` yoksa arama sınırlı.
 - Genel font çözücü arayüzü var ama hiçbir sağlayıcı bağlı değil (bilinçli).

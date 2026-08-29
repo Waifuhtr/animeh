@@ -3,6 +3,7 @@ import { ErrorCode, PlayerError, toPlayerError } from './errors.ts'
 import { sniffContainer, type MediaEngine } from './engine.ts'
 import { HlsEngine } from '../engines/hls-engine.ts'
 import { MkvEngine } from '../engines/mkv-engine.ts'
+import { ProgressiveEngine } from '../engines/progressive-engine.ts'
 import { NetworkMonitor } from '../net/network.ts'
 import { ThroughputEstimator } from '../net/throughput.ts'
 import { bufferProfileFor } from '../net/policy.ts'
@@ -168,10 +169,10 @@ export class AnimehPlayer {
           estimateBps: () => this.#network.estimateBps(),
         })
       case 'mp4':
-        return new MkvEngine({
-          targetBufferSec: bufferProfileFor(this.#network.snapshot()).forwardSec,
-          estimateBps: () => this.#network.estimateBps(),
-        })
+        // Browser-native playback. Routing this to MkvEngine — which is a
+        // Matroska demuxer — made it read an MP4's `ftyp` box as an EBML id
+        // and fail on the first byte.
+        return new ProgressiveEngine()
     }
   }
 

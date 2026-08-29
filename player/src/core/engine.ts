@@ -92,11 +92,23 @@ export interface MediaEngine {
   destroy(): void
 }
 
-/** Guess the container from a URL when the caller said `auto`. */
+/**
+ * Guess which engine should handle a URL when the caller said `auto`.
+ *
+ * `mp4` here means "hand the file to the browser" rather than the MP4 container
+ * specifically: anything a browser demuxes natively belongs on that path.
+ * Only Matroska goes through our own demuxer, and only because no browser
+ * demuxes it — and because doing so is what gets the embedded ASS subtitles
+ * and fonts out of a release.
+ *
+ * WebM is Matroska, but it is also natively supported everywhere, cannot carry
+ * ASS or font attachments, and routinely uses VP8 or Vorbis — neither of which
+ * has an MP4 encapsulation to remux into. Native playback handles all of it.
+ */
 export function sniffContainer(url: string): 'hls' | 'mkv' | 'mp4' {
   const path = url.split(/[?#]/, 1)[0] ?? url
   const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
   if (ext === 'm3u8' || ext === 'm3u') return 'hls'
-  if (ext === 'mkv' || ext === 'webm' || ext === 'mka') return 'mkv'
+  if (ext === 'mkv' || ext === 'mka') return 'mkv'
   return 'mp4'
 }

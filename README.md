@@ -20,7 +20,7 @@ sonra WordPress backend, sonra Android uygulaması.
 
 **Aşama 1 (player) çalışıyor.** HLS ve MKV oynatma, ASS altyazı, font
 çözümleme, özel kontroller ve zayıf bağlantı politikası uygulanmış ve
-doğrulanmış durumda — 26 birim testi, Chromium'da 63 oynatma kontrolü.
+doğrulanmış durumda — 30 birim testi, Chromium'da 75 oynatma kontrolü.
 
 **Aşama 2 (WordPress test eklentisi) çalışıyor.** Player test paneli, font
 kayıt defteri ve eksik font yükleme akışı, Range destekli hız kısıtlama

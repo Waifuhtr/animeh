@@ -289,6 +289,12 @@ async function main() {
 
     // Recovery: the first two requests fail outright.
     await runSource(page, 'hlsVp9', 'HLS with the first 2 requests failing', { fail: 2 })
+
+    // A single file the browser demuxes itself. This path used to be routed to
+    // the Matroska demuxer, which failed on the first byte.
+    await runSource(page, 'progressive', 'Progressive single file, played natively', {
+      expectEmbeddedFonts: false,
+    })
   } finally {
     await page.screenshot({ path: `${SHOTS}final.png`, fullPage: true }).catch(() => {})
     await browser.close()

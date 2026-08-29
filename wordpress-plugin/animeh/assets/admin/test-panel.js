@@ -9,11 +9,15 @@
 
 import { ApiError } from './api.js'
 
+// `mp4` means "let the browser demux it", which covers MP4, WebM and anything
+// else it plays natively. Only Matroska goes through our own demuxer, because
+// no browser demuxes it and because that is what gets a release's embedded ASS
+// subtitles and fonts out.
 const SOURCE_TYPES = [
   ['auto', 'Otomatik algıla'],
   ['hls', 'HLS (m3u8)'],
-  ['mkv', 'MKV / WebM'],
-  ['mp4', 'MP4'],
+  ['mkv', 'MKV (gömülü altyazı ve font)'],
+  ['mp4', 'MP4 / WebM (tarayıcı doğrudan oynatır)'],
 ]
 
 const CHECK_LABELS = [
@@ -488,11 +492,12 @@ function guessSubtitleFormat(url) {
   return 'ass'
 }
 
+// Mirrors the player's own sniffing, for the container label in the checks.
 function guessContainer(url) {
   const path = url.split(/[?#]/, 1)[0] ?? url
   const ext = path.slice(path.lastIndexOf('.') + 1).toLowerCase()
   if (ext === 'm3u8' || ext === 'm3u') return 'hls'
-  if (ext === 'mkv' || ext === 'webm') return 'mkv'
+  if (ext === 'mkv' || ext === 'mka') return 'mkv'
   return 'mp4'
 }
 

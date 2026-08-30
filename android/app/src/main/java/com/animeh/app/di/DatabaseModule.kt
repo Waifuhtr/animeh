@@ -21,7 +21,8 @@ object DatabaseModule {
         Room.databaseBuilder(context, AnimehDatabase::class.java, AnimehDatabase.NAME)
             // Every table is a cache of server state; a schema change is not
             // worth a migration nobody can test against real user data.
-            .fallbackToDestructiveMigration(dropAllTables = true)
+            // No-arg: the `dropAllTables` overload landed after Room 2.6.1.
+            .fallbackToDestructiveMigration()
             .build()
 
     @Provides fun workDao(db: AnimehDatabase): WorkDao = db.workDao()

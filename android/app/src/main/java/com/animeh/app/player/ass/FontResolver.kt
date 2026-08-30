@@ -76,16 +76,22 @@ class FontResolver @Inject constructor(
         for (family in required) {
             val key = AssParser.key(family)
 
-            loaded[key]?.let {
-                typefaces[key] = it
+            // Plain `if` rather than `?.let { … continue }`: a non-local
+            // `continue` out of an inline lambda needs a newer language
+            // version than this project is pinned to, and an `if` block
+            // carries no such restriction.
+            val alreadyLoaded = loaded[key]
+            if (alreadyLoaded != null) {
+                typefaces[key] = alreadyLoaded
                 continue
             }
 
             val cached = fontDao.byFamily(key)
             if (cached != null && File(cached.localPath).exists()) {
-                load(cached.localPath)?.let {
-                    loaded[key] = it
-                    typefaces[key] = it
+                val typeface = load(cached.localPath)
+                if (typeface != null) {
+                    loaded[key] = typeface
+                    typefaces[key] = typeface
                     continue
                 }
             }
@@ -94,7 +100,8 @@ class FontResolver @Inject constructor(
             if (remote != null && remote.url.isNotBlank()) {
                 val file = download(remote.url, key)
                 if (file != null) {
-                    load(file.absolutePath)?.let { typeface ->
+                    val typeface = load(file.absolutePath)
+                    if (typeface != null) {
                         loaded[key] = typeface
                         typefaces[key] = typeface
                         fontDao.upsert(

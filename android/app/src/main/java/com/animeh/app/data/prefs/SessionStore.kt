@@ -173,7 +173,16 @@ class SessionStore @Inject constructor(
 sealed interface AuthState {
     data object SignedOut : AuthState
     data class SignedIn(val user: UserDto) : AuthState
-
-    val user: UserDto? get() = (this as? SignedIn)?.user
-    val isAdmin: Boolean get() = user?.isAdmin == true
 }
+
+/**
+ * The signed-in user, or null.
+ *
+ * An extension rather than an interface member: [SignedIn] already declares a
+ * constructor property of the same name, and a member of that name on the
+ * interface would need `override` to coexist with it — for a type that only
+ * narrows on `is SignedIn`, the extension is simpler and reads the same at
+ * every call site, which only ever holds a plain `AuthState`.
+ */
+val AuthState.user: UserDto? get() = (this as? AuthState.SignedIn)?.user
+val AuthState.isAdmin: Boolean get() = user?.isAdmin == true

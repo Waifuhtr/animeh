@@ -15,6 +15,7 @@ sonra WordPress backend, sonra Android uygulaması.
 | `player/`            | `@animeh/player` — özel oynatıcı (TypeScript, framework'süz) |
 | `wordpress-plugin/`  | WordPress eklentisi (backend, API, panel, B2, taşıma)        |
 | `android/`           | Kotlin/Compose uygulaması, uygulama içi yönetim paneli       |
+| `huggingface-space/` | APK derleyen Docker Space (bu ortamda derleme yapılamıyor)   |
 | `tools/`             | Geliştirme yardımcıları (test medyası, eklenti paketleme)    |
 
 ## Durum
@@ -47,9 +48,11 @@ doğrulanamadı çünkü `dl.google.com` bu ortamın çıkış politikasında 40
 | Depolama ve taşıma | [`docs/03-storage-and-migration.md`](docs/03-storage-and-migration.md) |
 | Backend ve API | [`docs/04-backend-api.md`](docs/04-backend-api.md) |
 | Android uygulaması | [`docs/05-android-app.md`](docs/05-android-app.md) |
+| APK derleyici Space | [`docs/06-apk-builder-space.md`](docs/06-apk-builder-space.md) |
 
 Kurulabilir eklenti paketi: `./tools/build-plugin.sh` → `dist/animeh-<sürüm>.zip`
 
-Sıradaki: APK derlemesi (bu ortamda `dl.google.com` engelli — bkz.
-[`docs/05-android-app.md`](docs/05-android-app.md#8-derleme--bu-ortamda-yapılamadı)),
-sonra Aşama 5 — manga.
+APK derleyici Space paketi: `./tools/build-space.sh` →
+`dist/animeh-apk-builder-space.zip`
+
+Sıradaki: APK'yı Space üzerinden derlemek, sonra Aşama 5 — manga.

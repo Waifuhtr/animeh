@@ -1,0 +1,10 @@
+# Build output never belongs in the image: it would be stale on arrival and
+# it is large.
+android/build/
+android/app/build/
+android/.gradle/
+android/.idea/
+android/local.properties
+**/__pycache__/
+*.pyc
+output/

@@ -282,6 +282,12 @@ Bunlar dikkatle yazıldı ama **ilk gerçek derleme sende olacak.**
 
 ### Derlemek için
 
+**Seçenek 1 — Hugging Face Space.** `dist/animeh-apk-builder-space.zip` içindeki
+her dosyayı bir Docker Space'e yükle, **Derle**'ye bas, APK'yı indir. Ayrıntı:
+[`docs/06-apk-builder-space.md`](06-apk-builder-space.md).
+
+**Seçenek 2 — kendi makinende.**
+
 ```bash
 cd android
 ./gradlew assembleDebug        # veya Android Studio'da aç

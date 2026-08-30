@@ -1,0 +1,147 @@
+/* Deliberately plain. This is a build console, not a product surface — the
+   only thing that has to be excellent here is the readability of the log. */
+
+:root {
+  --bg: #0f0e14;
+  --panel: #17161f;
+  --panel-2: #1f1d2a;
+  --line: #2a2836;
+  --text: #e8e6f0;
+  --muted: #9a95ab;
+  --accent: #8b5cf6;
+  --ok: #34d399;
+  --warn: #fbbf24;
+  --bad: #f87171;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+h1 { font-size: 17px; margin: 0; font-weight: 600; }
+h2 { font-size: 13px; margin: 0 0 14px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+
+main {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px;
+  display: grid;
+  gap: 16px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 18px;
+}
+
+.row { margin-bottom: 14px; display: grid; gap: 6px; }
+.row.checkbox { display: flex; align-items: center; gap: 8px; }
+.row.checkbox label { margin: 0; }
+
+label { font-size: 13px; color: var(--muted); }
+
+input[type="url"], select {
+  width: 100%;
+  padding: 9px 11px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+}
+
+input[type="url"]:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+
+small { color: var(--muted); font-size: 12px; }
+.muted { color: var(--muted); }
+code { background: var(--panel-2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+
+button, .button {
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:hover:not(:disabled), .button:hover { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+
+.primary { background: var(--accent); border-color: var(--accent); font-weight: 600; }
+.danger { color: var(--bad); }
+.ok { background: var(--ok); border-color: var(--ok); color: #06281c; font-weight: 600; }
+.ghost { background: none; border-color: transparent; color: var(--muted); padding: 4px 8px; }
+
+.badge {
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--line);
+}
+.badge.idle { color: var(--muted); }
+.badge.running { color: var(--warn); border-color: var(--warn); }
+.badge.success { color: var(--ok); border-color: var(--ok); }
+.badge.failed, .badge.cancelled { color: var(--bad); border-color: var(--bad); }
+
+.result { margin: 16px 0 0; padding: 10px 12px; border-radius: 6px; background: var(--panel-2); font-size: 13px; }
+.result.success { border-left: 3px solid var(--ok); }
+.result.failed, .result.cancelled { border-left: 3px solid var(--bad); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+td { padding: 5px 0; vertical-align: top; }
+td:first-child { color: var(--muted); width: 140px; }
+td.bad { color: var(--bad); }
+
+.logs-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.logs-head h2 { margin: 0; }
+.logs-tools { display: flex; align-items: center; gap: 12px; font-size: 12px; }
+.follow { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+
+pre#log {
+  margin: 0;
+  padding: 14px;
+  background: #0a0910;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  /* Fixed height with its own scroll: the log must not push the controls off
+     the page as it grows. */
+  height: 460px;
+  overflow: auto;
+  font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #c9c5d8;
+}
+
+pre#log .err { color: var(--bad); }
+pre#log .warn { color: var(--warn); }
+pre#log .ok { color: var(--ok); }
+pre#log .cmd { color: var(--accent); }
+
+@media (max-width: 640px) {
+  main { padding: 12px; }
+  pre#log { height: 340px; }
+}

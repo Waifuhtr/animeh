@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Animeh APK Builder</title>
+  <!-- Inline, so the page does not cost a request that 404s on every load. -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><rect width='16' height='16' rx='3' fill='%238b5cf6'/><path d='M6 4.5v7l5-3.5z' fill='white'/></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <header>
+    <h1>Animeh APK Builder</h1>
+    <span id="badge" class="badge idle">hazır</span>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>Derleme</h2>
+
+      <div class="row">
+        <label for="variant">Varyant</label>
+        <select id="variant">
+          <option value="debug" selected>debug (imzasız, test için)</option>
+          <option value="release">release (keystore gerekir)</option>
+        </select>
+      </div>
+
+      <div class="row">
+        <label for="apiBase">WordPress adresi <span class="muted">(isteğe bağlı)</span></label>
+        <input id="apiBase" type="url" spellcheck="false"
+               placeholder="https://siten.com/wp-json/animeh/v1/">
+        <small>APK'nın varsayılan sunucusu. Boş bırakılırsa build.gradle.kts'teki değer kullanılır; kullanıcı zaten uygulama içinden değiştirebiliyor.</small>
+      </div>
+
+      <div class="row checkbox">
+        <input id="clean" type="checkbox">
+        <label for="clean">Önce temizle (<code>clean</code>) — daha yavaş</label>
+      </div>
+
+      <div class="actions">
+        <button id="build" class="primary">Derle</button>
+        <button id="cancel" class="danger" disabled>İptal</button>
+        <a id="download" class="button ok" href="/api/download" hidden download>APK indir</a>
+        <a id="logfile" class="button" href="/api/log-file" hidden download>Logu indir</a>
+      </div>
+
+      <p id="result" class="result" hidden></p>
+    </section>
+
+    <section class="panel">
+      <h2>Ortam</h2>
+      <table id="env"><tbody><tr><td colspan="2" class="muted">okunuyor…</td></tr></tbody></table>
+    </section>
+
+    <section class="panel logs">
+      <div class="logs-head">
+        <h2>Log</h2>
+        <div class="logs-tools">
+          <span id="elapsed" class="muted"></span>
+          <label class="follow">
+            <input id="follow" type="checkbox" checked>
+            takip et
+          </label>
+          <button id="clearLog" class="ghost">temizle</button>
+        </div>
+      </div>
+      <pre id="log" aria-live="polite"></pre>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

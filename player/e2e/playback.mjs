@@ -232,6 +232,15 @@ async function runSource(page, key, label, opts = {}) {
     )
   }
 
+  if (opts.expectSourceSwitch) {
+    const info = await page.evaluate(() => globalThis.animehHarness.sourceSwitch)
+    check(
+      'moved to the fallback address',
+      info !== null && info.index === 1,
+      info ? `#${info.index} ${info.url}` : 'no switch recorded',
+    )
+  }
+
   const stats = await page.evaluate(() => globalThis.animehHarness.mounted.player.stats())
   if (opts.kbps) {
     check(
@@ -294,6 +303,12 @@ async function main() {
     // the Matroska demuxer, which failed on the first byte.
     await runSource(page, 'progressive', 'Progressive single file, played natively', {
       expectEmbeddedFonts: false,
+    })
+
+    // A dead primary address with a working alternate: the shape of object
+    // storage serving the same file under two hostnames that fail separately.
+    await runSource(page, 'fallback', 'Dead primary address, working fallback', {
+      expectSourceSwitch: true,
     })
   } finally {
     await page.screenshot({ path: `${SHOTS}final.png`, fullPage: true }).catch(() => {})

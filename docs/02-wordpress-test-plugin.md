@@ -49,8 +49,13 @@ wordpress-plugin/animeh/
 │   │   ├── PlaylistRewriter.php HLS URI yeniden yazımı
 │   │   ├── UrlGuard.php        SSRF savunması
 │   │   ├── Throttle.php        bayt/saniye hesabı
-│   │   └── TestVerdict.php     ölçümlerden karar
-│   ├── Storage/            $wpdb erişimi, şema
+│   │   ├── TestVerdict.php     ölçümlerden karar
+│   │   ├── S3Signer.php        AWS SigV4 imzalama
+│   │   ├── StorageKey.php      bucket klasör düzeni
+│   │   ├── SecretBox.php       AES-256-GCM anahtar saklama
+│   │   ├── MigrationCode.php   tek kullanımlık taşıma kodu
+│   │   └── Snapshot.php        yedek zarfı + checksum
+│   ├── Storage/            $wpdb erişimi, şema, B2 istemcisi, yedekler
 │   ├── Rest/               yetki + endpoint'ler
 │   ├── Admin/              menü + asset yükleme
 │   └── Media/ProxyHandler  Range destekli, hız sınırlı akış
@@ -62,6 +67,9 @@ wordpress-plugin/animeh/
 
 Panel arayüzü, player'ın kendi geliştirme harness'iyle **aynı widget'ları**
 kullanır (`player/src/panel/`). İki kopyanın zamanla ayrışmaması için.
+
+Depolama (Backblaze B2), video yükleme ve site taşıma için ayrı bir belge var:
+**[03-storage-and-migration.md](03-storage-and-migration.md)**.
 
 ## Yetkilendirme
 
@@ -86,6 +94,7 @@ Namespace `animeh/v1`. Tarayıcıdan çağrılırken `X-WP-Nonce` zorunlu.
 | `GET /test/sessions`, `GET/DELETE /test/sessions/{id}` | geçmiş |
 | `GET /fonts`, `POST /fonts`, `DELETE /fonts/{id}` | font kayıt defteri |
 | `GET /fonts/resolve?family=` | tek font sorgusu → `{url}` veya 404 |
+| `/storage/*`, `/migration/*` | [03-storage-and-migration.md](03-storage-and-migration.md) |
 
 Koşunun **kararı sunucuda** verilir (`TestVerdict`), istemciden alınmaz: sonradan
 güvenilecek kayıt odur ve tarayıcı istediğini gönderebilir.
@@ -163,9 +172,11 @@ medya doğrudan kaynağından çekilir.
 
 | | |
 | --- | --- |
-| PHP lint | 21 dosya, temiz |
-| PHP birim testleri | **35/35** geçiyor |
+| PHP lint | 32 dosya, temiz |
+| PHP birim testleri | **76/76** geçiyor |
+| SigV4 çapraz kontrolü | **22/22** (npm `aws4` + AWS test vektörü) |
 | Panel tarayıcı testleri | **27/27** geçiyor |
+| Taşıma tarayıcı testleri | **29/29** geçiyor (iki site, tek bucket) |
 | Zip bütünlüğü | açılıp lint ediliyor, testler dışarıda |
 
 Birim testleri (`tests/run.php`, bağımlılıksız) gerçek dosyalar üzerinde çalışır:
@@ -184,10 +195,15 @@ ekranı.
 
 ```bash
 php wordpress-plugin/animeh/tests/run.php            # birim testleri
-wordpress-plugin/animeh/tests/stub-server.sh start   # stub sunucu
+node wordpress-plugin/animeh/tests/sigv4-crosscheck.mjs
+
+STUB_PORT=8765 wordpress-plugin/animeh/tests/stub-server.sh start
 node wordpress-plugin/animeh/tests/e2e/panel.mjs     # tarayıcı testleri
-wordpress-plugin/animeh/tests/stub-server.sh stop
+STUB_PORT=8765 wordpress-plugin/animeh/tests/stub-server.sh stop
 ```
+
+Taşıma testi iki sunucu ister; komutları
+[03-storage-and-migration.md](03-storage-and-migration.md#7-doğrulama) içinde.
 
 ### Bu ortamda yapılamadı
 
@@ -228,5 +244,8 @@ tutar. Paylaşımlı bir hostta işçi sayısı azsa aynı anda tek test çalı�
 ## Kapsam dışı (Aşama 3)
 
 Anime/sezon/bölüm CRUD, kullanıcı kayıt/giriş, Tenrai entegrasyonu ve cache,
-Backblaze B2 yükleme, izleme geçmişi ve favoriler, Android admin endpoint'leri.
-Tablolar ve namespace bunları alacak şekilde adlandırıldı.
+izleme geçmişi ve favoriler, Android admin endpoint'leri. Tablolar ve namespace
+bunları alacak şekilde adlandırıldı.
+
+Backblaze B2 yükleme ve site taşıma artık kapsam dışı değil — bu turda yapıldı,
+[03-storage-and-migration.md](03-storage-and-migration.md) içinde.

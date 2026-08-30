@@ -38,6 +38,16 @@ export interface EpisodeContext {
 
 export interface MediaSourceDescriptor {
   url: string
+  /**
+   * Alternate addresses for the same file, tried in order when `url` fails.
+   *
+   * Object storage often exposes a file under more than one hostname — a
+   * friendly or CDN-fronted URL and a plain S3 one — and they do not fail
+   * together. The retry belongs on the client because that is where the
+   * failure actually happens: a server-side reachability check can pass a
+   * second before the viewer's own request is refused.
+   */
+  fallbackUrls?: string[]
   /** `auto` sniffs from the extension / content-type. */
   type?: ContainerKind
   /** Seconds. Where to start; overridden by a stored resume position if newer. */

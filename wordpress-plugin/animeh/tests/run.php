@@ -23,6 +23,11 @@ require_once __DIR__ . '/../src/Support/UrlGuard.php';
 require_once __DIR__ . '/../src/Support/Throttle.php';
 require_once __DIR__ . '/../src/Support/TestVerdict.php';
 require_once __DIR__ . '/../src/Support/PlaylistRewriter.php';
+require_once __DIR__ . '/../src/Support/S3Signer.php';
+require_once __DIR__ . '/../src/Support/StorageKey.php';
+require_once __DIR__ . '/../src/Support/SecretBox.php';
+require_once __DIR__ . '/../src/Support/MigrationCode.php';
+require_once __DIR__ . '/../src/Support/Snapshot.php';
 
 /**
  * Collected results.

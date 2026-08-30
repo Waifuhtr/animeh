@@ -37,6 +37,8 @@ export interface PlayerEvents {
   ended: void
   /** The viewer asked for the next or previous episode. */
   navigate: 'next' | 'previous'
+  /** Playback moved to a fallback address after the previous one failed. */
+  sourceSwitched: { url: string; index: number }
 }
 
 export interface AnimehPlayerOptions {
@@ -95,6 +97,14 @@ export class AnimehPlayer {
   #seeking = false
   /** Saved height ceiling for automatic adaptation; null means no cap. */
   #preferredHeight: number | null
+  /** The source URL plus its fallbacks, in the order they will be tried. */
+  #candidates: string[] = []
+  /** Index into `#candidates` currently in use. */
+  #candidateIndex = 0
+  /** Set while a fallback load is in flight, so errors do not stack up. */
+  #switchingSource = false
+  /** Whether the current address has ever produced a frame. */
+  #playedOnCandidate = false
 
   constructor(options: AnimehPlayerOptions) {
     this.#options = options
@@ -122,24 +132,16 @@ export class AnimehPlayer {
     this.#activeSubtitleId = null
     this.#autoQuality = true
     this.#selectedQualityId = null
+    this.#candidates = [source.url, ...(source.fallbackUrls ?? [])]
+    this.#candidateIndex = 0
     this.telemetry.reset()
     this.telemetry.markLoadStart()
     this.#setPhase('loading')
 
-    const kind = source.type && source.type !== 'auto' ? source.type : sniffContainer(source.url)
-    const engine = this.#createEngine(kind)
-    this.#engine = engine
-    this.#bindEngine(engine)
-    engine.attach(this.#video)
-
     if (source.fonts?.length) this.subtitles.registerServerFonts(source.fonts)
 
-    try {
-      await engine.load(source)
-    } catch (err) {
-      this.#reportError(toPlayerError(err, ErrorCode.VIDEO_ERROR, { url: source.url }))
-      return
-    }
+    const started = await this.#openCandidate(0)
+    if (!started) return
 
     const start = await this.#resolveStartPosition(source)
     if (start > 0) this.seek(start)
@@ -152,6 +154,88 @@ export class AnimehPlayer {
 
     this.#startSaveTimer()
     this.#emit()
+  }
+
+  /**
+   * Open the source at `index`, walking the fallbacks until one loads.
+   *
+   * Object storage commonly serves the same file under two hostnames that do
+   * not fail together, so a refused load is worth retrying elsewhere before it
+   * ever reaches the viewer.
+   *
+   * @param startPosition resume point to restore, for a mid-playback switch
+   * @returns whether playback is now open on some candidate
+   */
+  async #openCandidate(index: number, startPosition = 0): Promise<boolean> {
+    const source = this.#source
+    if (!source) return false
+
+    // Compared against where playback was, not where this attempt starts, so a
+    // switch is reported whether it happened during the initial load or later.
+    const previousIndex = this.#candidateIndex
+
+    for (let i = index; i < this.#candidates.length; i++) {
+      const url = this.#candidates[i]!
+      await this.#teardownEngine()
+
+      const kind = source.type && source.type !== 'auto' ? source.type : sniffContainer(url)
+      const engine = this.#createEngine(kind)
+      this.#engine = engine
+      this.#bindEngine(engine)
+      engine.attach(this.#video)
+
+      this.#playedOnCandidate = false
+      try {
+        await engine.load({ ...source, url })
+        this.#candidateIndex = i
+        // The address that failed is behind us; a stale error left in the
+        // snapshot would keep describing a problem that no longer applies.
+        this.#error = null
+        if (i !== previousIndex) {
+          this.events.emit('sourceSwitched', { url, index: i })
+        }
+        if (startPosition > 0) this.seek(startPosition)
+        return true
+      } catch (err) {
+        const error = toPlayerError(err, ErrorCode.VIDEO_ERROR, { url })
+        this.telemetry.recordError(error)
+        this.events.emit('error', error)
+
+        // Out of alternatives: this one is what the viewer is told about.
+        if (i === this.#candidates.length - 1) {
+          this.#error = error
+          this.#setPhase('error')
+          return false
+        }
+      }
+    }
+    return false
+  }
+
+  /**
+   * Move to the next untried address, keeping the playback position.
+   *
+   * @returns whether a switch was started
+   */
+  #tryNextCandidate(): boolean {
+    if (this.#switchingSource) return true
+    const next = this.#candidateIndex + 1
+    if (next >= this.#candidates.length) return false
+
+    this.#switchingSource = true
+    const position = this.#video.currentTime
+    const wasPlaying = !this.#video.paused
+    this.#setPhase('reconnecting')
+
+    void this.#openCandidate(next, position)
+      .then((opened) => {
+        if (opened && wasPlaying) void this.play()
+      })
+      .finally(() => {
+        this.#switchingSource = false
+      })
+
+    return true
   }
 
   #createEngine(kind: 'hls' | 'mkv' | 'mp4'): MediaEngine {
@@ -271,6 +355,9 @@ export class AnimehPlayer {
     on('playing', () => {
       this.telemetry.markFirstFrame()
       this.telemetry.markStallEnd()
+      // Proof this address works, which decides whether a later failure is
+      // worth recovering in place or worth moving elsewhere.
+      this.#playedOnCandidate = true
       this.#setPhase('playing')
     })
     on('pause', () => {
@@ -557,13 +644,29 @@ export class AnimehPlayer {
     if (!error.fatal) return
 
     this.#error = error
+
+    // An address that has never produced a frame is unlikely to start now.
+    // Recovering in place would spend the viewer's patience on the host that
+    // is already failing, when another one may serve the same file.
+    if (!this.#playedOnCandidate && this.#tryNextCandidate()) return
+
     // A retriable fault gets a recovery attempt before the viewer sees
     // anything; only a hard failure surfaces as an error screen.
     if (error.retriable && this.#engine) {
       this.#setPhase('reconnecting')
-      void this.#engine.recover().catch(() => this.#setPhase('error'))
+      void this.#engine
+        .recover()
+        .catch(() => {
+          // The engine could not save it. Another address for the same file
+          // might still work, so that is tried before giving up.
+          if (!this.#tryNextCandidate()) this.#setPhase('error')
+        })
       return
     }
+
+    // Not retriable on this address, but a different one may serve the same
+    // bytes without the fault.
+    if (this.#tryNextCandidate()) return
     this.#setPhase('error')
   }
 

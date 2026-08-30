@@ -111,6 +111,8 @@ final class Assets {
 			'adminUrl'   => admin_url( 'admin.php' ),
 			'fontsPage'  => MenuPage::FONTS_SLUG,
 			'testPage'   => MenuPage::TEST_SLUG,
+			'storagePage' => MenuPage::STORAGE_SLUG,
+			'migrationPage' => MenuPage::MIGRATION_SLUG,
 		);
 	}
 
@@ -121,6 +123,11 @@ final class Assets {
 		// Read-only page identification for choosing which panel to mount; it
 		// grants nothing on its own, so a nonce would add no protection.
 		$page = isset( $_GET['page'] ) ? sanitize_key( wp_unslash( (string) $_GET['page'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
-		return MenuPage::FONTS_SLUG === $page ? 'fonts' : 'test';
+		return match ( $page ) {
+			MenuPage::FONTS_SLUG     => 'fonts',
+			MenuPage::STORAGE_SLUG   => 'storage',
+			MenuPage::MIGRATION_SLUG => 'migration',
+			default                  => 'test',
+		};
 	}
 }

@@ -256,6 +256,17 @@ export class HlsEngine implements MediaEngine {
       return
     }
 
+    // Nothing was ever parsed, so there is no stream to save. hls.js has
+    // already exhausted the manifest retry budget configured above by the time
+    // it calls a manifest failure fatal, and `startLoad` only resumes level and
+    // fragment loading — it cannot re-fetch a manifest. Retrying here left a
+    // dead address sitting in "buffering" indefinitely instead of failing, so
+    // this is reported straight away and the caller can try another address.
+    if (this.#qualities.length === 0) {
+      this.#emitFatal(data, 'Stream could not be opened')
+      return
+    }
+
     switch (data.type) {
       case ErrorTypes.NETWORK_ERROR: {
         this.#networkErrorCount++

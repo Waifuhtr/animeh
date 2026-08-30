@@ -154,3 +154,25 @@
 	margin-top: 4px;
 	text-align: center;
 }
+
+/* The migration code is meant to be read off one screen and typed into
+   another, so it is set large, monospaced and wide-tracked. */
+.animeh-code {
+	margin: 12px 0 4px;
+	padding: 10px 14px;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	background: #f6f7f7;
+	font-family: Consolas, Monaco, monospace;
+	font-size: 20px;
+	font-weight: 600;
+	letter-spacing: 0.12em;
+	text-align: center;
+	user-select: all;
+}
+
+.animeh-card hr {
+	margin: 20px 0;
+	border: 0;
+	border-top: 1px solid #dcdcde;
+}

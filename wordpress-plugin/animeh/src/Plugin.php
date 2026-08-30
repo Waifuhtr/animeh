@@ -16,10 +16,13 @@ use Animeh\Admin\Assets;
 use Animeh\Admin\MenuPage;
 use Animeh\Media\ProxyHandler;
 use Animeh\Rest\FontsController;
+use Animeh\Rest\MigrationController;
 use Animeh\Rest\Permissions;
+use Animeh\Rest\StorageController;
 use Animeh\Rest\TestController;
 use Animeh\Storage\FontRepository;
 use Animeh\Storage\Schema;
+use Animeh\Storage\SnapshotStore;
 
 /**
  * Bootstraps the plugin.
@@ -41,6 +44,8 @@ final class Plugin {
 			static function (): void {
 				( new FontsController() )->register_routes();
 				( new TestController() )->register_routes();
+				( new StorageController() )->register_routes();
+				( new MigrationController() )->register_routes();
 			}
 		);
 
@@ -52,6 +57,11 @@ final class Plugin {
 		// The media proxy streams and exits, so it hangs off admin-post rather
 		// than the REST API, whose response handling would buffer it.
 		add_action( 'admin_post_animeh_media_proxy', array( ProxyHandler::class, 'handle' ) );
+
+		// The scheduled snapshot. Registered unconditionally: the event only
+		// exists once an operator has turned it on, but the handler has to be
+		// attached on every load for cron to find it.
+		add_action( SnapshotStore::CRON_HOOK, array( SnapshotStore::class, 'run' ) );
 	}
 
 	/**
@@ -72,5 +82,10 @@ final class Plugin {
 	 */
 	public static function deactivate(): void {
 		Permissions::revoke_from_administrators();
+
+		// The scheduled snapshot would otherwise keep firing against a plugin
+		// that is no longer loaded, filling the cron log with missing-hook
+		// warnings.
+		SnapshotStore::set_schedule( false );
 	}
 }

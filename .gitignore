@@ -12,5 +12,6 @@ player/shots/
 dist/
 wordpress-plugin/animeh/assets/player/
 wordpress-plugin/animeh/assets/jassub/
-wordpress-plugin/animeh/tests/.stub-state/
+wordpress-plugin/animeh/tests/.stub-state*/
+wordpress-plugin/animeh/tests/.stub-bucket/
 wordpress-plugin/animeh/tests/e2e/shots/

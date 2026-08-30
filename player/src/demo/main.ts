@@ -96,6 +96,31 @@ const SOURCES: Record<string, MediaSourceDescriptor> = {
       hasPrevious: true,
     },
   },
+  fallback: {
+    // Primary is deliberately dead: this is the shape of a flaky object-storage
+    // hostname, where the same file is reachable under another address.
+    url: '/media/nonexistent/master.m3u8',
+    fallbackUrls: ['/media/hls-vp9/master.m3u8'],
+    type: 'hls',
+    subtitles: [
+      { id: 'tr', language: 'tr', label: 'Türkçe', url: '/media/subtitle.ass', format: 'ass', default: true },
+    ],
+    fonts: [
+      { family: 'DejaVu Sans', url: '/media/fonts/DejaVuSans.ttf' },
+      { family: 'DejaVu Serif', url: '/media/fonts/DejaVuSerif.ttf' },
+      { family: 'DejaVu Sans Mono', url: '/media/fonts/DejaVuSansMono.ttf' },
+    ],
+    episode: {
+      animeId: 'demo',
+      episodeId: 'demo-fallback',
+      animeTitle: 'Animeh Test Serisi',
+      episodeTitle: 'Yedek adres — birincisi ölü',
+      season: 1,
+      episodeNumber: 7,
+      hasNext: false,
+      hasPrevious: true,
+    },
+  },
   progressive: {
     url: '/media/source-vp9.webm',
     type: 'auto',
@@ -154,6 +179,7 @@ app.innerHTML = `
           <option value="mkvVp9">MKV — VP9 + Opus (telifsiz kodekler)</option>
           <option value="hlsVp9">HLS — VP9 + Opus, fMP4 segmentler</option>
           <option value="progressive">Tek dosya (MP4/WebM) — tarayıcı doğrudan oynatır</option>
+          <option value="fallback">Yedek adres — birincil URL ölü</option>
           <option value="mkvOpus">MKV — H.264 + Opus ses</option>
         </select>
       </div>
@@ -206,6 +232,8 @@ const log = (message: string, tone: 'info' | 'ok' | 'warn' | 'error' = 'info') =
 let mounted: MountedPlayer | null = null
 /** Last report, exposed for scripted checks so they assert on data, not copy. */
 let lastFontReport: FontReport | null = null
+/** Set when playback moved to a fallback address. */
+let lastSourceSwitch: { url: string; index: number } | null = null
 
 async function start(): Promise<void> {
   await mounted?.destroy()
@@ -213,6 +241,7 @@ async function start(): Promise<void> {
   checks.clear()
   logView.clear()
   lastFontReport = null
+  lastSourceSwitch = null
 
   const key = document.querySelector<HTMLSelectElement>('#source')!.value
   const kbps = Number(document.querySelector<HTMLInputElement>('#kbps')!.value)
@@ -266,6 +295,10 @@ async function start(): Promise<void> {
   })
 
   player.player.events.on('fontReport', (report: FontReport) => showFontReport(report))
+  player.player.events.on('sourceSwitched', (info) => {
+    lastSourceSwitch = info
+    log(`yedek adrese geçildi (#${info.index}): ${info.url}`, 'warn')
+  })
   player.player.events.on('navigate', (direction) => log(`bölüm isteği: ${direction}`))
   player.player.events.on('ended', () => log('oynatma tamamlandı', 'ok'))
 
@@ -328,7 +361,13 @@ document.querySelector('#drop')!.addEventListener('click', () => {
 
 // Expose the mounted player for scripted checks.
 Object.defineProperty(globalThis, 'animehHarness', {
-  get: () => ({ mounted, checks: checks.entries(), fontReport: lastFontReport, start }),
+  get: () => ({
+    mounted,
+    checks: checks.entries(),
+    fontReport: lastFontReport,
+    sourceSwitch: lastSourceSwitch,
+    start,
+  }),
 })
 
 declare global {
@@ -337,6 +376,7 @@ declare global {
     mounted: MountedPlayer | null
     checks: ReturnType<CheckList['entries']>
     fontReport: FontReport | null
+    sourceSwitch: { url: string; index: number } | null
     start: () => Promise<void>
   }
 }

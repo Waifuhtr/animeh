@@ -9,6 +9,8 @@
 import { Api } from './api.js'
 import { TestPanel } from './test-panel.js'
 import { FontsPanel } from './fonts-panel.js'
+import { StoragePanel } from './storage-panel.js'
+import { MigrationPanel } from './migration-panel.js'
 
 async function boot() {
   const config = window.ANIMEH_ADMIN
@@ -19,6 +21,23 @@ async function boot() {
   if ('fonts' === config.screen) {
     const root = document.querySelector('#animeh-fonts-root')
     if (root) new FontsPanel(root, api)
+    return
+  }
+
+  if ('storage' === config.screen) {
+    const root = document.querySelector('#animeh-storage-root')
+    if (root) new StoragePanel(root, api)
+    return
+  }
+
+  if ('migration' === config.screen) {
+    const root = document.querySelector('#animeh-migration-root')
+    if (root) {
+      const panel = new MigrationPanel(root, api)
+      // The code countdown is an interval; leaving it running on a page that
+      // is going away keeps a timer alive in bfcache.
+      window.addEventListener('pagehide', () => panel.destroy(), { once: true })
+    }
     return
   }
 

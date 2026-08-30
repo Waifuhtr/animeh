@@ -11,11 +11,16 @@ set -euo pipefail
 PLUGIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PORT="${STUB_PORT:-8765}"
 LOG="${STUB_LOG:-/tmp/animeh-stub.log}"
+# One state directory per port, so two stubs can run as two separate sites.
+STATE="${ANIMEH_STUB_STATE:-$PLUGIN_DIR/tests/.stub-state-$PORT}"
+# The bucket is deliberately shared: it is the copy that outlives a site.
+BUCKET="${ANIMEH_STUB_BUCKET:-$PLUGIN_DIR/tests/.stub-bucket}"
 
 case "${1:-start}" in
   start)
-    rm -rf "$PLUGIN_DIR/tests/.stub-state"
-    setsid php -S "127.0.0.1:$PORT" -t "$PLUGIN_DIR" "$PLUGIN_DIR/tests/stub-server.php" \
+    rm -rf "$STATE"
+    ANIMEH_STUB_STATE="$STATE" ANIMEH_STUB_BUCKET="$BUCKET" \
+      setsid php -S "127.0.0.1:$PORT" -t "$PLUGIN_DIR" "$PLUGIN_DIR/tests/stub-server.php" \
       > "$LOG" 2>&1 < /dev/null &
     for _ in $(seq 1 40); do
       if curl -fs -o /dev/null -m 1 "http://127.0.0.1:$PORT/"; then

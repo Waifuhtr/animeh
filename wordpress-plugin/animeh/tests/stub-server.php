@@ -25,15 +25,35 @@ require_once __DIR__ . '/../src/Support/UrlGuard.php';
 require_once __DIR__ . '/../src/Support/Throttle.php';
 require_once __DIR__ . '/../src/Support/TestVerdict.php';
 require_once __DIR__ . '/../src/Support/PlaylistRewriter.php';
+require_once __DIR__ . '/../src/Support/MigrationCode.php';
+require_once __DIR__ . '/../src/Support/Snapshot.php';
 
 use Animeh\Support\FontFile;
+use Animeh\Support\MigrationCode;
 use Animeh\Support\PlaylistRewriter;
+use Animeh\Support\Snapshot;
 use Animeh\Support\Throttle;
 use Animeh\Support\TestVerdict;
 use Animeh\Support\UrlGuard;
 
-const STUB_STATE_DIR = __DIR__ . '/.stub-state';
-const STUB_NONCE     = 'stub-nonce';
+// Both are overridable so two stubs can run side by side as two sites: the
+// migration test needs an old site and a new one, and a pull between them has
+// to cross a process boundary the way a real move does.
+define( 'STUB_STATE_DIR', getenv( 'ANIMEH_STUB_STATE' ) ?: __DIR__ . '/.stub-state' );
+const STUB_NONCE = 'stub-nonce';
+
+/**
+ * Stands in for the bucket. A directory, because the point of the browser test
+ * is the panel and the envelope rules, not Backblaze's HTTP surface — which
+ * `S3Signer` covers against an independent implementation instead.
+ *
+ * Shared between the two stub sites on purpose: surviving the loss of a site is
+ * exactly what makes the bucket the right place for a snapshot.
+ */
+define( 'STUB_BUCKET_DIR', getenv( 'ANIMEH_STUB_BUCKET' ) ?: __DIR__ . '/.stub-state/bucket' );
+
+/** Key material for hashing pairing codes, standing in for the site salts. */
+const STUB_HANDOFF_SECRET = 'stub-handoff-secret';
 
 /**
  * Read the stub's persisted state.
@@ -43,19 +63,26 @@ const STUB_NONCE     = 'stub-nonce';
 function stub_state(): array {
 	$path = STUB_STATE_DIR . '/state.json';
 	if ( ! is_file( $path ) ) {
-		return array(
-			'fonts'    => array(),
-			'sessions' => array(),
-			'presets'  => array(),
-			'next_id'  => 1,
-		);
+		return stub_blank_state();
 	}
 	$decoded = json_decode( (string) file_get_contents( $path ), true );
-	return is_array( $decoded ) ? $decoded : array(
-		'fonts'    => array(),
-		'sessions' => array(),
-		'presets'  => array(),
-		'next_id'  => 1,
+	return is_array( $decoded ) ? array_merge( stub_blank_state(), $decoded ) : stub_blank_state();
+}
+
+/**
+ * The shape of an untouched stub.
+ *
+ * @return array<string, mixed>
+ */
+function stub_blank_state(): array {
+	return array(
+		'fonts'     => array(),
+		'sessions'  => array(),
+		'presets'   => array(),
+		'handoff'   => null,
+		'scheduled' => false,
+		'last_snapshot' => array(),
+		'next_id'   => 1,
 	);
 }
 
@@ -115,6 +142,152 @@ function stub_require_nonce(): void {
 	}
 }
 
+/**
+ * Decode a JSON request body.
+ *
+ * @return array<string, mixed>
+ */
+function stub_body(): array {
+	$decoded = json_decode( (string) file_get_contents( 'php://input' ), true );
+	return is_array( $decoded ) ? $decoded : array();
+}
+
+/**
+ * The address this stub is answering on, standing in for `home_url()`.
+ */
+function stub_origin(): string {
+	return 'http://' . ( $_SERVER['HTTP_HOST'] ?? '127.0.0.1' );
+}
+
+/**
+ * Write an object into the stub's bucket.
+ *
+ * @param string $key   Object key.
+ * @param string $bytes Contents.
+ */
+function stub_bucket_put( string $key, string $bytes ): void {
+	if ( ! is_dir( STUB_BUCKET_DIR ) ) {
+		mkdir( STUB_BUCKET_DIR, 0755, true );
+	}
+	// The bucket is flat and `/` is only a display convention there, so the
+	// separator is folded into the file name rather than made into a directory.
+	file_put_contents( STUB_BUCKET_DIR . '/' . rawurlencode( $key ), $bytes );
+}
+
+/**
+ * Read an object back, or null when it is not there.
+ *
+ * @param string $key Object key.
+ */
+function stub_bucket_get( string $key ): ?string {
+	$path = STUB_BUCKET_DIR . '/' . rawurlencode( $key );
+	return is_file( $path ) ? (string) file_get_contents( $path ) : null;
+}
+
+/**
+ * List objects under a prefix.
+ *
+ * @param string $prefix Key prefix.
+ * @return array<int, array{key: string, size: int, last_modified: string}>
+ */
+function stub_bucket_list( string $prefix ): array {
+	$out = array();
+	foreach ( glob( STUB_BUCKET_DIR . '/*' ) ?: array() as $path ) {
+		$key = rawurldecode( basename( $path ) );
+		if ( ! str_starts_with( $key, $prefix ) ) {
+			continue;
+		}
+		$out[] = array(
+			'key'           => $key,
+			'size'          => (int) filesize( $path ),
+			'last_modified' => gmdate( 'c', (int) filemtime( $path ) ),
+		);
+	}
+	return $out;
+}
+
+/**
+ * Build an envelope from the stub's state, the way SnapshotStore does from tables.
+ *
+ * @param array<string, mixed> $state Stub state.
+ * @return array<string, mixed>
+ */
+function stub_capture( array $state ): array {
+	return Snapshot::build(
+		array(
+			'animeh_fonts'         => array_values( $state['fonts'] ),
+			'animeh_test_sessions' => array_values( $state['sessions'] ),
+		),
+		array( 'animeh_test_presets' => $state['presets'] ),
+		array( 'site_url' => stub_origin(), 'plugin_version' => '0.1.0-stub' )
+	);
+}
+
+/**
+ * Validate an envelope and write it over the stub's state.
+ *
+ * @param array<string, mixed>|null $envelope Decoded envelope.
+ * @param array<string, mixed>      $state    Current state.
+ * @return array<string, mixed>
+ */
+function stub_apply( ?array $envelope, array $state ): array {
+	if ( null === $envelope ) {
+		stub_error( 'animeh_snapshot_unreadable', 'Yedek dosyası okunamadı.', 422 );
+	}
+
+	$summary = Snapshot::summarise( $envelope );
+	if ( ! $summary['valid'] ) {
+		stub_error( 'animeh_snapshot_invalid', 'Yedek geçerli değil.', 422 );
+	}
+
+	$fonts = array();
+	foreach ( $envelope['tables']['animeh_fonts'] as $row ) {
+		$fonts[ (string) $row['id'] ] = $row;
+	}
+	$sessions = array();
+	foreach ( $envelope['tables']['animeh_test_sessions'] as $row ) {
+		$sessions[ (string) $row['id'] ] = $row;
+	}
+
+	$state['fonts']    = $fonts;
+	$state['sessions'] = $sessions;
+	$state['presets']  = $envelope['options']['animeh_test_presets'] ?? array();
+	stub_save( $state );
+
+	return array(
+		'restored'        => array(
+			'animeh_fonts'         => count( $fonts ),
+			'animeh_test_sessions' => count( $sessions ),
+		),
+		'origin'          => $summary['origin'],
+		'created_at'      => $summary['created_at'],
+		'pointer_updated' => true,
+	);
+}
+
+/**
+ * The outstanding pairing code's state, without revealing the code.
+ *
+ * @param array<string, mixed> $state Stub state.
+ * @return array<string, mixed>
+ */
+function stub_handoff_state( array $state ): array {
+	$handoff = $state['handoff'] ?? null;
+	if ( ! is_array( $handoff ) ) {
+		return array( 'open' => false );
+	}
+
+	$remaining = MigrationCode::remaining( (int) $handoff['issued_at'] );
+	$used      = ! empty( $handoff['used_at'] );
+
+	return array(
+		'open'       => $remaining > 0 && ! $used,
+		'used'       => $used,
+		'issued_at'  => (int) $handoff['issued_at'],
+		'expires_in' => $remaining,
+	);
+}
+
 $path   = parse_url( $_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH ) ?? '/';
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $query  = array();
@@ -137,6 +310,12 @@ if ( '/__reset' === $path ) {
 				rmdir( $entry );
 			}
 		}
+	}
+	if ( is_dir( STUB_BUCKET_DIR ) ) {
+		foreach ( glob( STUB_BUCKET_DIR . '/*' ) ?: array() as $object ) {
+			unlink( $object );
+		}
+		rmdir( STUB_BUCKET_DIR );
 	}
 	stub_json( array( 'reset' => true ) );
 }
@@ -167,10 +346,15 @@ if ( '/' === $path || '/index.html' === $path ) {
 			'allow_any_host' => true,
 		),
 		'presets'   => $state['presets'],
-		'screen'    => ( $query['page'] ?? '' ) === 'animeh-fonts' ? 'fonts' : 'test',
+		'screen'    => match ( $query['page'] ?? '' ) {
+			'animeh-fonts'     => 'fonts',
+			'animeh-migration' => 'migration',
+			default            => 'test',
+		},
 		'adminUrl'  => '/',
 		'fontsPage' => 'animeh-fonts',
 		'testPage'  => 'animeh-player-test',
+		'migrationPage' => 'animeh-migration',
 	);
 
 	header( 'Content-Type: text/html; charset=utf-8' );
@@ -190,9 +374,14 @@ if ( '/' === $path || '/index.html' === $path ) {
 	echo 'table.widefat td,table.widefat th{padding:8px;border-bottom:1px solid #f0f0f1;text-align:left}';
 	echo '</style></head><body>';
 	echo '<div class="wrap animeh-admin">';
-	echo '<h1>' . ( 'fonts' === $config['screen'] ? 'Fontlar' : 'Player Test' ) . '</h1>';
+	echo '<h1>' . match ( $config['screen'] ) {
+		'fonts'     => 'Fontlar',
+		'migration' => 'Yedek ve Taşıma',
+		default     => 'Player Test',
+	} . '</h1>';
 	echo '<div id="animeh-test-root" class="animeh-admin__root"></div>';
 	echo '<div id="animeh-fonts-root" class="animeh-admin__root"></div>';
+	echo '<div id="animeh-migration-root" class="animeh-admin__root"></div>';
 	echo '</div>';
 	echo '<script>window.ANIMEH_ADMIN = ' . json_encode( $config ) . ';</script>';
 	echo '<script type="module" src="/assets/admin/admin.js"></script>';
@@ -267,8 +456,14 @@ if ( '/proxy' === $path ) {
 /* ── REST API ───────────────────────────────────────────────────────────── */
 
 if ( str_starts_with( $path, '/wp-json/animeh/v1' ) ) {
-	stub_require_nonce();
 	$route = substr( $path, strlen( '/wp-json/animeh/v1' ) );
+
+	// The export route is called by another site, which has no session here, so
+	// it carries a pairing code instead of a nonce — exactly as the plugin's
+	// own permission callback is arranged.
+	if ( '/migration/export' !== $route ) {
+		stub_require_nonce();
+	}
 	$state = stub_state();
 
 	// Fonts.
@@ -375,6 +570,15 @@ if ( str_starts_with( $path, '/wp-json/animeh/v1' ) ) {
 		stub_json( array( 'preset' => $preset ), 201 );
 	}
 
+	if ( preg_match( '#^/test/presets/([\w-]+)$#', $route, $matches ) && 'DELETE' === $method ) {
+		$id = $matches[1];
+		$state['presets'] = array_values(
+			array_filter( $state['presets'], static fn( array $preset ): bool => $preset['id'] !== $id )
+		);
+		stub_save( $state );
+		stub_json( array( 'deleted' => true ) );
+	}
+
 	// Sessions.
 	if ( '/test/sessions' === $route && 'POST' === $method ) {
 		$body = json_decode( (string) file_get_contents( 'php://input' ), true );
@@ -438,6 +642,195 @@ if ( str_starts_with( $path, '/wp-json/animeh/v1' ) ) {
 		$sessions = array_values( $state['sessions'] );
 		usort( $sessions, static fn( array $a, array $b ): int => $b['id'] <=> $a['id'] );
 		stub_json( array( 'sessions' => $sessions, 'total' => count( $sessions ) ) );
+	}
+
+	// Migration and snapshots. The bucket is a directory, but the envelope,
+	// the checksum and the pairing code are the shipped classes.
+	if ( '/migration/status' === $route && 'GET' === $method ) {
+		stub_json(
+			array(
+				'storage_configured' => true,
+				'scheduled'          => (bool) $state['scheduled'],
+				'last_snapshot'      => $state['last_snapshot'],
+				'site_url'           => stub_origin(),
+				'api_base'           => stub_origin() . '/wp-json/animeh/v1',
+				'handoff'            => stub_handoff_state( $state ),
+				'keep'               => 14,
+			)
+		);
+	}
+
+	if ( '/migration/snapshots' === $route && 'POST' === $method ) {
+		$envelope = stub_capture( $state );
+		$bytes    = Snapshot::encode( $envelope );
+		$key      = '_animeh/snapshots/' . gmdate( 'Y-m-d\THis\Z' ) . '.json.gz';
+		stub_bucket_put( $key, $bytes );
+
+		$status = array(
+			'ok'     => true,
+			'at'     => time(),
+			'key'    => $key,
+			'bytes'  => strlen( $bytes ),
+			'counts' => Snapshot::summarise( $envelope )['counts'],
+		);
+		$state['last_snapshot'] = $status;
+		stub_save( $state );
+
+		stub_bucket_put(
+			'_animeh/backend.json',
+			(string) json_encode(
+				array(
+					'format'     => 1,
+					'api_base'   => stub_origin() . '/wp-json/animeh/v1',
+					'site_url'   => stub_origin(),
+					'updated_at' => gmdate( 'c' ),
+				)
+			)
+		);
+
+		stub_json( $status, 201 );
+	}
+
+	if ( '/migration/snapshots' === $route && 'GET' === $method ) {
+		$snapshots = stub_bucket_list( '_animeh/snapshots/' );
+		usort( $snapshots, static fn( array $a, array $b ): int => strcmp( $b['key'], $a['key'] ) );
+		stub_json( array( 'snapshots' => $snapshots ) );
+	}
+
+	if ( '/migration/schedule' === $route && 'POST' === $method ) {
+		$body               = stub_body();
+		$state['scheduled'] = (bool) ( $body['enabled'] ?? false );
+		stub_save( $state );
+		stub_json( array( 'scheduled' => $state['scheduled'] ) );
+	}
+
+	if ( '/migration/restore' === $route && 'POST' === $method ) {
+		$body = stub_body();
+		if ( empty( $body['confirm'] ) ) {
+			stub_error( 'animeh_confirm_required', 'Geri yükleme mevcut verinin üzerine yazar; onay gerekiyor.', 400 );
+		}
+
+		$key = (string) ( $body['key'] ?? '' );
+		if ( ! str_starts_with( $key, '_animeh/snapshots/' ) ) {
+			stub_error( 'animeh_snapshot_key', 'Geçersiz yedek anahtarı.', 400 );
+		}
+
+		$bytes = stub_bucket_get( $key );
+		if ( null === $bytes ) {
+			stub_error( 'animeh_snapshot_missing', 'Yedek bulunamadı.', 404 );
+		}
+
+		stub_json( stub_apply( Snapshot::decode( $bytes ), $state ) );
+	}
+
+	if ( '/migration/handoff' === $route && 'POST' === $method ) {
+		$code             = MigrationCode::generate();
+		$state['handoff'] = array(
+			'hash'      => MigrationCode::hash( $code, STUB_HANDOFF_SECRET ),
+			'issued_at' => time(),
+			'used_at'   => 0,
+		);
+		stub_save( $state );
+		stub_json(
+			array(
+				'code'       => $code,
+				'expires_in' => MigrationCode::TTL_SECONDS,
+				'api_base'   => stub_origin() . '/wp-json/animeh/v1',
+			),
+			201
+		);
+	}
+
+	if ( '/migration/handoff' === $route && 'DELETE' === $method ) {
+		$state['handoff'] = null;
+		stub_save( $state );
+		stub_json( array( 'handoff' => stub_handoff_state( $state ) ) );
+	}
+
+	if ( '/migration/pull' === $route && 'POST' === $method ) {
+		$body   = stub_body();
+		$source = rtrim( (string) ( $body['source_url'] ?? '' ), '/' );
+		$code   = (string) ( $body['code'] ?? '' );
+
+		if ( '' === $source ) {
+			stub_error( 'animeh_source_rejected', 'Adres okunamadı.', 400 );
+		}
+
+		$endpoint = $source . '/wp-json/animeh/v1/migration/export';
+		$context  = stream_context_create(
+			array(
+				'http' => array(
+					'method'        => 'POST',
+					'header'        => "Content-Type: application/json\r\n",
+					'content'       => (string) json_encode( array( 'code' => $code ) ),
+					'ignore_errors' => true,
+					'timeout'       => 10,
+				),
+			)
+		);
+
+		$raw = @file_get_contents( $endpoint, false, $context );
+		if ( false === $raw ) {
+			stub_error( 'animeh_source_unreachable', 'Eski siteye ulaşılamadı.', 502 );
+		}
+
+		$decoded = json_decode( (string) $raw, true );
+		if ( isset( $decoded['code'] ) && isset( $decoded['message'] ) ) {
+			stub_error( 'animeh_handoff_refused', (string) $decoded['message'], 403 );
+		}
+
+		stub_json( stub_apply( is_array( $decoded ) ? $decoded : null, $state ) );
+	}
+
+	// Guarded by the pairing code rather than the nonce, exactly as the plugin
+	// does — the caller is another site with no session here.
+	if ( '/migration/export' === $route && 'POST' === $method ) {
+		$body    = stub_body();
+		$handoff = $state['handoff'];
+
+		$valid = is_array( $handoff )
+			&& empty( $handoff['used_at'] )
+			&& MigrationCode::verify(
+				(string) ( $body['code'] ?? '' ),
+				(string) $handoff['hash'],
+				STUB_HANDOFF_SECRET,
+				(int) $handoff['issued_at']
+			);
+
+		if ( ! $valid ) {
+			stub_error( 'animeh_handoff_denied', 'Kod geçersiz ya da süresi dolmuş.', 403 );
+		}
+
+		$state['handoff']['used_at'] = time();
+		stub_save( $state );
+
+		stub_json( stub_capture( $state ) );
+	}
+
+	if ( '/migration/pointer' === $route && 'GET' === $method ) {
+		$raw     = stub_bucket_get( '_animeh/backend.json' );
+		$pointer = null === $raw ? array() : ( json_decode( $raw, true ) ?: array() );
+		stub_json(
+			array(
+				'pointer' => $pointer,
+				'is_self' => ( $pointer['site_url'] ?? null ) === stub_origin(),
+			)
+		);
+	}
+
+	if ( '/migration/pointer' === $route && 'POST' === $method ) {
+		stub_bucket_put(
+			'_animeh/backend.json',
+			(string) json_encode(
+				array(
+					'format'     => 1,
+					'api_base'   => stub_origin() . '/wp-json/animeh/v1',
+					'site_url'   => stub_origin(),
+					'updated_at' => gmdate( 'c' ),
+				)
+			)
+		);
+		stub_json( array( 'claimed' => true, 'site_url' => stub_origin() ) );
 	}
 
 	stub_error( 'rest_no_route', 'No route was found matching the URL and request method.', 404 );

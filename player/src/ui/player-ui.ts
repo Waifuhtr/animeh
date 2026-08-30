@@ -245,16 +245,25 @@ export class PlayerUI {
     on(e.subtitles, 'click', () => this.#toggleMenu('subtitles'))
     on(e.audio, 'click', () => this.#toggleMenu('audio'))
 
-    // Tapping the picture toggles the controls; tapping again plays or pauses.
+    /*
+     * Tapping the picture only shows or hides the controls. It never pauses.
+     *
+     * Pausing is what the pause button is for, and nothing else should do it:
+     * on a phone the whole frame is a tap target, and a viewer reaching to
+     * bring the controls back should not stop the episode by missing a button.
+     */
     on(this.#root, 'pointermove', () => this.#showControls())
     on(this.#root, 'pointerdown', (event) => {
       const target = event.target as HTMLElement
       if (target.closest('.animeh__btn, .animeh__menu, .animeh__action, .animeh__track, .animeh__skip')) {
         return
       }
+      if (this.#menu) {
+        this.#closeMenu()
+        return
+      }
       if (this.#controlsHidden) this.#showControls()
-      else if (this.#menu) this.#closeMenu()
-      else this.#player.togglePlay()
+      else this.#hideControlsNow()
     })
     on(this.#root, 'pointerleave', () => this.#scheduleHide(600))
 
@@ -696,6 +705,20 @@ export class PlayerUI {
       clearTimeout(this.#hideTimer)
       this.#hideTimer = null
     }
+  }
+
+  /** Hide immediately, for a deliberate tap rather than the idle timer. */
+  #hideControlsNow(): void {
+    // Only while something is playing: hiding the controls over a paused frame
+    // leaves the viewer with no way back except another tap, for no gain.
+    if (this.#snapshot?.phase !== 'playing') return
+    if (this.#hideTimer !== null) {
+      clearTimeout(this.#hideTimer)
+      this.#hideTimer = null
+    }
+    this.#controlsHidden = true
+    this.#controls.dataset.hidden = 'true'
+    this.#root.style.cursor = 'none'
   }
 
   #scheduleHide(delay = CONTROLS_HIDE_DELAY_MS): void {

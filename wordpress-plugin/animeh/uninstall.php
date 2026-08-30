@@ -38,6 +38,17 @@ if ( is_dir( $animeh_font_dir ) ) {
 
 delete_option( 'animeh_test_presets' );
 delete_option( 'animeh_settings' );
+delete_option( 'animeh_storage' );
+delete_option( 'animeh_snapshot_status' );
+delete_option( 'animeh_migration_handoff' );
+
+// Snapshots already written to the bucket are left alone: they are the copy
+// that outlives this site, and deleting a plugin here is not a decision to
+// throw away the library's backups.
+$animeh_snapshot_event = wp_next_scheduled( 'animeh_snapshot_event' );
+if ( false !== $animeh_snapshot_event ) {
+	wp_unschedule_event( $animeh_snapshot_event, 'animeh_snapshot_event' );
+}
 
 // The capability was added to a role, so it has to be taken off it too.
 $animeh_role = get_role( 'administrator' );

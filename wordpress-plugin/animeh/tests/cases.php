@@ -828,3 +828,306 @@ describe( 'Snapshot', static function () {
 		ok( count( $summary['problems'] ) > 0 );
 	} );
 } );
+
+describe( 'ApiToken', static function () {
+	it( 'mints a recognisable, URL-safe token', static function () {
+		$token = \Animeh\Support\ApiToken::generate();
+		ok( str_starts_with( $token, 'ahp_' ), $token );
+		// base64url of 32 bytes, unpadded, plus the prefix.
+		same( 47, strlen( $token ) );
+		ok( ! str_contains( $token, '+' ) && ! str_contains( $token, '/' ) && ! str_contains( $token, '=' ), $token );
+		ok( \Animeh\Support\ApiToken::looks_valid( $token ) );
+	} );
+
+	it( 'does not repeat itself', static function () {
+		$seen = array();
+		for ( $i = 0; $i < 100; $i++ ) {
+			$seen[ \Animeh\Support\ApiToken::generate() ] = true;
+		}
+		same( 100, count( $seen ) );
+	} );
+
+	it( 'rejects anything not shaped like one of ours', static function () {
+		// Checked before the database is touched, so a flood of junk costs
+		// nothing.
+		ok( ! \Animeh\Support\ApiToken::looks_valid( '' ) );
+		ok( ! \Animeh\Support\ApiToken::looks_valid( 'ahp_short' ) );
+		ok( ! \Animeh\Support\ApiToken::looks_valid( str_repeat( 'a', 47 ) ) );
+		ok( ! \Animeh\Support\ApiToken::looks_valid( 'ahp_' . str_repeat( '!', 43 ) ) );
+		ok( ! \Animeh\Support\ApiToken::looks_valid( 'ahp_' . str_repeat( 'a', 44 ) ) );
+	} );
+
+	it( 'reads the token out of an Authorization header', static function () {
+		$token = \Animeh\Support\ApiToken::generate();
+		same( $token, \Animeh\Support\ApiToken::from_header( 'Bearer ' . $token ) );
+		// The scheme is case-insensitive per RFC 7235 and clients differ.
+		same( $token, \Animeh\Support\ApiToken::from_header( 'bearer ' . $token ) );
+		same( $token, \Animeh\Support\ApiToken::from_header( "  Bearer   {$token}  " ) );
+	} );
+
+	it( 'ignores headers that are not a bearer token', static function () {
+		$token = \Animeh\Support\ApiToken::generate();
+		same( '', \Animeh\Support\ApiToken::from_header( '' ) );
+		same( '', \Animeh\Support\ApiToken::from_header( 'Basic dXNlcjpwYXNz' ) );
+		same( '', \Animeh\Support\ApiToken::from_header( $token ) );
+		same( '', \Animeh\Support\ApiToken::from_header( 'Bearer not-our-token' ) );
+	} );
+
+	it( 'stores a hash, never the token', static function () {
+		$token = \Animeh\Support\ApiToken::generate();
+		$hash  = \Animeh\Support\ApiToken::hash( $token );
+		same( 64, strlen( $hash ) );
+		ok( ! str_contains( $hash, substr( $token, 4, 12 ) ), 'hash token sızdırıyor' );
+	} );
+
+	it( 'knows when a token has expired', static function () {
+		$now = 1_700_000_000;
+		ok( ! \Animeh\Support\ApiToken::is_expired( $now + 1, $now ) );
+		ok( \Animeh\Support\ApiToken::is_expired( $now, $now ) );
+		ok( \Animeh\Support\ApiToken::is_expired( $now - 1, $now ) );
+	} );
+
+	it( 'masks a token down to something only recognisable', static function () {
+		$masked = \Animeh\Support\ApiToken::mask( 'ahp_abcdefghijklmnopqrstuvwxyz' );
+		ok( str_starts_with( $masked, 'ahp_abcd' ), $masked );
+		ok( str_ends_with( $masked, 'wxyz' ), $masked );
+		ok( ! str_contains( $masked, 'ijklmno' ), 'maskede gövde sızdı: ' . $masked );
+	} );
+} );
+
+describe( 'RateLimit', static function () {
+	it( 'aligns every caller on the same window', static function () {
+		// Two requests a second apart inside one window must land on the same
+		// key, or the limit counts nothing.
+		same(
+			\Animeh\Support\RateLimit::window_start( 900, 1_700_000_000 ),
+			\Animeh\Support\RateLimit::window_start( 900, 1_700_000_001 )
+		);
+		same( 1_699_999_200, \Animeh\Support\RateLimit::window_start( 900, 1_700_000_000 ) );
+	} );
+
+	it( 'gives a new key when the window rolls over', static function () {
+		$a = \Animeh\Support\RateLimit::key( 'login', '1.2.3.4', 900, 1_699_999_500 );
+		$b = \Animeh\Support\RateLimit::key( 'login', '1.2.3.4', 900, 1_700_000_400 );
+		ok( $a !== $b, 'pencere değişince anahtar değişmedi' );
+	} );
+
+	it( 'separates buckets and actors', static function () {
+		$now = 1_700_000_000;
+		ok(
+			\Animeh\Support\RateLimit::key( 'login', '1.2.3.4', 900, $now )
+			!== \Animeh\Support\RateLimit::key( 'register', '1.2.3.4', 900, $now )
+		);
+		ok(
+			\Animeh\Support\RateLimit::key( 'login', '1.2.3.4', 900, $now )
+			!== \Animeh\Support\RateLimit::key( 'login', '5.6.7.8', 900, $now )
+		);
+	} );
+
+	it( 'does not put the actor in the key in plain text', static function () {
+		// The key becomes an option_name; an IP address does not belong there
+		// in readable form.
+		$key = \Animeh\Support\RateLimit::key( 'login', '203.0.113.7', 900, 1_700_000_000 );
+		ok( ! str_contains( $key, '203.0.113.7' ), $key );
+	} );
+
+	it( 'allows up to the limit and not past it', static function () {
+		ok( \Animeh\Support\RateLimit::allows( 0, 10 ) );
+		ok( \Animeh\Support\RateLimit::allows( 9, 10 ) );
+		ok( ! \Animeh\Support\RateLimit::allows( 10, 10 ) );
+		ok( ! \Animeh\Support\RateLimit::allows( 99, 10 ) );
+	} );
+
+	it( 'never tells a caller to retry immediately', static function () {
+		// Retry-After: 0 invites the request that is being prevented.
+		for ( $offset = 0; $offset < 900; $offset += 137 ) {
+			$retry = \Animeh\Support\RateLimit::retry_after( 900, 1_699_999_500 + $offset );
+			ok( $retry >= 1 && $retry <= 900, 'retry_after = ' . $retry );
+		}
+		// At the very start of a window the whole window is left; one second
+		// before it ends, exactly one second is.
+		same( 900, \Animeh\Support\RateLimit::retry_after( 900, 1_699_999_200 ) );
+		same( 1, \Animeh\Support\RateLimit::retry_after( 900, 1_700_000_099 ) );
+	} );
+} );
+
+describe( 'TenraiMapper', static function () {
+	$entry = static function (): array {
+		return array(
+			'mal_id'  => 16498,
+			'url'     => 'https://example.test/anime/16498',
+			'images'  => array(
+				'jpg'  => array( 'image_url' => 'https://cdn.test/a.jpg', 'large_image_url' => 'https://cdn.test/a-l.jpg' ),
+				'webp' => array( 'image_url' => 'https://cdn.test/a.webp', 'large_image_url' => 'https://cdn.test/a-l.webp' ),
+			),
+			'trailer' => array( 'url' => 'https://youtube.test/watch?v=x' ),
+			'titles'  => array(
+				array( 'type' => 'Default', 'title' => 'Shingeki no Kyojin' ),
+				array( 'type' => 'English', 'title' => 'Attack on Titan' ),
+				array( 'type' => 'Japanese', 'title' => '進撃の巨人' ),
+				array( 'type' => 'Synonym', 'title' => 'AoT' ),
+			),
+			'title'   => 'Shingeki no Kyojin',
+			'title_synonyms' => array( 'SnK' ),
+			'type'     => 'TV',
+			'episodes' => 25,
+			'status'   => 'Finished Airing',
+			'duration' => '24 min per ep',
+			'rating'   => 'R - 17+ (violence & profanity)',
+			'score'    => 8.54,
+			'popularity' => 1,
+			'synopsis' => 'Centuries ago…',
+			'year'     => 2013,
+			'season'   => 'spring',
+			'studios'  => array( array( 'mal_id' => 858, 'name' => 'Wit Studio' ) ),
+			'genres'   => array(
+				array( 'mal_id' => 1, 'name' => 'Action' ),
+				array( 'mal_id' => 8, 'name' => 'Drama' ),
+			),
+		);
+	};
+
+	it( 'maps a full entry onto the catalog columns', static function () use ( $entry ) {
+		$work = \Animeh\Support\TenraiMapper::work( $entry() );
+
+		same( 16498, $work['tenrai_id'] );
+		same( 'Shingeki no Kyojin', $work['title'] );
+		same( 'Attack on Titan', $work['title_english'] );
+		same( '進撃の巨人', $work['title_japanese'] );
+		same( 'Wit Studio', $work['studio'] );
+		same( 2013, $work['year'] );
+		same( 'spring', $work['season'] );
+		same( 25, $work['total_episodes'] );
+		same( 8.54, $work['score'] );
+		same( '["Action","Drama"]', $work['genres'] );
+	} );
+
+	it( 'prefers webp, and the largest size offered', static function () use ( $entry ) {
+		// Smallest bytes over the wire, and every Android version the app
+		// targets decodes it.
+		same( 'https://cdn.test/a-l.webp', \Animeh\Support\TenraiMapper::work( $entry() )['poster_url'] );
+	} );
+
+	it( 'falls back through the image shapes', static function () {
+		same(
+			'https://cdn.test/only.jpg',
+			\Animeh\Support\TenraiMapper::image( array( 'jpg' => array( 'image_url' => 'https://cdn.test/only.jpg' ) ) )
+		);
+		same( '', \Animeh\Support\TenraiMapper::image( null ) );
+		same( '', \Animeh\Support\TenraiMapper::image( array() ) );
+		same( '', \Animeh\Support\TenraiMapper::image( array( 'jpg' => array( 'image_url' => null ) ) ) );
+	} );
+
+	it( 'survives a payload with nulls everywhere', static function () {
+		// Jikan-compatible responses carry nulls rather than omitting fields,
+		// and a mapper that assumes strings dies on the first one.
+		$work = \Animeh\Support\TenraiMapper::work(
+			array(
+				'mal_id'   => 1,
+				'title'    => 'Cowboy Bebop',
+				'synopsis' => null,
+				'score'    => null,
+				'episodes' => null,
+				'duration' => null,
+				'studios'  => null,
+				'genres'   => null,
+				'images'   => null,
+				'season'   => null,
+				'year'     => null,
+			)
+		);
+
+		same( 'Cowboy Bebop', $work['title'] );
+		same( '', $work['synopsis'] );
+		same( 0.0, $work['score'] );
+		same( 0, $work['total_episodes'] );
+		same( '[]', $work['genres'] );
+		same( '', $work['poster_url'] );
+	} );
+
+	it( 'finds a title when only the titles array is present', static function () {
+		$work = \Animeh\Support\TenraiMapper::work(
+			array(
+				'mal_id' => 5,
+				'titles' => array( array( 'type' => 'Default', 'title' => 'Fullmetal Alchemist' ) ),
+			)
+		);
+		same( 'Fullmetal Alchemist', $work['title'] );
+	} );
+
+	it( 'collects synonyms from both places they appear', static function () use ( $entry ) {
+		$synonyms = json_decode( \Animeh\Support\TenraiMapper::work( $entry() )['synonyms'], true );
+		ok( in_array( 'SnK', $synonyms, true ), 'title_synonyms alınmadı' );
+		ok( in_array( 'AoT', $synonyms, true ), 'titles[] synonym alınmadı' );
+	} );
+
+	it( 'maps upstream status onto our own vocabulary', static function () {
+		// The app switches on this, so it cannot be free text that changes
+		// upstream.
+		same( 'finished', \Animeh\Support\TenraiMapper::status( 'Finished Airing' ) );
+		same( 'airing', \Animeh\Support\TenraiMapper::status( 'Currently Airing' ) );
+		same( 'upcoming', \Animeh\Support\TenraiMapper::status( 'Not yet aired' ) );
+		same( 'unknown', \Animeh\Support\TenraiMapper::status( 'Cancelled' ) );
+		same( '', \Animeh\Support\TenraiMapper::status( '' ) );
+	} );
+
+	it( 'reads a prose duration as seconds', static function () {
+		same( 1440, \Animeh\Support\TenraiMapper::duration( '24 min per ep' ) );
+		same( 5700, \Animeh\Support\TenraiMapper::duration( '1 hr 35 min' ) );
+		same( 3600, \Animeh\Support\TenraiMapper::duration( '1 hr' ) );
+		same( 30, \Animeh\Support\TenraiMapper::duration( '30 sec per ep' ) );
+		same( 0, \Animeh\Support\TenraiMapper::duration( 'Unknown' ) );
+	} );
+
+	it( 'clamps a score into what the column holds', static function () {
+		same( 10.0, \Animeh\Support\TenraiMapper::work( array( 'score' => 99 ) )['score'] );
+		same( 0.0, \Animeh\Support\TenraiMapper::work( array( 'score' => -5 ) )['score'] );
+		same( 0.0, \Animeh\Support\TenraiMapper::work( array( 'score' => 'not a number' ) )['score'] );
+	} );
+
+	it( 'digs the year out of wherever the payload put it', static function () {
+		// `/anime/{id}/full` reports it under aired.prop rather than `year`.
+		same(
+			1998,
+			\Animeh\Support\TenraiMapper::work(
+				array( 'aired' => array( 'prop' => array( 'from' => array( 'year' => 1998 ) ) ) )
+			)['year']
+		);
+		same(
+			2009,
+			\Animeh\Support\TenraiMapper::work( array( 'aired' => array( 'from' => '2009-04-05T00:00:00+00:00' ) ) )['year']
+		);
+		same( 0, \Animeh\Support\TenraiMapper::work( array() )['year'] );
+	} );
+
+	it( 'maps an episode entry', static function () {
+		$episode = \Animeh\Support\TenraiMapper::episode(
+			array(
+				'mal_id'  => 12,
+				'title'   => 'Wound',
+				'aired'   => '2013-06-22T00:00:00+00:00',
+				'filler'  => false,
+				'synopsis' => null,
+			),
+			2
+		);
+
+		same( 12, $episode['number'] );
+		same( 2, $episode['season_number'] );
+		same( 'Wound', $episode['title'] );
+		same( 0, $episode['filler'] );
+		same( '2013-06-22 00:00:00', $episode['published_at'] );
+	} );
+
+	it( 'gives an unaired episode the zero date rather than a wrong one', static function () {
+		same(
+			'0000-00-00 00:00:00',
+			\Animeh\Support\TenraiMapper::episode( array( 'mal_id' => 1, 'aired' => null ) )['published_at']
+		);
+	} );
+
+	it( 'never encodes non-Latin titles into escapes', static function () {
+		// A genre list read back into the app has to still be readable.
+		same( '["アクション"]', \Animeh\Support\TenraiMapper::names( array( array( 'name' => 'アクション' ) ) ) );
+	} );
+} );

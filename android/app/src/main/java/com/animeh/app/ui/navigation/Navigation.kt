@@ -1,0 +1,88 @@
+package com.animeh.app.ui.navigation
+
+import androidx.annotation.StringRes
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.animeh.app.R
+
+/**
+ * Every destination, as data.
+ *
+ * Routes are built through the helpers rather than string-concatenated at call
+ * sites, so an argument added to a route is a compile error everywhere it is
+ * navigated to instead of a runtime crash on one path nobody tested.
+ */
+object Routes {
+    const val HOME = "home"
+    const val DISCOVER = "discover"
+    const val LIBRARY = "library"
+    const val PROFILE = "profile"
+
+    const val SETTINGS = "settings"
+    const val LOGIN = "login"
+    const val REGISTER = "register"
+    const val FORGOT_PASSWORD = "forgot_password"
+    const val CHANGE_PASSWORD = "change_password"
+
+    private const val DETAIL_BASE = "detail"
+    const val DETAIL = "$DETAIL_BASE/{workId}"
+    fun detail(workId: Long) = "$DETAIL_BASE/$workId"
+
+    private const val SEARCH_BASE = "search"
+    const val SEARCH = "$SEARCH_BASE?query={query}&genre={genre}"
+    fun search(query: String = "", genre: String = "") =
+        "$SEARCH_BASE?query=${query.encode()}&genre=${genre.encode()}"
+
+    // Admin.
+    const val ADMIN = "admin"
+    const val ADMIN_WORKS = "admin/works"
+    const val ADMIN_TENRAI = "admin/tenrai"
+    const val ADMIN_USERS = "admin/users"
+    const val ADMIN_ANNOUNCEMENTS = "admin/announcements"
+    const val ADMIN_LOGS = "admin/logs"
+    const val ADMIN_FONTS = "admin/fonts"
+
+    private const val ADMIN_WORK_BASE = "admin/work"
+    const val ADMIN_WORK_EDIT = "$ADMIN_WORK_BASE/{workId}"
+    fun adminWork(workId: Long) = "$ADMIN_WORK_BASE/$workId"
+
+    private const val ADMIN_EPISODES_BASE = "admin/episodes"
+    const val ADMIN_EPISODES = "$ADMIN_EPISODES_BASE/{workId}"
+    fun adminEpisodes(workId: Long) = "$ADMIN_EPISODES_BASE/$workId"
+
+    private const val ADMIN_EPISODE_BASE = "admin/episode"
+    const val ADMIN_EPISODE_EDIT = "$ADMIN_EPISODE_BASE/{workId}/{episodeId}"
+    fun adminEpisode(workId: Long, episodeId: Long) = "$ADMIN_EPISODE_BASE/$workId/$episodeId"
+
+    private fun String.encode(): String =
+        java.net.URLEncoder.encode(this, Charsets.UTF_8.name())
+}
+
+/**
+ * The bottom bar's tabs.
+ *
+ * Admin is in the list but shown only when the server says the user has the
+ * capability — §8's rule, applied to navigation: the tab is drawn from the
+ * flag, and every screen behind it is refused server-side regardless.
+ */
+enum class TopLevelDestination(
+    val route: String,
+    @StringRes val labelRes: Int,
+    val selectedIcon: ImageVector,
+    val icon: ImageVector,
+    val adminOnly: Boolean = false,
+) {
+    HOME(Routes.HOME, R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home),
+    DISCOVER(Routes.DISCOVER, R.string.nav_discover, Icons.Filled.Search, Icons.Outlined.Search),
+    LIBRARY(Routes.LIBRARY, R.string.nav_library, Icons.Filled.VideoLibrary, Icons.Outlined.VideoLibrary),
+    PROFILE(Routes.PROFILE, R.string.nav_profile, Icons.Filled.Person, Icons.Outlined.Person),
+    ADMIN(Routes.ADMIN, R.string.nav_admin, Icons.Filled.AdminPanelSettings, Icons.Outlined.AdminPanelSettings, adminOnly = true),
+    ;
+
+    companion object {
+        fun visible(isAdmin: Boolean): List<TopLevelDestination> =
+            entries.filter { !it.adminOnly || isAdmin }
+    }
+}

@@ -28,6 +28,9 @@ require_once __DIR__ . '/../src/Support/StorageKey.php';
 require_once __DIR__ . '/../src/Support/SecretBox.php';
 require_once __DIR__ . '/../src/Support/MigrationCode.php';
 require_once __DIR__ . '/../src/Support/Snapshot.php';
+require_once __DIR__ . '/../src/Support/ApiToken.php';
+require_once __DIR__ . '/../src/Support/RateLimit.php';
+require_once __DIR__ . '/../src/Support/TenraiMapper.php';
 
 /**
  * Collected results.

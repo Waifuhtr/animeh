@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Only what the XML theme needs before Compose starts; the real palette
+         lives in ui/theme/Color.kt. -->
+    <color name="surface_base">#0B0A10</color>
+    <color name="accent">#8B5CF6</color>
+</resources>

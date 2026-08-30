@@ -15,3 +15,13 @@ wordpress-plugin/animeh/assets/jassub/
 wordpress-plugin/animeh/tests/.stub-state*/
 wordpress-plugin/animeh/tests/.stub-bucket/
 wordpress-plugin/animeh/tests/e2e/shots/
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/*.iml
+android/captures/
+android/.cxx/

@@ -13,7 +13,8 @@ sonra WordPress backend, sonra Android uygulaması.
 | -------------------- | ---------------------------------------------------------- |
 | `docs/`              | Mimari ve tasarım belgeleri                                 |
 | `player/`            | `@animeh/player` — özel oynatıcı (TypeScript, framework'süz) |
-| `wordpress-plugin/`  | WordPress eklentisi (test paneli, fontlar, B2 depolama, taşıma) |
+| `wordpress-plugin/`  | WordPress eklentisi (backend, API, panel, B2, taşıma)        |
+| `android/`           | Kotlin/Compose uygulaması, uygulama içi yönetim paneli       |
 | `tools/`             | Geliştirme yardımcıları (test medyası, eklenti paketleme)    |
 
 ## Durum
@@ -25,8 +26,18 @@ adrese otomatik geçiş — 30 birim testi, Chromium'da 88 oynatma kontrolü.
 **Aşama 2 (WordPress eklentisi) çalışıyor.** Player test paneli, font kayıt
 defteri ve eksik font yükleme akışı, Range destekli hız kısıtlama proxy'si;
 Backblaze B2 depolama, çok parçalı video yükleme, Friendly URL → S3 geçişi;
-bucket'a yedekleme ve site taşıma — 76 PHP birim testi, 22 SigV4 çapraz
-kontrolü, tarayıcıda 27 + 29 panel kontrolü.
+bucket'a yedekleme ve site taşıma.
+
+**Aşama 3 (backend + API) yazıldı.** Katalog şeması, bearer token kimlik
+doğrulama, kullanıcı/katalog/yönetim endpoint'leri, Tenrai istemcisi ve cache —
+103 PHP birim testi, 22 SigV4 çapraz kontrolü, tarayıcıda 27 + 29 panel
+kontrolü, 39 dosya lint temiz.
+
+**Aşama 4 (Android) yazıldı, bu ortamda derlenemedi.** 61 Kotlin dosyası:
+özel oynatıcı (Media3 motor + kendi UI/state/ABR'ı + ASS), çevrimdışı cache,
+tüm kullanıcı ekranları ve uygulama içi yönetim paneli. Framework'e bağlı
+olmayan katman derlendi ve 32 birim testi geçiyor; Android katmanı
+doğrulanamadı çünkü `dl.google.com` bu ortamın çıkış politikasında 403.
 
 | | |
 | --- | --- |
@@ -34,7 +45,11 @@ kontrolü, tarayıcıda 27 + 29 panel kontrolü.
 | Player kullanımı | [`player/README.md`](player/README.md) |
 | Eklenti | [`docs/02-wordpress-test-plugin.md`](docs/02-wordpress-test-plugin.md) |
 | Depolama ve taşıma | [`docs/03-storage-and-migration.md`](docs/03-storage-and-migration.md) |
+| Backend ve API | [`docs/04-backend-api.md`](docs/04-backend-api.md) |
+| Android uygulaması | [`docs/05-android-app.md`](docs/05-android-app.md) |
 
 Kurulabilir eklenti paketi: `./tools/build-plugin.sh` → `dist/animeh-<sürüm>.zip`
 
-Sıradaki: Aşama 3 — WordPress backend (anime, bölüm, kullanıcı, API).
+Sıradaki: APK derlemesi (bu ortamda `dl.google.com` engelli — bkz.
+[`docs/05-android-app.md`](docs/05-android-app.md#8-derleme--bu-ortamda-yapılamadı)),
+sonra Aşama 5 — manga.

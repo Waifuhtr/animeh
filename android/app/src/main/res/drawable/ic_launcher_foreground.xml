@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A play triangle inside a rounded frame; the safe zone for an adaptive
+         icon is the middle 72dp of 108dp, so the art stays inside it. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M45,38 L45,70 L72,54 Z" />
+    <path
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="4"
+        android:fillColor="#00000000"
+        android:pathData="M36,30 L72,30 A6,6 0 0 1 78,36 L78,72 A6,6 0 0 1 72,78 L36,78 A6,6 0 0 1 30,72 L30,36 A6,6 0 0 1 36,30 Z" />
+</vector>

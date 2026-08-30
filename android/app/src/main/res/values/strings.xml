@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Animeh</string>
+
+    <!-- Navigation -->
+    <string name="nav_home">Ana Sayfa</string>
+    <string name="nav_discover">Keşfet</string>
+    <string name="nav_library">Kitaplık</string>
+    <string name="nav_profile">Profil</string>
+    <string name="nav_admin">Yönetim</string>
+
+    <!-- Common -->
+    <string name="retry">Tekrar dene</string>
+    <string name="cancel">Vazgeç</string>
+    <string name="save">Kaydet</string>
+    <string name="delete">Sil</string>
+    <string name="search">Ara</string>
+    <string name="loading">Yükleniyor…</string>
+    <string name="close">Kapat</string>
+    <string name="back">Geri</string>
+    <string name="all">Tümü</string>
+
+    <!-- Errors, one per code from the brief's §25 -->
+    <string name="error_network">İnternet bağlantısı yok. Bağlantını kontrol edip tekrar dene.</string>
+    <string name="error_timeout">Sunucu yanıt vermedi. Bağlantın yavaş olabilir.</string>
+    <string name="error_auth">Oturumun sona erdi. Tekrar giriş yap.</string>
+    <string name="error_forbidden">Bu işlem için yetkin yok.</string>
+    <string name="error_not_found">Aradığın içerik bulunamadı.</string>
+    <string name="error_server">Sunucuda bir sorun var. Birazdan tekrar dene.</string>
+    <string name="error_video">Bu bölüm şu anda oynatılamıyor.</string>
+    <string name="error_subtitle">Altyazı yüklenemedi.</string>
+    <string name="error_font_missing">Bazı altyazı fontları eksik.</string>
+    <string name="error_storage">Dosya deposuna erişilemedi.</string>
+    <string name="error_tenrai">Anime bilgisi kaynağına ulaşılamadı.</string>
+    <string name="error_rate_limited">Çok fazla deneme yaptın. Biraz bekle.</string>
+    <string name="error_unknown">Beklenmeyen bir hata oldu.</string>
+    <string name="error_offline_cached">Çevrimdışısın — kayıtlı veriler gösteriliyor.</string>
+
+    <!-- Auth -->
+    <string name="auth_login">Giriş yap</string>
+    <string name="auth_register">Kayıt ol</string>
+    <string name="auth_logout">Çıkış yap</string>
+    <string name="auth_username">Kullanıcı adı</string>
+    <string name="auth_login_field">Kullanıcı adı veya e-posta</string>
+    <string name="auth_email">E-posta</string>
+    <string name="auth_password">Şifre</string>
+    <string name="auth_password_new">Yeni şifre</string>
+    <string name="auth_password_current">Mevcut şifre</string>
+    <string name="auth_forgot">Şifremi unuttum</string>
+    <string name="auth_have_account">Zaten hesabın var mı? Giriş yap</string>
+    <string name="auth_no_account">Hesabın yok mu? Kayıt ol</string>
+    <string name="auth_continue_guest">Üye olmadan gez</string>
+    <string name="auth_reset_sent">Bu hesap varsa şifre sıfırlama bağlantısı gönderildi.</string>
+    <string name="auth_password_too_short">Şifre en az 8 karakter olmalı.</string>
+    <string name="auth_login_required">Bu bölümü izlemek için giriş yapmalısın.</string>
+
+    <!-- Home -->
+    <string name="home_continue">Kaldığın yerden devam et</string>
+    <string name="home_popular">Popüler</string>
+    <string name="home_new_episodes">Yeni bölümler</string>
+    <string name="home_airing">Şu anda yayında</string>
+    <string name="home_recently_added">Yeni eklenenler</string>
+    <string name="home_empty">Kütüphane henüz boş.</string>
+
+    <!-- Discover -->
+    <string name="discover_hint">Anime ara…</string>
+    <string name="discover_genres">Türler</string>
+    <string name="discover_filters">Filtreler</string>
+    <string name="discover_year">Yıl</string>
+    <string name="discover_season">Sezon</string>
+    <string name="discover_status">Durum</string>
+    <string name="discover_sort">Sıralama</string>
+    <string name="discover_no_results">Sonuç bulunamadı.</string>
+    <string name="discover_start">Aramaya başla veya bir tür seç.</string>
+
+    <!-- Detail -->
+    <string name="detail_episodes">Bölümler</string>
+    <string name="detail_season">%1$d. Sezon</string>
+    <string name="detail_episode_short">%1$d. Bölüm</string>
+    <string name="detail_favorite_add">Favorilere ekle</string>
+    <string name="detail_favorite_remove">Favorilerden çıkar</string>
+    <string name="detail_watchlist_add">İzleme listeme ekle</string>
+    <string name="detail_watchlist_remove">Listemden çıkar</string>
+    <string name="detail_play">İzle</string>
+    <string name="detail_resume">Devam et</string>
+    <string name="detail_studio">Stüdyo</string>
+    <string name="detail_score">Puan</string>
+    <string name="detail_no_episodes">Bu anime için henüz bölüm eklenmemiş.</string>
+    <string name="detail_filler">Dolgu</string>
+
+    <!-- Library -->
+    <string name="library_favorites">Favoriler</string>
+    <string name="library_watchlist">İzleme Listem</string>
+    <string name="library_history">Geçmiş</string>
+    <string name="library_downloads">İndirilenler</string>
+    <string name="library_empty_favorites">Henüz favorin yok.</string>
+    <string name="library_empty_watchlist">İzleme listen boş.</string>
+    <string name="library_empty_history">Henüz bir şey izlemedin.</string>
+    <string name="library_downloads_soon">İndirme özelliği yakında.</string>
+    <string name="library_clear_history">Geçmişi temizle</string>
+
+    <!-- Profile and settings -->
+    <string name="profile_stats">İstatistikler</string>
+    <string name="profile_episodes_watched">İzlenen bölüm</string>
+    <string name="profile_time_watched">İzlenen süre</string>
+    <string name="profile_series_started">Başlanan seri</string>
+    <string name="profile_settings">Ayarlar</string>
+    <string name="profile_change_password">Şifre değiştir</string>
+    <string name="profile_sessions">Oturumlar</string>
+
+    <string name="settings_playback">Oynatma</string>
+    <string name="settings_default_quality">Varsayılan kalite</string>
+    <string name="settings_subtitles">Altyazılar</string>
+    <string name="settings_subtitle_language">Altyazı dili</string>
+    <string name="settings_subtitles_on">Altyazılar açık</string>
+    <string name="settings_autoplay">Sonraki bölümü otomatik oynat</string>
+    <string name="settings_skip_intro">Jenerik atlama düğmesini göster</string>
+    <string name="settings_data">Veri</string>
+    <string name="settings_data_saver">Veri tasarrufu (düşük kalite tercih et)</string>
+    <string name="settings_wifi_download">Yalnızca Wi-Fi üzerinden indir</string>
+    <string name="settings_notifications">Bildirimler</string>
+    <string name="settings_cache">Önbellek</string>
+    <string name="settings_clear_cache">Önbelleği temizle</string>
+    <string name="settings_cache_cleared">Önbellek temizlendi.</string>
+    <string name="settings_server">Sunucu</string>
+    <string name="settings_api_base">WordPress adresi</string>
+    <string name="settings_api_base_hint">https://siten.com/wp-json/animeh/v1/</string>
+    <string name="settings_api_base_help">Site taşındıysa yeni adresi buraya gir.</string>
+    <string name="settings_api_saved">Sunucu adresi kaydedildi.</string>
+    <string name="settings_about">Hakkında</string>
+    <string name="settings_version">Sürüm</string>
+
+    <!-- Player -->
+    <string name="player_quality">Kalite</string>
+    <string name="player_quality_auto">Otomatik</string>
+    <string name="player_speed">Hız</string>
+    <string name="player_subtitle">Altyazı</string>
+    <string name="player_subtitle_off">Kapalı</string>
+    <string name="player_next_episode">Sonraki bölüm</string>
+    <string name="player_previous_episode">Önceki bölüm</string>
+    <string name="player_skip_intro">Jeneriği atla</string>
+    <string name="player_lock">Ekranı kilitle</string>
+    <string name="player_unlock">Kilidi aç</string>
+    <string name="player_fullscreen">Tam ekran</string>
+    <string name="player_play">Oynat</string>
+    <string name="player_pause">Duraklat</string>
+    <string name="player_buffering">Yükleniyor…</string>
+    <string name="player_reconnecting">Yeniden bağlanılıyor…</string>
+    <string name="player_up_next">Sırada</string>
+    <string name="player_settings">Oynatıcı ayarları</string>
+    <string name="player_stats">İstatistikler</string>
+    <string name="player_seek_forward">10 saniye ileri</string>
+    <string name="player_seek_back">10 saniye geri</string>
+    <string name="player_missing_fonts">Eksik fontlar: %1$s</string>
+
+    <!-- Admin -->
+    <string name="admin_dashboard">Panel</string>
+    <string name="admin_anime">Anime Yönetimi</string>
+    <string name="admin_episodes">Bölümler</string>
+    <string name="admin_sources">Video Kaynakları</string>
+    <string name="admin_subtitles">Altyazılar</string>
+    <string name="admin_fonts">Fontlar</string>
+    <string name="admin_users">Kullanıcılar</string>
+    <string name="admin_announcements">Duyurular</string>
+    <string name="admin_logs">Sistem Logları</string>
+    <string name="admin_tenrai">Tenrai</string>
+    <string name="admin_tenrai_search">Tenrai\'de ara</string>
+    <string name="admin_tenrai_import">İçe aktar</string>
+    <string name="admin_tenrai_update">Güncelle</string>
+    <string name="admin_tenrai_imported">İçe aktarıldı</string>
+    <string name="admin_new_anime">Yeni anime</string>
+    <string name="admin_new_episode">Yeni bölüm</string>
+    <string name="admin_published">Yayında</string>
+    <string name="admin_draft">Taslak</string>
+    <string name="admin_upload_video">Video yükle</string>
+    <string name="admin_upload_subtitle">Altyazı yükle</string>
+    <string name="admin_uploading">Yükleniyor… %1$d%%</string>
+    <string name="admin_delete_confirm">Bu kayıt kalıcı olarak silinecek. Emin misin?</string>
+    <string name="admin_no_permission">Yönetim paneline erişim yetkin yok.</string>
+</resources>

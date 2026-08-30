@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!--
+      The XML theme only covers the window before Compose takes over: the
+      splash background and the system bars. Everything else is in
+      ui/theme/Theme.kt.
+
+      The app is dark by design (§3), so the base is a dark parent even in
+      values/ rather than only in values-night/.
+    -->
+    <style name="Theme.Animeh" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/surface_base</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="o_mr1">shortEdges</item>
+    </style>
+
+    <!-- The player draws to the edges and hides the bars itself. -->
+    <style name="Theme.Animeh.Player" parent="Theme.Animeh">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

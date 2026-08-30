@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same as the default: the design is dark in both modes. Present so the
+         resource resolver does not fall back to a light platform theme. -->
+    <style name="Theme.Animeh" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/surface_base</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

@@ -46,7 +46,17 @@ final class Snapshot {
 	 *
 	 * @var string[]
 	 */
-	public const TABLES = array( 'animeh_fonts', 'animeh_test_sessions' );
+	public const TABLES = array(
+		'animeh_fonts',
+		'animeh_test_sessions',
+		'animeh_works',
+		'animeh_seasons',
+		'animeh_episodes',
+		'animeh_sources',
+		'animeh_history',
+		'animeh_library',
+		'animeh_announcements',
+	);
 
 	/**
 	 * Options carried in a snapshot.
@@ -65,12 +75,16 @@ final class Snapshot {
 	/**
 	 * Options that must never appear in a snapshot, whatever the caller passes.
 	 *
-	 * `animeh_storage` holds the bucket credentials. `animeh_migration_handoff`
-	 * holds a live pairing-code hash, which belongs to one site and one move.
+	 * `animeh_storage` holds the bucket credentials and `animeh_tenrai` the
+	 * upstream API key. `animeh_migration_handoff` holds a live pairing-code
+	 * hash, which belongs to one site and one move.
+	 *
+	 * The tokens table is absent from TABLES for the same reason: restoring a
+	 * snapshot must not resurrect sessions that were signed out.
 	 *
 	 * @var string[]
 	 */
-	public const EXCLUDED_OPTIONS = array( 'animeh_storage', 'animeh_migration_handoff' );
+	public const EXCLUDED_OPTIONS = array( 'animeh_storage', 'animeh_migration_handoff', 'animeh_tenrai' );
 
 	/**
 	 * Assemble an envelope around already-read table rows.

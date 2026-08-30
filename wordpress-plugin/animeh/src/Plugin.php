@@ -15,19 +15,33 @@ namespace Animeh;
 use Animeh\Admin\Assets;
 use Animeh\Admin\MenuPage;
 use Animeh\Media\ProxyHandler;
+use Animeh\Rest\AdminController;
+use Animeh\Rest\Auth;
+use Animeh\Rest\AuthController;
+use Animeh\Rest\CatalogController;
 use Animeh\Rest\FontsController;
+use Animeh\Rest\MeController;
 use Animeh\Rest\MigrationController;
 use Animeh\Rest\Permissions;
 use Animeh\Rest\StorageController;
 use Animeh\Rest\TestController;
+use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\FontRepository;
+use Animeh\Storage\LogRepository;
 use Animeh\Storage\Schema;
 use Animeh\Storage\SnapshotStore;
+use Animeh\Storage\TokenRepository;
+use Animeh\Storage\UserDataRepository;
 
 /**
  * Bootstraps the plugin.
  */
 final class Plugin {
+
+	/**
+	 * Daily housekeeping event.
+	 */
+	public const CLEANUP_HOOK = 'animeh_cleanup_event';
 
 	/**
 	 * Register everything.
@@ -38,6 +52,11 @@ final class Plugin {
 		// A plugin updated by file copy never runs its activation hook, so the
 		// schema version is checked on every load instead.
 		add_action( 'init', array( Schema::class, 'maybe_upgrade' ) );
+		add_action( 'init', array( CatalogSchema::class, 'maybe_upgrade' ) );
+
+		// Registered before `rest_api_init` so the bearer token is resolved by
+		// the time any permission callback asks who is calling.
+		Auth::register();
 
 		add_action(
 			'rest_api_init',
@@ -46,6 +65,10 @@ final class Plugin {
 				( new TestController() )->register_routes();
 				( new StorageController() )->register_routes();
 				( new MigrationController() )->register_routes();
+				( new AuthController() )->register_routes();
+				( new CatalogController() )->register_routes();
+				( new MeController() )->register_routes();
+				( new AdminController() )->register_routes();
 			}
 		);
 
@@ -62,6 +85,17 @@ final class Plugin {
 		// exists once an operator has turned it on, but the handler has to be
 		// attached on every load for cron to find it.
 		add_action( SnapshotStore::CRON_HOOK, array( SnapshotStore::class, 'run' ) );
+
+		// Housekeeping: expired tokens and old log rows. Both tables grow with
+		// use and neither is worth keeping indefinitely.
+		add_action( self::CLEANUP_HOOK, array( self::class, 'cleanup' ) );
+		if ( false === wp_next_scheduled( self::CLEANUP_HOOK ) ) {
+			wp_schedule_event( time() + HOUR_IN_SECONDS, 'daily', self::CLEANUP_HOOK );
+		}
+
+		// A deleted user leaves history, favourites and live tokens behind
+		// otherwise — the tokens being the part that matters.
+		add_action( 'deleted_user', array( self::class, 'forget_user' ) );
 	}
 
 	/**
@@ -69,8 +103,26 @@ final class Plugin {
 	 */
 	public static function activate(): void {
 		Schema::install();
+		CatalogSchema::install();
 		FontRepository::ensure_directory();
 		Permissions::grant_to_administrators();
+	}
+
+	/**
+	 * Drop what has aged out. Runs daily.
+	 */
+	public static function cleanup(): void {
+		( new TokenRepository() )->prune();
+		( new LogRepository() )->prune();
+	}
+
+	/**
+	 * Forget everything belonging to a user WordPress just deleted.
+	 *
+	 * @param int $user_id The deleted user.
+	 */
+	public static function forget_user( int $user_id ): void {
+		( new UserDataRepository() )->purge_user( $user_id );
 	}
 
 	/**
@@ -87,5 +139,10 @@ final class Plugin {
 		// that is no longer loaded, filling the cron log with missing-hook
 		// warnings.
 		SnapshotStore::set_schedule( false );
+
+		$cleanup = wp_next_scheduled( self::CLEANUP_HOOK );
+		if ( false !== $cleanup ) {
+			wp_unschedule_event( $cleanup, self::CLEANUP_HOOK );
+		}
 	}
 }

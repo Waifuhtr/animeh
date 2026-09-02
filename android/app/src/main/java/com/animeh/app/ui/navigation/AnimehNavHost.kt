@@ -51,6 +51,19 @@ fun AnimehApp(
         currentRoute?.hierarchy?.any { it.route == destination.route } == true
     }
 
+    // Switching to a tab, rather than stacking another copy of it. Shared with
+    // the rails' "see all", so that lands on the tab it belongs to with the
+    // bottom bar intact instead of on a dead-end screen.
+    val switchTab: (String) -> Unit = { route ->
+        navController.navigate(route) {
+            popUpTo(navController.graph.findStartDestination().id) {
+                saveState = true
+            }
+            launchSingleTop = true
+            restoreState = true
+        }
+    }
+
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
@@ -60,17 +73,9 @@ fun AnimehApp(
 
                         NavigationBarItem(
                             selected = selected,
-                            onClick = {
-                                navController.navigate(destination.route) {
-                                    // Re-selecting a tab returns to its root
-                                    // rather than stacking another copy.
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
+                            // Re-selecting a tab returns to its root rather
+                            // than stacking another copy.
+                            onClick = { switchTab(destination.route) },
                             icon = {
                                 Icon(
                                     if (selected) destination.selectedIcon else destination.icon,
@@ -105,7 +110,7 @@ fun AnimehApp(
                 HomeScreen(
                     onWorkClick = { navController.navigate(Routes.detail(it.id)) },
                     onEpisodeClick = openPlayer,
-                    onSeeAll = { navController.navigate(Routes.search()) },
+                    onSeeAll = { switchTab(Routes.DISCOVER) },
                 )
             }
 

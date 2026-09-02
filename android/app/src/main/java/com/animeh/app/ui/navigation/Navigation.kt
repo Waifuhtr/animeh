@@ -30,10 +30,10 @@ object Routes {
     const val DETAIL = "$DETAIL_BASE/{workId}"
     fun detail(workId: Long) = "$DETAIL_BASE/$workId"
 
-    private const val SEARCH_BASE = "search"
-    const val SEARCH = "$SEARCH_BASE?query={query}&genre={genre}"
-    fun search(query: String = "", genre: String = "") =
-        "$SEARCH_BASE?query=${query.encode()}&genre=${genre.encode()}"
+    // Browsing and filtering live on the Discover tab, which is a top-level
+    // destination. There was a `search?query=…&genre=…` route here that no
+    // NavHost entry ever registered, so navigating to it threw rather than
+    // opening anything.
 
     // Admin.
     const val ADMIN = "admin"
@@ -55,9 +55,6 @@ object Routes {
     private const val ADMIN_EPISODE_BASE = "admin/episode"
     const val ADMIN_EPISODE_EDIT = "$ADMIN_EPISODE_BASE/{workId}/{episodeId}"
     fun adminEpisode(workId: Long, episodeId: Long) = "$ADMIN_EPISODE_BASE/$workId/$episodeId"
-
-    private fun String.encode(): String =
-        java.net.URLEncoder.encode(this, Charsets.UTF_8.name())
 }
 
 /**

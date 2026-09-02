@@ -41,6 +41,25 @@ class LibraryRepository @Inject constructor(
     fun isInWatchlist(workId: Long): Flow<Boolean> =
         libraryDao.isInList(workId, LIST_WATCHLIST).map { it > 0 }
 
+    /**
+     * A list as the screen should render it, read from the local table.
+     *
+     * The library screen renders this rather than the last network response,
+     * which is what makes a title favourited on the detail screen appear here
+     * at once: [setInList] writes the row, and Room re-emits. Reading the
+     * network answer instead meant the list only changed on the next cold
+     * start, because the screen's model outlives a tab switch.
+     */
+    fun observe(list: String): Flow<List<Work>> =
+        libraryDao.workIds(list).map { ids ->
+            // The ids carry the order (most recently added first); `byIds`
+            // does not, so it is reapplied here.
+            val order = ids.withIndex().associate { (index, id) -> id to index }
+            workDao.byIds(ids)
+                .map { it.toDomain() }
+                .sortedBy { order[it.id] ?: Int.MAX_VALUE }
+        }
+
     suspend fun list(list: String, page: Int = 1): AppResult<List<Work>> {
         val result = ApiErrorMapper.call({ dto -> dto.items.map { it.toDomain() } }) {
             userApi.library(list, page)

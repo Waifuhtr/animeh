@@ -39,6 +39,12 @@ object NetworkModule {
         isLenient = true
         coerceInputValues = true
         explicitNulls = false
+        // Without this a field holding its default value is left out of the
+        // body entirely, so uploading episode 1 omitted `episode` and the
+        // server refused the request as a missing parameter. Optional fields
+        // stay omitted regardless: they are nullable and hold null, which
+        // `explicitNulls = false` drops.
+        encodeDefaults = true
     }
 
     @Provides

@@ -355,6 +355,9 @@ final class CatalogController {
 				'resume'    => null === $progress ? null : array(
 					'position_seconds' => (int) $progress['position_seconds'],
 					'duration_seconds' => (int) $progress['duration_seconds'],
+					// Sent so the player carries on counting from where it left
+					// off rather than demanding the threshold again in one go.
+					'watched_seconds'  => (int) ( $progress['watched_seconds'] ?? 0 ),
 					'completed'        => (bool) $progress['completed'],
 				),
 			)
@@ -579,6 +582,7 @@ final class CatalogController {
 			'thumbnail_url'    => (string) ( $row['thumbnail_url'] ?? '' ),
 			'position_seconds' => (int) $row['position_seconds'],
 			'duration_seconds' => (int) $row['duration_seconds'],
+			'watched_seconds'  => (int) ( $row['watched_seconds'] ?? 0 ),
 			'completed'        => (bool) $row['completed'],
 			'updated_at'       => (string) $row['updated_at'],
 		);

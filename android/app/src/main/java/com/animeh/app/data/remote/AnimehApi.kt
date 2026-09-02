@@ -1,6 +1,7 @@
 package com.animeh.app.data.remote
 
 import com.animeh.app.data.remote.dto.*
+import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
 
@@ -63,6 +64,19 @@ interface PublicApi {
 
     @GET("announcements")
     suspend fun announcements(): Response<AnnouncementListDto>
+
+    /** The labels the catalog's stored values are shown under. */
+    @GET("terms")
+    suspend fun terms(): Response<TermsDto>
+
+    /** Reviews are readable signed out; only writing needs an account. */
+    @GET("works/{id}/reviews")
+    suspend fun reviews(
+        @Path("id") workId: Long,
+        @Query("page") page: Int = 1,
+        @Query("per_page") perPage: Int = 20,
+        @Query("sort") sort: String = "useful",
+    ): Response<ReviewListDto>
 }
 
 interface UserApi {
@@ -124,6 +138,28 @@ interface UserApi {
 
     @GET("episodes/{id}/play")
     suspend fun play(@Path("id") episodeId: Long): Response<PlaybackDto>
+
+    @POST("works/{id}/reviews")
+    suspend fun saveReview(
+        @Path("id") workId: Long,
+        @Body body: ReviewRequest,
+    ): Response<ReviewEnvelopeDto>
+
+    @DELETE("reviews/{id}")
+    suspend fun deleteReview(@Path("id") reviewId: Long): Response<OkDto>
+
+    @POST("reviews/{id}/vote")
+    suspend fun voteReview(
+        @Path("id") reviewId: Long,
+        @Body body: VoteRequest,
+    ): Response<ReviewEnvelopeDto>
+
+    /**
+     * The picture goes up as the raw bytes rather than multipart: there is one
+     * file and the phone already holds it.
+     */
+    @POST("me/avatar")
+    suspend fun uploadAvatar(@Body body: RequestBody): Response<AvatarDto>
 }
 
 interface AdminApi {
@@ -233,4 +269,11 @@ interface AdminApi {
 
     @POST("storage/uploads/abort")
     suspend fun abortUpload(@Body body: Map<String, String>): Response<UploadAbortedDto>
+
+    /** Every vocabulary value the catalog uses, with its label if it has one. */
+    @GET("admin/terms")
+    suspend fun terms(): Response<AdminTermListDto>
+
+    @POST("admin/terms")
+    suspend fun saveTerm(@Body body: AdminTermRequest): Response<OkDto>
 }

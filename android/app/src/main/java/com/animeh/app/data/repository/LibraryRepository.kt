@@ -9,6 +9,7 @@ import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.UserApi
 import com.animeh.app.data.remote.dto.ProgressRequest
 import com.animeh.app.domain.*
+import com.animeh.app.player.WatchProgress
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -129,11 +130,17 @@ class LibraryRepository @Inject constructor(
         workId: Long,
         positionSeconds: Int,
         durationSeconds: Int,
+        watchedSeconds: Int = 0,
     ) {
-        val completed = durationSeconds > 0 &&
-            positionSeconds >= (durationSeconds * COMPLETE_RATIO).toInt()
-
         val existing = progressDao.byEpisode(episodeId)
+
+        // Only ever grows, matching the server: a report that arrives out of
+        // order must not take away time already earned.
+        val watched = maxOf(watchedSeconds, existing?.watchedSeconds ?: 0)
+
+        // Decided from time played, never from the playhead — dragging to the
+        // credits moves the position without watching any of it.
+        val completed = WatchProgress.isComplete(watched, durationSeconds)
 
         progressDao.upsert(
             ProgressEntity(
@@ -141,6 +148,7 @@ class LibraryRepository @Inject constructor(
                 workId = workId,
                 positionSeconds = positionSeconds,
                 durationSeconds = durationSeconds,
+                watchedSeconds = watched,
                 // Sticky, matching the server: finishing an episode and then
                 // scrubbing back must not mark it unwatched.
                 completed = completed || (existing?.completed == true),
@@ -150,7 +158,9 @@ class LibraryRepository @Inject constructor(
         )
 
         val pushed = ApiErrorMapper.call({ Unit }) {
-            userApi.recordProgress(ProgressRequest(episodeId, positionSeconds, durationSeconds))
+            userApi.recordProgress(
+                ProgressRequest(episodeId, positionSeconds, durationSeconds, watched)
+            )
         }
 
         if (pushed is AppResult.Success) {
@@ -165,7 +175,12 @@ class LibraryRepository @Inject constructor(
         for (entry in progressDao.unsynced()) {
             val result = ApiErrorMapper.call({ Unit }) {
                 userApi.recordProgress(
-                    ProgressRequest(entry.episodeId, entry.positionSeconds, entry.durationSeconds)
+                    ProgressRequest(
+                        entry.episodeId,
+                        entry.positionSeconds,
+                        entry.durationSeconds,
+                        entry.watchedSeconds,
+                    )
                 )
             }
 
@@ -198,6 +213,5 @@ class LibraryRepository @Inject constructor(
     companion object {
         const val LIST_FAVORITE = "favorite"
         const val LIST_WATCHLIST = "watchlist"
-        private const val COMPLETE_RATIO = 0.9
     }
 }

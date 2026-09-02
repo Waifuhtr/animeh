@@ -80,6 +80,8 @@ data class SourceCountsDto(
 data class ProgressDto(
     @SerialName("position_seconds") val positionSeconds: Int = 0,
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
+    /** Seconds genuinely played, which the player resumes counting from. */
+    @SerialName("watched_seconds") val watchedSeconds: Int = 0,
     @Serializable(with = LenientBoolean::class) val completed: Boolean = false,
 )
 
@@ -119,6 +121,7 @@ data class HistoryDto(
     @SerialName("thumbnail_url") val thumbnailUrl: String = "",
     @SerialName("position_seconds") val positionSeconds: Int = 0,
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
+    @SerialName("watched_seconds") val watchedSeconds: Int = 0,
     @Serializable(with = LenientBoolean::class) val completed: Boolean = false,
     @SerialName("updated_at") val updatedAt: String = "",
 )

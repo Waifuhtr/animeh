@@ -76,6 +76,7 @@ data class ProgressEntity(
     val workId: Long,
     val positionSeconds: Int,
     val durationSeconds: Int,
+    val watchedSeconds: Int = 0,
     val completed: Boolean,
     val updatedAt: Long,
     val synced: Boolean = false,

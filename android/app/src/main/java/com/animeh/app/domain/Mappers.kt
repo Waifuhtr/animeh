@@ -58,7 +58,8 @@ fun EpisodeDto.toDomain(): Episode = Episode(
     subtitleSourceCount = sourceCounts?.subtitle ?: 0,
 )
 
-fun ProgressDto.toDomain(): Progress = Progress(positionSeconds, durationSeconds, completed)
+fun ProgressDto.toDomain(): Progress =
+    Progress(positionSeconds, durationSeconds, watchedSeconds, completed)
 
 fun HistoryDto.toDomain(): ContinueItem = ContinueItem(
     workId = workId,
@@ -70,7 +71,7 @@ fun HistoryDto.toDomain(): ContinueItem = ContinueItem(
     seasonNumber = seasonNumber,
     episodeTitle = episodeTitle,
     thumbnailUrl = thumbnailUrl.ifBlank { posterUrl },
-    progress = Progress(positionSeconds, durationSeconds, completed),
+    progress = Progress(positionSeconds, durationSeconds, watchedSeconds, completed),
 )
 
 fun HomeDto.toDomain(): HomeFeed = HomeFeed(
@@ -184,7 +185,8 @@ fun EpisodeEntity.toDomain(progress: Progress? = null): Episode = Episode(
     progress = progress,
 )
 
-fun ProgressEntity.toDomain(): Progress = Progress(positionSeconds, durationSeconds, completed)
+fun ProgressEntity.toDomain(): Progress =
+    Progress(positionSeconds, durationSeconds, watchedSeconds, completed)
 
 fun libraryKey(workId: Long, list: String): String = "$list:$workId"
 

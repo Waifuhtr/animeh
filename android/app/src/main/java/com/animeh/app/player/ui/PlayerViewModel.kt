@@ -48,9 +48,15 @@ class PlayerViewModel @Inject constructor(
     init {
         controller.attach(viewModelScope)
 
-        controller.onProgress = { position, duration ->
+        controller.onProgress = { position, duration, watched ->
             viewModelScope.launch {
-                libraryRepository.recordProgress(currentEpisodeId, currentWorkId, position, duration)
+                libraryRepository.recordProgress(
+                    currentEpisodeId,
+                    currentWorkId,
+                    position,
+                    duration,
+                    watched,
+                )
             }
         }
 
@@ -90,6 +96,13 @@ class PlayerViewModel @Inject constructor(
                         else -> 0
                     }
 
+                    // Whichever side has seen more of the episode: the phone
+                    // may hold time the server has not been told about yet.
+                    val watched = maxOf(
+                        local?.watchedSeconds ?: 0,
+                        playback.resume?.watchedSeconds ?: 0,
+                    )
+
                     controller.load(
                         source = playback,
                         preferredQuality = qualityFrom(settings.defaultQuality),
@@ -99,6 +112,7 @@ class PlayerViewModel @Inject constructor(
                         autoplayNext = settings.autoplayNext,
                         speed = settings.playbackSpeed,
                         startPositionSeconds = resume,
+                        alreadyWatchedSeconds = watched,
                     )
                 }
 

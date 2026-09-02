@@ -81,6 +81,8 @@ data class Episode(
 data class Progress(
     val positionSeconds: Int,
     val durationSeconds: Int,
+    /** Seconds genuinely played, which is what decides completion. */
+    val watchedSeconds: Int = 0,
     val completed: Boolean,
 ) {
     /** 0f..1f, or 0f when the length is unknown. */

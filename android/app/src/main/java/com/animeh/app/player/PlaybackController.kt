@@ -95,7 +95,18 @@ class PlaybackController @Inject constructor(
     private var bufferingSince = 0L
 
     /** Called when a position should be persisted. Set by the ViewModel. */
-    var onProgress: ((positionSeconds: Int, durationSeconds: Int) -> Unit)? = null
+    var onProgress: ((positionSeconds: Int, durationSeconds: Int, watchedSeconds: Int) -> Unit)? = null
+
+    /**
+     * Milliseconds of this episode genuinely played, seeks excluded.
+     *
+     * Seeded from what the server already knows when an episode opens, so the
+     * total keeps growing across sessions instead of restarting each time.
+     */
+    private var watchedMs: Long = 0L
+
+    /** Where the last tick found the playhead, for measuring the step. */
+    private var lastTickMs: Long = -1L
 
     /** Called when the episode finishes and autoplay should advance. */
     var onCompleted: (() -> Unit)? = null
@@ -167,12 +178,19 @@ class PlaybackController @Inject constructor(
         autoplayNext: Boolean,
         speed: Float,
         startPositionSeconds: Int,
+        alreadyWatchedSeconds: Int = 0,
     ) {
         playback = source
         addressIndex = 0
         retryAttempt = 0
         sawFirstFrame = false
         preparedAt = System.currentTimeMillis()
+
+        // Continue the count rather than restarting it: someone who watched
+        // half an episode yesterday should finish it today, not have to watch
+        // seventy percent again in one sitting.
+        watchedMs = alreadyWatchedSeconds.coerceAtLeast(0) * 1000L
+        lastTickMs = -1L
 
         val heights = QualityPolicy.availableHeights(source.videos)
         val connection = networkMonitor.current()
@@ -528,6 +546,20 @@ class PlaybackController @Inject constructor(
 
                 maybeSwitchQuality(buffered - position, bandwidth)
 
+                // Count watched time on the tick rather than at save time: a
+                // 500ms window is tight enough to tell playback from a drag of
+                // the scrubber, which ten seconds is not.
+                if (_state.value.phase.isPlaying) {
+                    if (lastTickMs >= 0L) {
+                        watchedMs = WatchProgress.accumulateMs(watchedMs, lastTickMs, position)
+                    }
+                    lastTickMs = position
+                } else {
+                    // Paused: the next step would span the whole pause, which
+                    // is not watching. Start measuring again on resume.
+                    lastTickMs = -1L
+                }
+
                 sinceSave += TICK_MS
                 if (sinceSave >= SAVE_INTERVAL_MS && _state.value.phase.isPlaying) {
                     sinceSave = 0
@@ -588,7 +620,7 @@ class PlaybackController @Inject constructor(
         val position = current.positionSeconds
         if (position <= 0) return
 
-        onProgress?.invoke(position, current.durationSeconds)
+        onProgress?.invoke(position, current.durationSeconds, (watchedMs / 1000).toInt())
     }
 
     private fun scheduleControlsHide() {

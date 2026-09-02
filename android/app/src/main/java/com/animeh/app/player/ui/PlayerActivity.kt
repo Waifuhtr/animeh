@@ -2,6 +2,7 @@ package com.animeh.app.player.ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
@@ -47,6 +48,12 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // Episodes are wider than they are tall, so the player opens turned.
+        // SENSOR_LANDSCAPE rather than LANDSCAPE so it still follows which way
+        // up the phone is held, and the viewer can rotate back to portrait with
+        // the button in the controls.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
 
         // The system's screen timeout does not know an episode is playing.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

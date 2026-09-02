@@ -38,6 +38,8 @@ data class UserStatsDto(
     @SerialName("episodes_completed") val episodesCompleted: Int = 0,
     @SerialName("seconds_watched") val secondsWatched: Long = 0,
     @SerialName("works_started") val worksStarted: Int = 0,
+    /** Series where every published episode has been watched through. */
+    @SerialName("works_completed") val worksCompleted: Int = 0,
     val favorites: Int = 0,
 )
 
@@ -103,6 +105,12 @@ data class ProgressRequest(
     @SerialName("episode_id") val episodeId: Long,
     @SerialName("position_seconds") val positionSeconds: Int,
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
+    /**
+     * Seconds actually played, which is what decides whether the episode
+     * counts. The position alone cannot: dragging to the credits sets it
+     * without any of the episode having been seen.
+     */
+    @SerialName("watched_seconds") val watchedSeconds: Int = 0,
 )
 
 @Serializable

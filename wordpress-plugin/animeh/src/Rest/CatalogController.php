@@ -541,6 +541,9 @@ final class CatalogController {
 			'title'            => (string) $episode['title'],
 			'synopsis'         => (string) $episode['synopsis'],
 			'thumbnail_url'    => (string) $episode['thumbnail_url'],
+			// What to draw when the episode has no image of its own; absent
+			// from queries that do not join the work, hence the fallback.
+			'work_poster'      => (string) ( $episode['work_poster'] ?? '' ),
 			'duration_seconds' => (int) $episode['duration_seconds'],
 			'filler'           => (bool) $episode['filler'],
 			'published'        => (bool) $episode['published'],

@@ -145,6 +145,14 @@ final class UserDataRepository {
 	 * @param int $limit   How many works.
 	 * @return array<int, array<string, mixed>>
 	 */
+	/**
+	 * Being counted as watched no longer hides a row from this list.
+	 *
+	 * Completion is seventy percent, so an episode can be "watched" with
+	 * minutes still to go, and excluding those is what emptied the rail for
+	 * someone who had been watching all evening. What does exclude a row is
+	 * sitting at the very end, where there is nothing to continue into.
+	 */
 	public function continue_watching( int $user_id, int $limit = 20 ): array {
 		global $wpdb;
 
@@ -162,10 +170,15 @@ final class UserDataRepository {
 				 INNER JOIN (
 					SELECT work_id, MAX(updated_at) AS latest
 					FROM {$history}
-					WHERE user_id = %d AND completed = 0 AND position_seconds > 30
+					WHERE user_id = %d
+					  AND position_seconds > 30
+					  AND (duration_seconds = 0 OR position_seconds < duration_seconds - 45)
 					GROUP BY work_id
 				 ) newest ON newest.work_id = h.work_id AND newest.latest = h.updated_at
-				 WHERE h.user_id = %d AND h.completed = 0 AND w.published = 1
+				 WHERE h.user_id = %d
+				   AND h.position_seconds > 30
+				   AND (h.duration_seconds = 0 OR h.position_seconds < h.duration_seconds - 45)
+				   AND w.published = 1
 				 ORDER BY h.updated_at DESC
 				 LIMIT %d",
 				$user_id,

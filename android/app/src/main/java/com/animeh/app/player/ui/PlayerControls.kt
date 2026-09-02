@@ -173,17 +173,24 @@ fun PlayerControls(
         }
 
         when (val phase = state.phase) {
+            // Buffering and preparing are drawn by the centre control itself,
+            // which swaps to a spinner; a second one over the top was the
+            // overlap. Only states the controls cannot express land here.
             is PlaybackPhase.Buffering, is PlaybackPhase.Preparing ->
-                LoadingIndicator(
-                    label = stringResource(R.string.player_buffering),
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                if (!state.controlsVisible) {
+                    LoadingIndicator(
+                        label = stringResource(R.string.player_buffering),
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
 
             is PlaybackPhase.Reconnecting ->
-                LoadingIndicator(
-                    label = stringResource(R.string.player_reconnecting) + " (${phase.attempt})",
-                    modifier = Modifier.align(Alignment.Center),
-                )
+                if (!state.controlsVisible) {
+                    LoadingIndicator(
+                        label = stringResource(R.string.player_reconnecting) + " (${phase.attempt})",
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
 
             is PlaybackPhase.Failed ->
                 PlayerErrorPanel(
@@ -282,21 +289,38 @@ private fun CenterControls(
             )
         }
 
-        // The only control that pauses.
-        FilledIconButton(
-            onClick = onPlayPause,
-            modifier = Modifier.size(72.dp),
-            shape = CircleShape,
-            colors = IconButtonDefaults.filledIconButtonColors(containerColor = AccentPrimary),
-        ) {
-            Icon(
-                imageVector = if (state.phase.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                contentDescription = stringResource(
-                    if (state.phase.isPlaying) R.string.player_pause else R.string.player_play
-                ),
-                tint = Color.White,
-                modifier = Modifier.size(38.dp),
-            )
+        // While the episode is being fetched the spinner stands in the button's
+        // place rather than on top of it: there is nothing to play yet, so
+        // offering the control and covering it at once was the worst of both.
+        val busy = state.phase is PlaybackPhase.Preparing ||
+            state.phase is PlaybackPhase.Buffering ||
+            state.phase is PlaybackPhase.Reconnecting
+
+        if (busy) {
+            Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(
+                    color = AccentPrimary,
+                    strokeWidth = 3.dp,
+                    modifier = Modifier.size(46.dp),
+                )
+            }
+        } else {
+            // The only control that pauses.
+            FilledIconButton(
+                onClick = onPlayPause,
+                modifier = Modifier.size(72.dp),
+                shape = CircleShape,
+                colors = IconButtonDefaults.filledIconButtonColors(containerColor = AccentPrimary),
+            ) {
+                Icon(
+                    imageVector = if (state.phase.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                    contentDescription = stringResource(
+                        if (state.phase.isPlaying) R.string.player_pause else R.string.player_play
+                    ),
+                    tint = Color.White,
+                    modifier = Modifier.size(38.dp),
+                )
+            }
         }
 
         IconButton(onClick = { onSeekBy(10_000L) }, modifier = Modifier.size(48.dp)) {

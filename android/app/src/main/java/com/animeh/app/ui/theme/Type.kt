@@ -4,6 +4,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.sp
 
@@ -17,25 +18,46 @@ import androidx.compose.ui.unit.sp
  */
 private val Sans = FontFamily.Default
 
+/**
+ * One style, with the line box left alone.
+ *
+ * Compose trims the top of the first line and the bottom of the last down to
+ * the line height by default. With line heights this tight that cuts the dot
+ * off Turkish İ — which is exactly the "İzle" on the slider's own button — and
+ * would do the same to Ğ and to Japanese glyphs that sit taller than Latin.
+ * `Trim.None` keeps the font's own ascent and descent, and the line heights
+ * below are a little looser so the extra headroom has somewhere to go.
+ */
+private fun style(weight: FontWeight, size: Int, line: Int) = TextStyle(
+    fontFamily = Sans,
+    fontWeight = weight,
+    fontSize = size.sp,
+    lineHeight = line.sp,
+    lineHeightStyle = LineHeightStyle(
+        alignment = LineHeightStyle.Alignment.Center,
+        trim = LineHeightStyle.Trim.None,
+    ),
+)
+
 val AnimehTypography = Typography(
-    displayLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 34.sp, lineHeight = 40.sp),
-    displayMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 28.sp, lineHeight = 34.sp),
+    displayLarge = style(FontWeight.Bold, 34, 42),
+    displayMedium = style(FontWeight.Bold, 28, 36),
 
-    headlineLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Bold, fontSize = 24.sp, lineHeight = 30.sp),
-    headlineMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 20.sp, lineHeight = 26.sp),
-    headlineSmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 18.sp, lineHeight = 24.sp),
+    headlineLarge = style(FontWeight.Bold, 24, 32),
+    headlineMedium = style(FontWeight.SemiBold, 20, 28),
+    headlineSmall = style(FontWeight.SemiBold, 18, 26),
 
-    titleLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 17.sp, lineHeight = 22.sp),
-    titleMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 15.sp, lineHeight = 20.sp),
-    titleSmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 13.sp, lineHeight = 18.sp),
+    titleLarge = style(FontWeight.SemiBold, 17, 24),
+    titleMedium = style(FontWeight.SemiBold, 15, 22),
+    titleSmall = style(FontWeight.Medium, 13, 20),
 
-    bodyLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 15.sp, lineHeight = 22.sp),
-    bodyMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 13.sp, lineHeight = 19.sp),
-    bodySmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Normal, fontSize = 12.sp, lineHeight = 16.sp),
+    bodyLarge = style(FontWeight.Normal, 15, 23),
+    bodyMedium = style(FontWeight.Normal, 13, 20),
+    bodySmall = style(FontWeight.Normal, 12, 18),
 
-    labelLarge = TextStyle(fontFamily = Sans, fontWeight = FontWeight.SemiBold, fontSize = 14.sp, lineHeight = 18.sp),
-    labelMedium = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 12.sp, lineHeight = 16.sp),
-    labelSmall = TextStyle(fontFamily = Sans, fontWeight = FontWeight.Medium, fontSize = 11.sp, lineHeight = 14.sp),
+    labelLarge = style(FontWeight.SemiBold, 14, 20),
+    labelMedium = style(FontWeight.Medium, 12, 18),
+    labelSmall = style(FontWeight.Medium, 11, 16),
 )
 
 /** Two lines and an ellipsis: the shape every card title uses. */

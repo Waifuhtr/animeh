@@ -90,12 +90,25 @@ data class Progress(
         get() = if (durationSeconds <= 0) 0f
         else (positionSeconds.toFloat() / durationSeconds).coerceIn(0f, 1f)
 
-    /** Whether resuming is worth offering rather than starting over. */
-    val isResumable: Boolean get() = !completed && positionSeconds > RESUME_THRESHOLD_SECONDS
+    /**
+     * Whether resuming is worth offering rather than starting over.
+     *
+     * `completed` deliberately does not veto this. It now means "watched
+     * enough of it to count", which happens at seventy percent — someone who
+     * stopped at minute eighteen of twenty-four has passed that mark and still
+     * has six minutes left, and starting them over was the bug. What does veto
+     * it is being at the very end, where "continue" would just roll credits.
+     */
+    val isResumable: Boolean
+        get() = positionSeconds > RESUME_THRESHOLD_SECONDS &&
+            (durationSeconds <= 0 || positionSeconds < durationSeconds - END_MARGIN_SECONDS)
 
     companion object {
         /** Below this, "continue" would drop the viewer back at the start anyway. */
         const val RESUME_THRESHOLD_SECONDS = 30
+
+        /** This close to the end there is nothing left to continue into. */
+        const val END_MARGIN_SECONDS = 45
     }
 }
 

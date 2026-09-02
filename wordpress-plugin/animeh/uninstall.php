@@ -43,6 +43,7 @@ delete_option( 'animeh_settings' );
 delete_option( 'animeh_storage' );
 delete_option( 'animeh_snapshot_status' );
 delete_option( 'animeh_migration_handoff' );
+delete_option( 'animeh_registration_open' );
 delete_option( 'animeh_tenrai' );
 delete_option( 'animeh_catalog_version' );
 

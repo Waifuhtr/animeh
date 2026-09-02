@@ -120,7 +120,7 @@ private fun ContinueRow(item: ContinueItem, onClick: () -> Unit) {
         headlineContent = { Text(item.workTitle) },
         supportingContent = {
             Column {
-                Text("${'$'}{item.seasonNumber}. Sezon · ${'$'}{item.episodeNumber}. Bölüm")
+                Text("${item.seasonNumber}. Sezon · ${item.episodeNumber}. Bölüm")
                 Spacer(Modifier.height(6.dp))
                 LinearProgressIndicator(
                     progress = { item.progress.fraction },

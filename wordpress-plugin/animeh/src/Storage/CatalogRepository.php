@@ -342,10 +342,21 @@ final class CatalogRepository {
 		}
 
 		$table  = CatalogSchema::episodes();
-		$clause = 'WHERE ' . implode( ' AND ', $where );
+		$works  = CatalogSchema::works();
+		$clause = 'WHERE ' . implode( ' AND ', array_map( static fn( string $c ): string => 'e.' . $c, $where ) );
 
+		// The work's poster comes along so an episode with no thumbnail of its
+		// own still has something to draw. Most imports carry no per-episode
+		// image, and a list of empty grey boxes is what that looked like.
 		$rows = $wpdb->get_results(
-			$wpdb->prepare( "SELECT * FROM {$table} {$clause} ORDER BY season_number ASC, number ASC", $params ), // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT e.*, w.poster_url AS work_poster
+				 FROM {$table} e
+				 LEFT JOIN {$works} w ON w.id = e.work_id
+				 {$clause}
+				 ORDER BY e.season_number ASC, e.number ASC",
+				$params
+			),
 			ARRAY_A
 		);
 

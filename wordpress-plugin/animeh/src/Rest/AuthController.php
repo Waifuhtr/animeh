@@ -172,7 +172,14 @@ final class AuthController {
 	 * @return true|WP_Error
 	 */
 	public function registration_open() {
-		if ( (bool) get_option( 'users_can_register' ) ) {
+		// The app's own switch, separate from WordPress's `users_can_register`.
+		// That option also opens wp-login.php's form to the whole web, which is
+		// a bigger thing to turn on than "let people sign up in the app" —
+		// tying the two together would have made the smaller request carry the
+		// larger consequence. Either being on is enough.
+		$app_open = (bool) get_option( self::REGISTRATION_OPTION, true );
+
+		if ( $app_open || (bool) get_option( 'users_can_register' ) ) {
 			return true;
 		}
 
@@ -434,6 +441,12 @@ final class AuthController {
 	 * User meta holding the key of an uploaded profile picture.
 	 */
 	public const AVATAR_META = 'animeh_avatar_key';
+
+	/**
+	 * Whether the app accepts sign-ups. On by default: an app whose whole
+	 * point is per-user history and libraries is not much use without them.
+	 */
+	public const REGISTRATION_OPTION = 'animeh_registration_open';
 
 	/**
 	 * A user's picture: their own upload, else Gravatar.

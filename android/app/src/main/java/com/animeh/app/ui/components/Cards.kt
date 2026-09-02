@@ -57,18 +57,21 @@ fun WorkCard(
                     .background(SurfaceCard),
             )
 
-            // The status reads as a word in the top right, where the score used
-            // to sit: "is this finished" is the question someone scanning a
-            // shelf is actually asking, and a coloured dot never answered it.
+            // The status reads as a word in the top right: "is this finished"
+            // is the question someone scanning a shelf is actually asking, and
+            // a coloured dot never answered it.
             StatusTag(
                 status = work.status,
                 modifier = Modifier.align(Alignment.TopEnd).padding(6.dp),
             )
 
+            // Opposite corner rather than the other end of the same edge: on a
+            // 120dp poster the two do not both fit across the top, and side by
+            // side they overlapped.
             if (work.hasScore) {
                 ScoreBadge(
                     score = work.score,
-                    modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
+                    modifier = Modifier.align(Alignment.BottomStart).padding(6.dp),
                 )
             }
         }

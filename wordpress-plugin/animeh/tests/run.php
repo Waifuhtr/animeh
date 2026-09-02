@@ -32,6 +32,7 @@ require_once __DIR__ . '/../src/Support/ApiToken.php';
 require_once __DIR__ . '/../src/Support/RateLimit.php';
 require_once __DIR__ . '/../src/Support/TenraiMapper.php';
 require_once __DIR__ . '/../src/Support/WatchProgress.php';
+require_once __DIR__ . '/../src/Support/TmdbMapper.php';
 
 /**
  * Collected results.

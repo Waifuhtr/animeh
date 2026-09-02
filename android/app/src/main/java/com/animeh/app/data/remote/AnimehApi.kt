@@ -77,6 +77,16 @@ interface PublicApi {
         @Query("per_page") perPage: Int = 20,
         @Query("sort") sort: String = "useful",
     ): Response<ReviewListDto>
+
+    /**
+     * Where the backend says clients should be talking to it.
+     *
+     * Asked on the way past rather than configured: when the site moves, the
+     * old install answers this with the new address once, and every phone
+     * follows without anyone typing anything.
+     */
+    @GET("config")
+    suspend fun clientConfig(): Response<ClientConfigDto>
 }
 
 interface UserApi {
@@ -153,6 +163,12 @@ interface UserApi {
         @Path("id") reviewId: Long,
         @Body body: VoteRequest,
     ): Response<ReviewEnvelopeDto>
+
+    @POST("reviews/{id}/report")
+    suspend fun reportReview(
+        @Path("id") reviewId: Long,
+        @Body body: ReportRequest,
+    ): Response<ReportResultDto>
 
     /**
      * The picture goes up as the raw bytes rather than multipart: there is one
@@ -276,4 +292,52 @@ interface AdminApi {
 
     @POST("admin/terms")
     suspend fun saveTerm(@Body body: AdminTermRequest): Response<OkDto>
+
+    @GET("admin/tmdb/settings")
+    suspend fun tmdbSettings(): Response<TmdbSettingsEnvelopeDto>
+
+    @POST("admin/tmdb/settings")
+    suspend fun saveTmdbSettings(@Body body: TmdbSettingsRequest): Response<TmdbSettingsEnvelopeDto>
+
+    @GET("admin/tmdb/search")
+    suspend fun tmdbSearch(
+        @Query("q") query: String,
+        @Query("year") year: Int = 0,
+    ): Response<TmdbSearchDto>
+
+    @POST("admin/tmdb/artwork")
+    suspend fun tmdbArtwork(@Body body: TmdbArtworkRequest): Response<TmdbArtworkResultDto>
+
+    @GET("admin/reports")
+    suspend fun reports(@Query("status") status: String = "open"): Response<ReportListDto>
+
+    @POST("admin/reports/{id}")
+    suspend fun handleReport(
+        @Path("id") reportId: Long,
+        @Body body: ReportActionRequest,
+    ): Response<ReportHandledDto>
+
+    @POST("admin/users/{id}/ban")
+    suspend fun banUser(
+        @Path("id") userId: Long,
+        @Body body: BanRequest,
+    ): Response<AdminUserEnvelopeDto>
+
+    @DELETE("admin/users/{id}/ban")
+    suspend fun liftBan(@Path("id") userId: Long): Response<AdminUserEnvelopeDto>
+
+    @GET("admin/moderators")
+    suspend fun moderators(): Response<ModeratorListDto>
+
+    @POST("admin/moderators")
+    suspend fun addModerator(@Body body: ModeratorRequest): Response<AdminUserEnvelopeDto>
+
+    @DELETE("admin/moderators/{id}")
+    suspend fun removeModerator(@Path("id") userId: Long): Response<OkDto>
+
+    @GET("admin/client-config")
+    suspend fun clientConfig(): Response<AdminClientConfigDto>
+
+    @POST("admin/client-config")
+    suspend fun saveClientConfig(@Body body: AdminClientConfigRequest): Response<AdminClientConfigDto>
 }

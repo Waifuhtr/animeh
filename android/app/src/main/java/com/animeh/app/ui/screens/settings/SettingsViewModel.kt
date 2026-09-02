@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.animeh.app.core.AppResult
 import com.animeh.app.data.prefs.LocalSettings
+import com.animeh.app.data.prefs.isAdmin
 import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.remote.UserApi
 import com.animeh.app.data.remote.dto.AppSettingsDto
@@ -29,6 +30,18 @@ class SettingsViewModel @Inject constructor(
 
     val apiBase: StateFlow<String> = settingsStore.apiBase
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), "")
+
+    /**
+     * Whether to draw the server address at all.
+     *
+     * Hidden from everyone else because it is not a preference: for a reader
+     * it is a field that can only break the app, and it moves on its own when
+     * the backend does. The field is still the escape hatch for whoever runs
+     * the site, which is why it is hidden rather than removed.
+     */
+    val canSeeServer: StateFlow<Boolean> = authRepository.authState
+        .map { it.isAdmin }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
 
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()

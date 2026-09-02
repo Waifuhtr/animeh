@@ -4,6 +4,7 @@ import com.animeh.app.core.AppResult
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.UserApi
+import com.animeh.app.data.remote.dto.ReportRequest
 import com.animeh.app.data.remote.dto.ReviewDto
 import com.animeh.app.data.remote.dto.ReviewListDto
 import com.animeh.app.data.remote.dto.ReviewRequest
@@ -75,8 +76,27 @@ class CommunityRepository @Inject constructor(
     suspend fun vote(reviewId: Long, vote: Int): AppResult<ReviewDto?> =
         ApiErrorMapper.call({ it.review }) { userApi.voteReview(reviewId, VoteRequest(vote)) }
 
-    private companion object {
-        const val PER_PAGE = 20
+    /**
+     * Report a review to the moderators.
+     *
+     * [reason] is one of [REPORT_REASONS]; [note] carries the reporter's own
+     * words and the server insists on it for `other`.
+     */
+    suspend fun report(reviewId: Long, reason: String, note: String = ""): AppResult<Unit> =
+        ApiErrorMapper.call({ Unit }) {
+            userApi.reportReview(reviewId, ReportRequest(reason, note.trim()))
+        }
+
+    companion object {
+        /**
+         * The reasons offered, in the order they are shown.
+         *
+         * A closed list plus `other`: fixed reasons are countable, which is
+         * what makes "six people reported this for spam" mean something.
+         */
+        val REPORT_REASONS = listOf("spam", "spoiler", "abuse", "offtopic", "other")
+
+        private const val PER_PAGE = 20
     }
 }
 

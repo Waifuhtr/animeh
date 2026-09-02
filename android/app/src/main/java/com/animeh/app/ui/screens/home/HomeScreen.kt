@@ -188,6 +188,13 @@ private fun HeroCarousel(
  * darkened all over, so the text has solid colour behind it while the picture
  * still reads as a picture. A blanket scrim would cost the artwork and still
  * leave the longest titles hard to read.
+ *
+ * The text block carries the weight and the buttons do not, which is what
+ * keeps the row intact. A Column measures its unweighted children first and
+ * hands each of them only the space still unclaimed, so a title and synopsis
+ * that overran the card left the button row with nothing — the label was not
+ * clipped, it was measured out of existence. Weighted children are measured
+ * last, from what is left, so now it is the synopsis that gives way.
  */
 @Composable
 private fun HeroCard(
@@ -202,7 +209,7 @@ private fun HeroCard(
     Box(
         Modifier
             .fillMaxWidth()
-            .height(300.dp)
+            .height(340.dp)
             .clip(RoundedCornerShape(24.dp))
             .background(card)
             .clickable { onClick(work) },
@@ -250,39 +257,44 @@ private fun HeroCard(
 
             Spacer(Modifier.height(14.dp))
 
-            Text(
-                text = work.displayTitle,
-                style = MaterialTheme.typography.headlineMedium,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-            )
-
-            if (work.synopsis.isNotBlank()) {
-                Spacer(Modifier.height(10.dp))
+            Column(Modifier.weight(1f, fill = false)) {
                 Text(
-                    text = work.synopsis,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TextSecondary,
-                    maxLines = 3,
+                    text = work.displayTitle,
+                    style = MaterialTheme.typography.headlineMedium,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-            }
 
-            if (work.genres.isNotEmpty()) {
-                Spacer(Modifier.height(12.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    work.genres.take(3).forEach { genre ->
-                        Surface(
-                            color = SurfaceOverlay,
-                            shape = RoundedCornerShape(8.dp),
-                        ) {
-                            Text(
-                                labels.label("genre", genre),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = TextSecondary,
-                                maxLines = 1,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                            )
+                if (work.synopsis.isNotBlank()) {
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = work.synopsis,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextSecondary,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                if (work.genres.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        work.genres.take(3).forEach { genre ->
+                            Surface(
+                                color = SurfaceOverlay,
+                                shape = RoundedCornerShape(8.dp),
+                            ) {
+                                Text(
+                                    labels.label("genre", genre),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextSecondary,
+                                    maxLines = 1,
+                                    modifier = Modifier.padding(
+                                        horizontal = 10.dp,
+                                        vertical = 5.dp,
+                                    ),
+                                )
+                            }
                         }
                     }
                 }
@@ -295,10 +307,15 @@ private fun HeroCard(
                     onClick = { onClick(work) },
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(horizontal = 22.dp, vertical = 12.dp),
+                    modifier = Modifier.height(46.dp),
                 ) {
                     Icon(Icons.Filled.PlayArrow, null, Modifier.size(20.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.detail_play))
+                    Text(
+                        stringResource(R.string.detail_play),
+                        maxLines = 1,
+                        softWrap = false,
+                    )
                 }
 
                 Spacer(Modifier.width(10.dp))

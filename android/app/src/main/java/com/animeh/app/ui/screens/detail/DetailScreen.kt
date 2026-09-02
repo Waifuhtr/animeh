@@ -42,119 +42,138 @@ fun DetailScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    when (val workState = state.work) {
-        is UiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-            CircularProgressIndicator()
+    // A report's outcome is the one thing on this screen with nothing of its
+    // own to show for it: the list looks identical either way, so it has to
+    // be said out loud.
+    val snackbar = remember { SnackbarHostState() }
+    val messageText = state.messageText
+        ?: state.messageRes?.let { stringResource(it) }
+
+    LaunchedEffect(messageText) {
+        messageText?.let {
+            snackbar.showSnackbar(it)
+            viewModel.dismissMessage()
         }
+    }
 
-        is UiState.Error -> ErrorState(
-            error = workState.error,
-            onRetry = viewModel::load,
-            modifier = Modifier.fillMaxSize(),
-        )
+    Box(Modifier.fillMaxSize()) {
+        when (val workState = state.work) {
+            is UiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                CircularProgressIndicator()
+            }
 
-        is UiState.Empty -> EmptyState(stringResource(R.string.error_not_found))
+            is UiState.Error -> ErrorState(
+                error = workState.error,
+                onRetry = viewModel::load,
+                modifier = Modifier.fillMaxSize(),
+            )
 
-        is UiState.Success -> {
-            val work = workState.data
+            is UiState.Empty -> EmptyState(stringResource(R.string.error_not_found))
 
-            LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
-                item {
-                    DetailHeader(
-                        work = work,
-                        isFavorite = state.isFavorite,
-                        inWatchlist = state.inWatchlist,
-                        signedIn = signedIn,
-                        onBack = onBack,
-                        onFavorite = { if (signedIn) viewModel.toggleFavorite() else onSignIn() },
-                        onWatchlist = { if (signedIn) viewModel.toggleWatchlist() else onSignIn() },
-                        onPlay = {
-                            val episode = viewModel.nextEpisodeToPlay()
-                            when {
-                                episode == null -> Unit
-                                !signedIn -> onSignIn()
-                                else -> onPlayEpisode(episode.id)
-                            }
-                        },
-                    )
-                }
+            is UiState.Success -> {
+                val work = workState.data
 
-                if (state.fromCache) {
-                    item { OfflineBanner() }
-                }
-
-                if (work.synopsis.isNotBlank()) {
-                    item { Synopsis(work.synopsis) }
-                }
-
-                item { MetaGrid(work) }
-
-                if (work.seasons.size > 1) {
+                LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
                     item {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(work.seasons, key = { it.number }) { season ->
-                                FilterChip(
-                                    selected = state.selectedSeason == season.number,
-                                    onClick = { viewModel.selectSeason(season.number) },
-                                    label = {
-                                        Text(stringResource(R.string.detail_season, season.number))
-                                    },
-                                )
+                        DetailHeader(
+                            work = work,
+                            isFavorite = state.isFavorite,
+                            inWatchlist = state.inWatchlist,
+                            signedIn = signedIn,
+                            onBack = onBack,
+                            onFavorite = { if (signedIn) viewModel.toggleFavorite() else onSignIn() },
+                            onWatchlist = { if (signedIn) viewModel.toggleWatchlist() else onSignIn() },
+                            onPlay = {
+                                val episode = viewModel.nextEpisodeToPlay()
+                                when {
+                                    episode == null -> Unit
+                                    !signedIn -> onSignIn()
+                                    else -> onPlayEpisode(episode.id)
+                                }
+                            },
+                        )
+                    }
+
+                    if (state.fromCache) {
+                        item { OfflineBanner() }
+                    }
+
+                    if (work.synopsis.isNotBlank()) {
+                        item { Synopsis(work.synopsis) }
+                    }
+
+                    item { MetaGrid(work) }
+
+                    if (work.seasons.size > 1) {
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                items(work.seasons, key = { it.number }) { season ->
+                                    FilterChip(
+                                        selected = state.selectedSeason == season.number,
+                                        onClick = { viewModel.selectSeason(season.number) },
+                                        label = {
+                                            Text(stringResource(R.string.detail_season, season.number))
+                                        },
+                                    )
+                                }
                             }
                         }
                     }
-                }
 
-                item { SectionHeader(stringResource(R.string.detail_episodes)) }
+                    item { SectionHeader(stringResource(R.string.detail_episodes)) }
 
-                when (val episodesState = state.episodes) {
-                    is UiState.Loading -> items(4) {
-                        Shimmer(
-                            Modifier
-                                .padding(horizontal = 16.dp, vertical = 6.dp)
-                                .fillMaxWidth()
-                                .height(74.dp)
+                    when (val episodesState = state.episodes) {
+                        is UiState.Loading -> items(4) {
+                            Shimmer(
+                                Modifier
+                                    .padding(horizontal = 16.dp, vertical = 6.dp)
+                                    .fillMaxWidth()
+                                    .height(74.dp)
+                            )
+                        }
+
+                        is UiState.Error -> item {
+                            ErrorState(episodesState.error, onRetry = { viewModel.selectSeason(state.selectedSeason) })
+                        }
+
+                        is UiState.Empty -> item {
+                            EmptyState(stringResource(R.string.detail_no_episodes))
+                        }
+
+                        is UiState.Success -> items(episodesState.data, key = { it.id }) { episode ->
+                            EpisodeRowCard(
+                                episode = episode,
+                                onClick = { if (signedIn) onPlayEpisode(episode.id) else onSignIn() },
+                            )
+                        }
+                    }
+
+                    item { Spacer(Modifier.height(24.dp)) }
+
+                    item {
+                        ReviewSection(
+                            reviews = state.reviews,
+                            mine = state.myReview,
+                            average = state.rating,
+                            ratingCount = state.ratingCount,
+                            signedIn = signedIn,
+                            onSubmit = viewModel::submitReview,
+                            onDelete = viewModel::deleteReview,
+                            onVote = viewModel::vote,
+                            onReport = viewModel::report,
+                            onSignIn = onSignIn,
                         )
                     }
 
-                    is UiState.Error -> item {
-                        ErrorState(episodesState.error, onRetry = { viewModel.selectSeason(state.selectedSeason) })
-                    }
-
-                    is UiState.Empty -> item {
-                        EmptyState(stringResource(R.string.detail_no_episodes))
-                    }
-
-                    is UiState.Success -> items(episodesState.data, key = { it.id }) { episode ->
-                        EpisodeRowCard(
-                            episode = episode,
-                            onClick = { if (signedIn) onPlayEpisode(episode.id) else onSignIn() },
-                        )
-                    }
+                    item { Spacer(Modifier.height(32.dp)) }
                 }
-
-                item { Spacer(Modifier.height(24.dp)) }
-
-                item {
-                    ReviewSection(
-                        reviews = state.reviews,
-                        mine = state.myReview,
-                        average = state.rating,
-                        ratingCount = state.ratingCount,
-                        signedIn = signedIn,
-                        onSubmit = viewModel::submitReview,
-                        onDelete = viewModel::deleteReview,
-                        onVote = viewModel::vote,
-                        onSignIn = onSignIn,
-                    )
-                }
-
-                item { Spacer(Modifier.height(32.dp)) }
             }
         }
+
+        SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter))
     }
 }
 

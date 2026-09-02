@@ -8,6 +8,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.ThumbDown
 import androidx.compose.material.icons.outlined.ThumbUp
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -47,6 +48,7 @@ fun ReviewSection(
     onSubmit: (score: Int, body: String, spoiler: Boolean) -> Unit,
     onDelete: (ReviewDto) -> Unit,
     onVote: (ReviewDto, Int) -> Unit,
+    onReport: (ReviewDto, String, String) -> Unit,
     onSignIn: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -104,6 +106,7 @@ fun ReviewSection(
             ReviewRow(
                 review = review,
                 onVote = { vote -> onVote(review, vote) },
+                onReport = { reason, note -> onReport(review, reason, note) },
                 canVote = signedIn,
             )
             Spacer(Modifier.height(10.dp))
@@ -229,11 +232,23 @@ private fun ReviewComposer(
 private fun ReviewRow(
     review: ReviewDto,
     onVote: (Int) -> Unit,
+    onReport: (reason: String, note: String) -> Unit,
     canVote: Boolean,
 ) {
     // Reset when the row is recycled onto a different review, so one revealed
     // spoiler does not uncover the next.
     var revealed by remember(review.id) { mutableStateOf(false) }
+    var reporting by remember(review.id) { mutableStateOf(false) }
+
+    if (reporting) {
+        ReportDialog(
+            onDismiss = { reporting = false },
+            onSubmit = { reason, note ->
+                reporting = false
+                onReport(reason, note)
+            },
+        )
+    }
 
     Surface(color = SurfaceCard, shape = RoundedCornerShape(14.dp)) {
         Column(Modifier.fillMaxWidth().padding(14.dp)) {
@@ -318,6 +333,24 @@ private fun ReviewRow(
                     enabled = canVote,
                     onClick = { onVote(-1) },
                 )
+
+                Spacer(Modifier.weight(1f))
+
+                // Only signed in: a report has to be attributable, or the
+                // queue fills with anonymous noise nobody can weigh.
+                if (canVote) {
+                    IconButton(
+                        onClick = { reporting = true },
+                        modifier = Modifier.size(32.dp),
+                    ) {
+                        Icon(
+                            Icons.Outlined.Flag,
+                            contentDescription = stringResource(R.string.report_action),
+                            modifier = Modifier.size(16.dp),
+                            tint = TextMuted,
+                        )
+                    }
+                }
             }
         }
     }
@@ -345,4 +378,93 @@ private fun VoteButton(
         Spacer(Modifier.width(6.dp))
         Text("$count", style = MaterialTheme.typography.labelMedium, color = tint)
     }
+}
+
+/**
+ * Pick a reason, and write one when none of them fits.
+ *
+ * The fixed reasons are what make the queue sortable — "six people reported
+ * this for spam" is only countable if spam is a value rather than a sentence.
+ * `other` exists because a closed list never covers everything, and it is the
+ * one option that insists on words.
+ */
+@Composable
+private fun ReportDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (reason: String, note: String) -> Unit,
+) {
+    var reason by remember { mutableStateOf(REPORT_REASONS.first()) }
+    var note by remember { mutableStateOf("") }
+
+    val needsNote = reason == "other"
+    val canSend = !needsNote || note.isNotBlank()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.report_title)) },
+        text = {
+            Column {
+                REPORT_REASONS.forEach { value ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { reason = value }
+                            .padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RadioButton(selected = reason == value, onClick = { reason = value })
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            stringResource(reasonLabel(value)),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    }
+                }
+
+                if (needsNote) {
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = note,
+                        onValueChange = { note = it.take(REPORT_NOTE_MAX) },
+                        placeholder = { Text(stringResource(R.string.report_note_hint)) },
+                        minLines = 2,
+                        maxLines = 4,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        stringResource(R.string.report_note_required),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        modifier = Modifier.padding(top = 4.dp),
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSubmit(reason, note) },
+                enabled = canSend,
+            ) {
+                Text(stringResource(R.string.report_action))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
+}
+
+/** The reasons offered, in the order they are shown. Mirrors the server. */
+private val REPORT_REASONS = listOf("spam", "spoiler", "abuse", "offtopic", "other")
+
+/** As much as the server keeps of a note; more would be silently truncated. */
+private const val REPORT_NOTE_MAX = 500
+
+private fun reasonLabel(value: String): Int = when (value) {
+    "spam" -> R.string.report_reason_spam
+    "spoiler" -> R.string.report_reason_spoiler
+    "abuse" -> R.string.report_reason_abuse
+    "offtopic" -> R.string.report_reason_offtopic
+    else -> R.string.report_reason_other
 }

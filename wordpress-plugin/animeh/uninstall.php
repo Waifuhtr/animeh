@@ -45,6 +45,8 @@ delete_option( 'animeh_snapshot_status' );
 delete_option( 'animeh_migration_handoff' );
 delete_option( 'animeh_registration_open' );
 delete_option( 'animeh_tenrai' );
+delete_option( 'animeh_tmdb' );
+delete_option( 'animeh_public_base' );
 delete_option( 'animeh_catalog_version' );
 
 // Snapshots already written to the bucket are left alone: they are the copy

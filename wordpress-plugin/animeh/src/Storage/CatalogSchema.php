@@ -27,7 +27,7 @@ final class CatalogSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '4';
+	public const VERSION = '5';
 
 	/**
 	 * Option holding the installed catalog version.
@@ -146,6 +146,26 @@ final class CatalogSchema {
 	}
 
 	/**
+	 * Reports raised against a review.
+	 */
+	public static function review_reports(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_review_reports';
+	}
+
+	/**
+	 * Suspensions and bans.
+	 *
+	 * A row is the sanction itself rather than a flag on the user, so the
+	 * reason and who imposed it survive it being lifted — which is what makes
+	 * a second offence tellable from a first.
+	 */
+	public static function bans(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_bans';
+	}
+
+	/**
 	 * Every catalog table, unprefixed — the snapshot reads this list.
 	 *
 	 * @return string[]
@@ -161,7 +181,9 @@ final class CatalogSchema {
 			'animeh_announcements',
 			'animeh_reviews',
 			'animeh_review_votes',
+			'animeh_review_reports',
 			'animeh_terms',
+			'animeh_bans',
 		);
 	}
 
@@ -183,6 +205,9 @@ final class CatalogSchema {
 			kind varchar(16) NOT NULL DEFAULT 'anime',
 			tenrai_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			mal_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			-- Remembered so refreshing artwork does not have to search by
+			-- title again, which is the step that can pick the wrong show.
+			tmdb_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			slug varchar(191) NOT NULL DEFAULT '',
 			title varchar(255) NOT NULL DEFAULT '',
 			title_english varchar(255) NOT NULL DEFAULT '',
@@ -211,6 +236,7 @@ final class CatalogSchema {
 			UNIQUE KEY slug (slug),
 			KEY kind_published (kind,published),
 			KEY tenrai_id (tenrai_id),
+			KEY tmdb_id (tmdb_id),
 			KEY score (score),
 			KEY updated_at (updated_at),
 			KEY year_season (year,season)
@@ -390,6 +416,43 @@ final class CatalogSchema {
 			KEY review_id (review_id)
 		) {$charset};";
 
+		// A report is kept after it is dealt with rather than deleted: "this
+		// user reports everything" is only visible with the history intact,
+		// and so is "this reviewer has been reported by six people".
+		$review_reports = 'CREATE TABLE ' . self::review_reports() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			review_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			work_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			reporter_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			reason varchar(32) NOT NULL DEFAULT 'other',
+			note text NOT NULL,
+			status varchar(16) NOT NULL DEFAULT 'open',
+			handled_by bigint(20) unsigned NOT NULL DEFAULT 0,
+			handled_at datetime NULL DEFAULT NULL,
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY review_reporter (review_id,reporter_id),
+			KEY status_created (status,created_at),
+			KEY review_id (review_id)
+		) {$charset};";
+
+		// `expires_at` NULL is permanent and a timestamp is a suspension; one
+		// table rather than two because lifting one early and letting the other
+		// lapse are the same operation on the same row.
+		$bans = 'CREATE TABLE ' . self::bans() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			reason varchar(255) NOT NULL DEFAULT '',
+			note text NOT NULL,
+			expires_at datetime NULL DEFAULT NULL,
+			lifted_at datetime NULL DEFAULT NULL,
+			created_by bigint(20) unsigned NOT NULL DEFAULT 0,
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			KEY user_lifted (user_id,lifted_at),
+			KEY expires_at (expires_at)
+		) {$charset};";
+
 		$terms = 'CREATE TABLE ' . self::terms() . " (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			kind varchar(16) NOT NULL DEFAULT 'genre',
@@ -400,7 +463,24 @@ final class CatalogSchema {
 			UNIQUE KEY kind_source (kind,source)
 		) {$charset};";
 
-		foreach ( array( $works, $seasons, $episodes, $sources, $history, $library, $tokens, $announcements, $logs, $reviews, $review_votes, $terms ) as $sql ) {
+		$tables = array(
+			$works,
+			$seasons,
+			$episodes,
+			$sources,
+			$history,
+			$library,
+			$tokens,
+			$announcements,
+			$logs,
+			$reviews,
+			$review_votes,
+			$review_reports,
+			$terms,
+			$bans,
+		);
+
+		foreach ( $tables as $sql ) {
 			dbDelta( $sql );
 		}
 

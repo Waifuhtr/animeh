@@ -217,4 +217,69 @@
     <string name="admin_terms_kind_status">Durum</string>
     <string name="admin_terms_kind_format">Biçim</string>
     <string name="admin_terms_kind_season">Sezon</string>
+
+    <!-- Reporting a review -->
+    <string name="report_title">Eleştiriyi şikâyet et</string>
+    <string name="report_action">Şikâyet et</string>
+    <string name="report_reason_spam">Spam veya reklam</string>
+    <string name="report_reason_spoiler">Spoiler etiketi kullanmamış</string>
+    <string name="report_reason_abuse">Hakaret veya nefret söylemi</string>
+    <string name="report_reason_offtopic">Konuyla ilgisiz</string>
+    <string name="report_reason_other">Diğer</string>
+    <string name="report_note_hint">Nedenini yaz</string>
+    <string name="report_note_required">Diğer seçtiysen nedenini yazman gerekiyor.</string>
+    <string name="report_sent">Şikâyetin yöneticiye iletildi.</string>
+    <string name="report_own">Kendi eleştirini şikâyet edemezsin.</string>
+
+    <!-- A suspended or banned account -->
+    <string name="error_banned">Hesabın kapatıldı.</string>
+    <string name="banned_title">Hesabın askıya alındı</string>
+    <string name="banned_permanent">Hesabın kalıcı olarak kapatıldı.</string>
+    <string name="banned_until">Hesabın %1$s tarihine kadar uzaklaştırıldı.</string>
+    <string name="banned_reason">Gerekçe: %1$s</string>
+    <string name="banned_contact">Bir hata olduğunu düşünüyorsan yöneticiyle iletişime geç.</string>
+    <string name="banned_sign_out">Çıkış yap</string>
+
+    <!-- Admin: moderation -->
+    <string name="admin_reports">Şikâyetler</string>
+    <string name="admin_reports_empty">Bekleyen şikâyet yok.</string>
+    <string name="admin_reports_open">%1$d bekleyen</string>
+    <string name="admin_report_delete">Eleştiriyi sil</string>
+    <string name="admin_report_dismiss">Sorun yok</string>
+    <string name="admin_report_reported_by">Şikâyet eden: %1$s</string>
+    <string name="admin_report_spoiler">Spoiler işaretli</string>
+
+    <string name="admin_ban">Uzaklaştır</string>
+    <string name="admin_ban_lift">Yasağı kaldır</string>
+    <string name="admin_ban_title">%1$s için işlem</string>
+    <string name="admin_ban_reason">Gerekçe (kullanıcı görecek)</string>
+    <string name="admin_ban_days">Süre</string>
+    <string name="admin_ban_permanent">Kalıcı</string>
+    <string name="admin_ban_days_value">%1$d gün</string>
+    <string name="admin_ban_banned">Yasaklı</string>
+    <string name="admin_ban_until">%1$s tarihine kadar</string>
+
+    <string name="admin_moderators">Moderatörler</string>
+    <string name="admin_moderators_hint">E-posta ile ekle. Moderatör anime düzenleyebilir, eleştiri silebilir ve kullanıcı uzaklaştırabilir; depolama, anahtarlar ve taşıma ona kapalı.</string>
+    <string name="admin_moderators_email">E-posta</string>
+    <string name="admin_moderators_add">Ekle</string>
+    <string name="admin_moderators_empty">Henüz moderatör yok.</string>
+    <string name="admin_moderators_remove">Yetkiyi al</string>
+
+    <!-- Admin: TMDB -->
+    <string name="admin_tmdb">TMDB görselleri</string>
+    <string name="admin_tmdb_fetch">TMDB\'den görselleri getir</string>
+    <string name="admin_tmdb_search">TMDB\'de ara</string>
+    <string name="admin_tmdb_overwrite">Mevcut görselleri de değiştir</string>
+    <string name="admin_tmdb_no_key">TMDB anahtarı girilmemiş. WordPress yönetim panelindeki Animeh → Entegrasyonlar sayfasından ekleyebilirsin.</string>
+    <string name="admin_tmdb_done">Kapak ve %1$d bölüm görseli güncellendi.</string>
+    <string name="admin_tmdb_none">Değişecek bir şey bulunamadı.</string>
+
+    <!-- Admin: where clients connect -->
+    <string name="admin_server">Sunucu adresi</string>
+    <string name="admin_server_hint">Uygulamanın bağlandığı adres. Değiştirirsen bütün cihazlar bir sonraki açılışta kendiliğinden buraya geçer — bu yüzden yeni adresi eski sunucu hâlâ ayaktayken yaz.</string>
+    <string name="admin_server_current">Şu an: %1$s</string>
+    <string name="admin_server_save">Adresi yayınla</string>
+    <string name="admin_server_registration">Uygulamadan kayıt açık</string>
+    <string name="admin_server_saved">Kaydedildi.</string>
 </resources>

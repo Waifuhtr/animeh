@@ -56,6 +56,82 @@ final class Auth {
 		// bearer token is not sent automatically by anything, so there is no
 		// cross-site request to forge.
 		add_filter( 'rest_authentication_errors', array( self::class, 'allow_token_requests' ), 20 );
+
+		// After the two above, so it sees the user they resolved. A sanction
+		// that only stopped new logins would leave every already-issued token
+		// working, which is the sanction missed.
+		add_filter( 'rest_authentication_errors', array( self::class, 'block_banned_users' ), 30 );
+	}
+
+	/**
+	 * Refuse a banned user's requests to this plugin's endpoints.
+	 *
+	 * Scoped to `animeh/v1` on purpose. This filter runs for every REST route
+	 * on the site, and locking someone out of WordPress core's own API — their
+	 * profile, the block editor — is a different and larger decision than
+	 * suspending them from the app.
+	 *
+	 * @param mixed $result Current authentication result.
+	 * @return mixed
+	 */
+	public static function block_banned_users( $result ) {
+		if ( is_wp_error( $result ) ) {
+			return $result;
+		}
+
+		if ( ! self::is_animeh_route() ) {
+			return $result;
+		}
+
+		$user_id = get_current_user_id();
+		if ( $user_id <= 0 ) {
+			return $result;
+		}
+
+		$ban = ( new \Animeh\Storage\ModerationRepository() )->active_ban( $user_id );
+		if ( null === $ban ) {
+			return $result;
+		}
+
+		return self::ban_error( $ban );
+	}
+
+	/**
+	 * The refusal a banned user gets, with what the app needs to explain it.
+	 *
+	 * @param array<string, mixed> $ban Ban row.
+	 */
+	public static function ban_error( array $ban ): \WP_Error {
+		$expires = $ban['expires_at'] ?? null;
+
+		return new \WP_Error(
+			'ACCOUNT_BANNED',
+			null === $expires
+				? __( 'Hesabın kalıcı olarak kapatıldı.', 'animeh' )
+				: __( 'Hesabın geçici olarak uzaklaştırıldı.', 'animeh' ),
+			array(
+				'status'     => 403,
+				'reason'     => (string) ( $ban['reason'] ?? '' ),
+				'expires_at' => null === $expires ? '' : (string) $expires,
+				'permanent'  => null === $expires,
+			)
+		);
+	}
+
+	/**
+	 * Whether this request is for one of this plugin's REST routes.
+	 *
+	 * Both spellings are checked: pretty permalinks put the route in the path,
+	 * plain ones put it in `rest_route`.
+	 */
+	private static function is_animeh_route(): bool {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		$route = isset( $_GET['rest_route'] )
+			? (string) wp_unslash( $_GET['rest_route'] )
+			: (string) ( isset( $_SERVER['REQUEST_URI'] ) ? wp_unslash( $_SERVER['REQUEST_URI'] ) : '' );
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		return str_contains( $route, FontsController::NAMESPACE . '/' );
 	}
 
 	/**

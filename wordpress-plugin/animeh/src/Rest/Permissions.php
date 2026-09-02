@@ -32,13 +32,31 @@ final class Permissions {
 	public const CAPABILITY = 'animeh_manage_player_tests';
 
 	/**
+	 * Capability for the day-to-day moderation work.
+	 *
+	 * Split from the one above deliberately. A moderator edits the catalog,
+	 * deletes a review and suspends someone; they do not get the bucket
+	 * credentials, the migration tools or the API keys, and holding this
+	 * capability alone must not open those.
+	 */
+	public const MODERATE = 'animeh_moderate';
+
+	/**
+	 * The moderator role's slug.
+	 */
+	public const MODERATOR_ROLE = 'animeh_moderator';
+
+	/**
 	 * Give the capability to administrators on activation.
 	 */
 	public static function grant_to_administrators(): void {
 		$role = get_role( 'administrator' );
 		if ( null !== $role ) {
 			$role->add_cap( self::CAPABILITY );
+			$role->add_cap( self::MODERATE );
 		}
+
+		self::ensure_moderator_role();
 	}
 
 	/**
@@ -48,7 +66,61 @@ final class Permissions {
 		$role = get_role( 'administrator' );
 		if ( null !== $role ) {
 			$role->remove_cap( self::CAPABILITY );
+			$role->remove_cap( self::MODERATE );
 		}
+
+		// The role itself stays: removing it would strip the assignment from
+		// every moderator, and deactivating a plugin to update it is routine.
+	}
+
+	/**
+	 * Create the moderator role if it is not there.
+	 *
+	 * `read` is included because a WordPress user without it cannot see their
+	 * own profile screen, which makes the account feel broken even though
+	 * moderation happens entirely in the app.
+	 */
+	public static function ensure_moderator_role(): void {
+		if ( null !== get_role( self::MODERATOR_ROLE ) ) {
+			return;
+		}
+
+		add_role(
+			self::MODERATOR_ROLE,
+			__( 'Animeh Moderatör', 'animeh' ),
+			array(
+				'read'        => true,
+				self::MODERATE => true,
+			)
+		);
+	}
+
+	/**
+	 * Whether the current user may moderate: edit the catalog, remove a
+	 * review, suspend someone.
+	 *
+	 * Every administrator can, by containment — someone who can change the
+	 * bucket credentials can obviously delete a comment.
+	 */
+	public static function current_user_can_moderate(): bool {
+		return current_user_can( self::MODERATE ) || self::current_user_can_manage();
+	}
+
+	/**
+	 * `permission_callback` for the routes a moderator may use.
+	 *
+	 * @return true|WP_Error
+	 */
+	public static function require_moderate() {
+		if ( self::current_user_can_moderate() ) {
+			return true;
+		}
+
+		return new WP_Error(
+			'animeh_forbidden',
+			__( 'Bu işlem için yetkin yok.', 'animeh' ),
+			array( 'status' => is_user_logged_in() ? 403 : 401 )
+		);
 	}
 
 	/**

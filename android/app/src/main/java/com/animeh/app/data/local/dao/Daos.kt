@@ -95,9 +95,15 @@ interface ProgressDao {
      * The newest unfinished episode of each work, offline.
      *
      * The inner select picks one row per work; without it a series with fifty
-     * watched episodes would fill the whole rail. The 30-second floor matches
-     * [Progress.RESUME_THRESHOLD_SECONDS] — below that, "continue" would drop
-     * the viewer back at the start anyway.
+     * watched episodes would fill the whole rail. The two bounds are the SQL
+     * spelling of [Progress.startThreshold] and [Progress.endMargin]: five
+     * percent of the episode at each end, clamped. They have to be a share
+     * rather than fixed seconds, or a ninety-second episode is never on the
+     * rail at all.
+     *
+     * `completed` is not a condition. It means "watched enough of it to
+     * count", which happens at seventy percent, and someone who stopped there
+     * still has minutes left to continue into.
      */
     @Query(
         """
@@ -113,10 +119,14 @@ interface ProgressDao {
         INNER JOIN (
             SELECT workId, MAX(updatedAt) AS latest
             FROM progress
-            WHERE completed = 0 AND positionSeconds > 30
+            WHERE positionSeconds >= MAX(10, MIN(30, durationSeconds / 20))
+              AND (durationSeconds <= 0
+                   OR positionSeconds + MAX(5, MIN(45, durationSeconds / 20)) < durationSeconds)
             GROUP BY workId
         ) newest ON newest.workId = p.workId AND newest.latest = p.updatedAt
-        WHERE p.completed = 0
+        WHERE p.positionSeconds >= MAX(10, MIN(30, p.durationSeconds / 20))
+          AND (p.durationSeconds <= 0
+               OR p.positionSeconds + MAX(5, MIN(45, p.durationSeconds / 20)) < p.durationSeconds)
         ORDER BY p.updatedAt DESC
         LIMIT :limit
         """

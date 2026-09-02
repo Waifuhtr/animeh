@@ -26,6 +26,7 @@ fun SettingsScreen(
 ) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val apiBase by viewModel.apiBase.collectAsStateWithLifecycle()
+    val canSeeServer by viewModel.canSeeServer.collectAsStateWithLifecycle()
     val message by viewModel.message.collectAsStateWithLifecycle()
 
     val snackbarHost = remember { SnackbarHostState() }
@@ -113,13 +114,15 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setNotifications,
             )
 
-            HorizontalDivider()
-            SectionLabel(stringResource(R.string.settings_server))
+            if (canSeeServer) {
+                HorizontalDivider()
+                SectionLabel(stringResource(R.string.settings_server))
 
-            ApiBaseField(
-                value = apiBase,
-                onSave = viewModel::setApiBase,
-            )
+                ApiBaseField(
+                    value = apiBase,
+                    onSave = viewModel::setApiBase,
+                )
+            }
 
             HorizontalDivider()
             SectionLabel(stringResource(R.string.settings_cache))

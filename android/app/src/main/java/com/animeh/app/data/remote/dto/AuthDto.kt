@@ -28,6 +28,10 @@ data class UserDto(
      * client that forges this reaches the same 403 as anyone else.
      */
     @SerialName("is_admin") @Serializable(with = LenientBoolean::class) val isAdmin: Boolean = false,
+    /** Draws the smaller panel: the catalog, the report queue, suspensions. */
+    @SerialName("is_moderator") @Serializable(with = LenientBoolean::class) val isModerator: Boolean = false,
+    /** Non-null while a suspension or ban is in force. */
+    val ban: BanDto? = null,
     val registered: String = "",
     val stats: UserStatsDto? = null,
 )
@@ -135,4 +139,30 @@ data class ApiErrorDataDto(
     val status: Int = 0,
     @SerialName("retry_after") val retryAfter: Int = 0,
     val reason: String = "",
+    /** Set on an ACCOUNT_BANNED refusal: when it lifts, or empty if never. */
+    @SerialName("expires_at") val expiresAt: String = "",
+    @Serializable(with = LenientBoolean::class) val permanent: Boolean = false,
+)
+
+/**
+ * A suspension or a ban, as the server describes it.
+ *
+ * `expiresAt` empty and [permanent] true is a ban; a timestamp is a
+ * suspension that lifts itself.
+ */
+@Serializable
+data class BanDto(
+    val reason: String = "",
+    @SerialName("expires_at") val expiresAt: String = "",
+    @Serializable(with = LenientBoolean::class) val permanent: Boolean = true,
+    @SerialName("created_at") val createdAt: String = "",
+)
+
+/** What the backend says about itself before anyone has signed in. */
+@Serializable
+data class ClientConfigDto(
+    @SerialName("api_base") val apiBase: String = "",
+    @SerialName("registration_open") @Serializable(with = LenientBoolean::class)
+    val registrationOpen: Boolean = true,
+    @SerialName("site_name") val siteName: String = "",
 )

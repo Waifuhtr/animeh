@@ -2,6 +2,7 @@ package com.animeh.app.data.repository
 
 import android.os.Build
 import com.animeh.app.core.AppError
+import com.animeh.app.core.AccountGate
 import com.animeh.app.core.AppResult
 import com.animeh.app.data.local.AnimehDatabase
 import com.animeh.app.data.prefs.AuthState
@@ -110,6 +111,10 @@ class AuthRepository @Inject constructor(
 
         sessionStore.clear()
         clearLocalData()
+
+        // Signing out is the way off the suspension screen: whoever signs in
+        // next is a different account, and it must not still be blocked.
+        AccountGate.clear()
 
         return AppResult.Success(Unit).takeIf { result is AppResult.Success } ?: AppResult.Success(Unit)
     }

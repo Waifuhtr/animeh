@@ -795,6 +795,7 @@ final class CatalogRepository {
 			'kind'             => CatalogSchema::KIND_ANIME,
 			'tenrai_id'        => 0,
 			'mal_id'           => 0,
+			'tmdb_id'          => 0,
 			'slug'             => '',
 			'title'            => '',
 			'title_english'    => '',

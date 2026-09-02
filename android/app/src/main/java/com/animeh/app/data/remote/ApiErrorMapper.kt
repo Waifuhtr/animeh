@@ -1,5 +1,6 @@
 package com.animeh.app.data.remote
 
+import com.animeh.app.core.AccountGate
 import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.ClientLog
@@ -82,6 +83,15 @@ object ApiErrorMapper {
         )
 
         return when {
+            // Before the plain 403: a suspended account gets a screen of its
+            // own, and "yetkin yok" would be both wrong and unhelpful.
+            code == "ACCOUNT_BANNED" -> AppError.Banned(
+                reason = parsed?.data?.reason.orEmpty(),
+                expiresAt = parsed?.data?.expiresAt.orEmpty(),
+                permanent = parsed?.data?.permanent ?: true,
+                technical = message,
+            ).also { AccountGate.record(it) }
+
             status == 401 -> AppError.Unauthorized(message.ifBlank { "401" })
             status == 403 -> AppError.Forbidden(message.ifBlank { "403" })
             status == 404 -> AppError.NotFound(message.ifBlank { "404" })

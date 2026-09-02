@@ -108,6 +108,17 @@ class PlaybackController @Inject constructor(
     /** Where the last tick found the playhead, for measuring the step. */
     private var lastTickMs: Long = -1L
 
+    /**
+     * The length the media itself reported, zero until it has.
+     *
+     * Deliberately not the catalog's number. The episode row carries an
+     * estimate — twenty-four minutes for a series whose test upload is ninety
+     * seconds — and reporting that as fact taught the server the wrong length,
+     * which then decided both completion and whether resuming was offered. The
+     * only length worth persisting is the one the demuxer read off the file.
+     */
+    private var measuredDurationMs: Long = 0L
+
     /** Called when the episode finishes and autoplay should advance. */
     var onCompleted: (() -> Unit)? = null
 
@@ -191,6 +202,7 @@ class PlaybackController @Inject constructor(
         // seventy percent again in one sitting.
         watchedMs = alreadyWatchedSeconds.coerceAtLeast(0) * 1000L
         lastTickMs = -1L
+        measuredDurationMs = 0L
 
         val heights = QualityPolicy.availableHeights(source.videos)
         val connection = networkMonitor.current()
@@ -421,10 +433,13 @@ class PlaybackController @Inject constructor(
                     retryAttempt = 0
 
                     val player = exoPlayer
+                    val known = player?.duration?.takeIf { d -> d != C.TIME_UNSET && d > 0L }
+                    if (known != null) measuredDurationMs = known
+
                     _state.update {
                         it.copy(
                             phase = if (player?.playWhenReady == true) PlaybackPhase.Playing else PlaybackPhase.Paused,
-                            durationMs = player?.duration?.takeIf { d -> d != C.TIME_UNSET } ?: it.durationMs,
+                            durationMs = known ?: it.durationMs,
                         )
                     }
                 }
@@ -520,6 +535,7 @@ class PlaybackController @Inject constructor(
                 val player = exoPlayer ?: continue
                 val position = player.currentPosition
                 val duration = player.duration.takeIf { it != C.TIME_UNSET } ?: 0L
+                if (duration > 0L) measuredDurationMs = duration
                 val buffered = player.bufferedPosition
                 val bandwidth = bandwidthMeter?.bitrateEstimate ?: 0L
 
@@ -620,7 +636,9 @@ class PlaybackController @Inject constructor(
         val position = current.positionSeconds
         if (position <= 0) return
 
-        onProgress?.invoke(position, current.durationSeconds, (watchedMs / 1000).toInt())
+        // Zero when the file has not said how long it is yet. The server keeps
+        // whatever it already had rather than believing a guess.
+        onProgress?.invoke(position, (measuredDurationMs / 1000).toInt(), (watchedMs / 1000).toInt())
     }
 
     private fun scheduleControlsHide() {

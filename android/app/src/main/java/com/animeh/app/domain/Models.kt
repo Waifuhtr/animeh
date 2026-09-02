@@ -98,17 +98,44 @@ data class Progress(
      * stopped at minute eighteen of twenty-four has passed that mark and still
      * has six minutes left, and starting them over was the bug. What does veto
      * it is being at the very end, where "continue" would just roll credits.
+     *
+     * Both margins are a share of the episode, not fixed seconds. Fixed ones
+     * were the second bug: thirty seconds in and forty-five off the end leaves
+     * a ninety-second clip resumable for thirteen of its ninety seconds, so a
+     * short episode looked like the feature simply did not work.
      */
     val isResumable: Boolean
-        get() = positionSeconds > RESUME_THRESHOLD_SECONDS &&
-            (durationSeconds <= 0 || positionSeconds < durationSeconds - END_MARGIN_SECONDS)
+        get() {
+            if (positionSeconds < startThreshold(durationSeconds)) return false
+            if (durationSeconds <= 0) return true
+            return positionSeconds < durationSeconds - endMargin(durationSeconds)
+        }
 
     companion object {
         /** Below this, "continue" would drop the viewer back at the start anyway. */
-        const val RESUME_THRESHOLD_SECONDS = 30
+        const val MIN_RESUME_SECONDS = 10
+
+        /** Never ask for more than this before offering to continue. */
+        const val MAX_RESUME_SECONDS = 30
 
         /** This close to the end there is nothing left to continue into. */
-        const val END_MARGIN_SECONDS = 45
+        const val MIN_END_MARGIN_SECONDS = 5
+        const val MAX_END_MARGIN_SECONDS = 45
+
+        /** Five percent of the episode, at each end. */
+        const val MARGIN_PERCENT = 5
+
+        /** How far in the playhead must be before continuing is worth offering. */
+        fun startThreshold(durationSeconds: Int): Int =
+            if (durationSeconds <= 0) MIN_RESUME_SECONDS
+            else (durationSeconds * MARGIN_PERCENT / 100)
+                .coerceIn(MIN_RESUME_SECONDS, MAX_RESUME_SECONDS)
+
+        /** How much of the tail counts as "already finished". */
+        fun endMargin(durationSeconds: Int): Int =
+            if (durationSeconds <= 0) MIN_END_MARGIN_SECONDS
+            else (durationSeconds * MARGIN_PERCENT / 100)
+                .coerceIn(MIN_END_MARGIN_SECONDS, MAX_END_MARGIN_SECONDS)
     }
 }
 

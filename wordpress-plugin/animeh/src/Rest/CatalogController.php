@@ -523,6 +523,10 @@ final class CatalogController {
 			'duration_seconds' => (int) $work['duration_seconds'],
 			'published'      => (bool) $work['published'],
 			'updated_at'     => (string) $work['updated_at'],
+			// Zero until a TMDB match has been made. The app ignores it; the
+			// admin panel uses it to show whether artwork can be refreshed
+			// without searching again.
+			'tmdb_id'        => (int) ( $work['tmdb_id'] ?? 0 ),
 		);
 	}
 

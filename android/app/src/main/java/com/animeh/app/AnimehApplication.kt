@@ -7,6 +7,7 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.repository.LibraryRepository
+import com.animeh.app.data.repository.ServerConfigRepository
 import com.animeh.app.player.NetworkMonitor
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -24,6 +25,7 @@ class AnimehApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var settingsStore: SettingsStore
     @Inject lateinit var networkMonitor: NetworkMonitor
     @Inject lateinit var libraryRepository: LibraryRepository
+    @Inject lateinit var serverConfig: ServerConfigRepository
 
     @Inject @Named("base_client") lateinit var okHttpClient: OkHttpClient
 
@@ -36,6 +38,11 @@ class AnimehApplication : Application(), ImageLoaderFactory {
         // to be right before the first request rather than after DataStore's
         // first emission.
         scope.launch { settingsStore.primeApiBase() }
+
+        // Then ask that server where clients should be connecting. When the
+        // backend has moved, this is the moment every phone finds out — see
+        // ServerConfigRepository for why it has to be asked rather than told.
+        scope.launch { serverConfig.refresh() }
 
         // Positions recorded while offline are pushed as soon as there is a
         // connection again, rather than waiting for the next episode.

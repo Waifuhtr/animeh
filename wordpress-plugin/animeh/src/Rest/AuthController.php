@@ -51,6 +51,21 @@ final class AuthController {
 	public function register_routes(): void {
 		$namespace = FontsController::NAMESPACE;
 
+		// The only route in the plugin that is genuinely public, and the only
+		// one that has to be: an app that has just been installed, or whose
+		// backend has moved, needs somewhere to ask where the backend is.
+		// Nothing here is a secret — the address, whether sign-ups are open,
+		// and the site's name are all visible to anyone who opens the app.
+		register_rest_route(
+			$namespace,
+			'/config',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'client_config' ),
+				'permission_callback' => '__return_true',
+			)
+		);
+
 		register_rest_route(
 			$namespace,
 			'/auth/register',
@@ -168,6 +183,17 @@ final class AuthController {
 
 	/**
 	 * Whether the site accepts new accounts.
+	 */
+	public static function registration_is_open(): bool {
+		// The app's own switch, separate from WordPress's `users_can_register`;
+		// see the permission callback below for why they are not the same
+		// question. Either being on is enough.
+		return (bool) get_option( self::REGISTRATION_OPTION, true )
+			|| (bool) get_option( 'users_can_register' );
+	}
+
+	/**
+	 * `permission_callback` for the sign-up route.
 	 *
 	 * @return true|WP_Error
 	 */
@@ -177,9 +203,7 @@ final class AuthController {
 		// a bigger thing to turn on than "let people sign up in the app" —
 		// tying the two together would have made the smaller request carry the
 		// larger consequence. Either being on is enough.
-		$app_open = (bool) get_option( self::REGISTRATION_OPTION, true );
-
-		if ( $app_open || (bool) get_option( 'users_can_register' ) ) {
+		if ( self::registration_is_open() ) {
 			return true;
 		}
 
@@ -280,6 +304,14 @@ final class AuthController {
 			);
 		}
 
+		// The password was right, so saying why they cannot in is not leaking
+		// anything — and "wrong password" for a suspended account would send
+		// them round the reset-password loop for no reason.
+		$ban = ( new \Animeh\Storage\ModerationRepository() )->active_ban( $user->ID );
+		if ( null !== $ban ) {
+			return Auth::ban_error( $ban );
+		}
+
 		$tokens = ( new TokenRepository() )->issue_pair( $user->ID, (string) $request->get_param( 'device' ) );
 
 		return new WP_REST_Response( $this->session_payload( $user->ID, $tokens ) );
@@ -306,6 +338,13 @@ final class AuthController {
 		}
 
 		$user_id = ( new TokenRepository() )->user_for( $tokens['access'], 'access' );
+
+		$ban = ( new \Animeh\Storage\ModerationRepository() )->active_ban( $user_id );
+		if ( null !== $ban ) {
+			( new TokenRepository() )->revoke_all( $user_id );
+
+			return Auth::ban_error( $ban );
+		}
 
 		return new WP_REST_Response( $this->session_payload( $user_id, $tokens ) );
 	}
@@ -433,6 +472,9 @@ final class AuthController {
 			'avatar'       => self::avatar_url( $user->ID ),
 			'roles'        => array_values( $user->roles ),
 			'is_admin'     => user_can( $user, Permissions::CAPABILITY ) || user_can( $user, 'manage_options' ),
+			// A moderator is not an admin: the app draws a smaller panel for
+			// them, and the server refuses the rest either way.
+			'is_moderator' => user_can( $user, Permissions::MODERATE ),
 			'registered'   => $user->user_registered,
 		);
 	}
@@ -447,6 +489,80 @@ final class AuthController {
 	 * point is per-user history and libraries is not much use without them.
 	 */
 	public const REGISTRATION_OPTION = 'animeh_registration_open';
+
+	/**
+	 * Option holding the address clients should be using.
+	 *
+	 * Empty means "wherever this site answers", which is right until the day
+	 * the site moves. Setting it on the old install is what carries every
+	 * phone across without anyone typing an address: the app asks this
+	 * endpoint on the way past and follows the answer.
+	 */
+	public const PUBLIC_BASE_OPTION = 'animeh_public_base';
+
+	/**
+	 * The address clients should be using.
+	 */
+	public static function public_base(): string {
+		$stored = trim( (string) get_option( self::PUBLIC_BASE_OPTION, '' ) );
+
+		if ( '' !== $stored ) {
+			return trailingslashit( $stored );
+		}
+
+		return trailingslashit( rest_url( FontsController::NAMESPACE ) );
+	}
+
+	/**
+	 * Store a new address for clients, or clear it.
+	 *
+	 * Https only, and never a private address: this value tells every phone
+	 * where to send its credentials, so a plain-http or internal target would
+	 * be a downgrade the user could not see happening.
+	 *
+	 * @param string $value New address, or an empty string to clear.
+	 * @return string|WP_Error The stored value.
+	 */
+	public static function set_public_base( string $value ) {
+		$value = trim( $value );
+
+		if ( '' === $value ) {
+			delete_option( self::PUBLIC_BASE_OPTION );
+
+			return '';
+		}
+
+		$parts = wp_parse_url( $value );
+
+		if ( ! is_array( $parts ) || 'https' !== strtolower( (string) ( $parts['scheme'] ?? '' ) ) || empty( $parts['host'] ) ) {
+			return new WP_Error(
+				'VALIDATION_ERROR',
+				__( 'Sunucu adresi https:// ile başlamalı.', 'animeh' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$normalised = trailingslashit( esc_url_raw( $value ) );
+		update_option( self::PUBLIC_BASE_OPTION, $normalised, true );
+
+		return $normalised;
+	}
+
+	/**
+	 * What a client needs before it has an account.
+	 *
+	 * Deliberately thin. Anything that is per-user belongs behind a token, and
+	 * anything that is a credential belongs nowhere near here.
+	 */
+	public function client_config(): WP_REST_Response {
+		return new WP_REST_Response(
+			array(
+				'api_base'          => self::public_base(),
+				'registration_open' => self::registration_is_open(),
+				'site_name'         => (string) get_bloginfo( 'name' ),
+			)
+		);
+	}
 
 	/**
 	 * A user's picture: their own upload, else Gravatar.

@@ -15,6 +15,7 @@ namespace Animeh\Rest;
 
 use Animeh\Storage\B2Client;
 use Animeh\Storage\CatalogRepository;
+use Animeh\Storage\ModerationRepository;
 use Animeh\Storage\ReviewRepository;
 use Animeh\Storage\StorageSettings;
 use Animeh\Storage\TermRepository;
@@ -133,6 +134,21 @@ final class CommunityController {
 				'args'                => array(
 					'id'   => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 					'vote' => array( 'required' => true, 'type' => 'integer' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$namespace,
+			'/reviews/(?P<id>\d+)/report',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'report_review' ),
+				'permission_callback' => $guard,
+				'args'                => array(
+					'id'     => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+					'reason' => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_key' ),
+					'note'   => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_textarea_field' ),
 				),
 			)
 		);
@@ -301,13 +317,73 @@ final class CommunityController {
 		$user_id = get_current_user_id();
 		$owns    = (int) $review['user_id'] === $user_id;
 
-		if ( ! $owns && ! current_user_can( Permissions::CAPABILITY ) && ! current_user_can( 'manage_options' ) ) {
+		// Moderators too: removing a reported review is the whole point of
+		// the report queue, and it is the one catalog-adjacent write they have.
+		if ( ! $owns && ! Permissions::current_user_can_moderate() ) {
 			return new WP_Error( 'FORBIDDEN', __( 'Bu eleştiri sizin değil.', 'animeh' ), array( 'status' => 403 ) );
 		}
 
 		$repo->delete( $id );
 
+		// The reports about it have been acted on by definition; leaving them
+		// open would keep an entry in the queue pointing at nothing.
+		( new ModerationRepository() )->resolve_for_review( $id, $user_id );
+
 		return new WP_REST_Response( array( 'ok' => true ) );
+	}
+
+	/**
+	 * Report a review to the moderators.
+	 *
+	 * The reason comes from a fixed list so the queue can be counted and
+	 * sorted; `other` carries the reporter's own words, which is the case the
+	 * fixed list cannot cover.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function report_review( WP_REST_Request $request ) {
+		$id     = (int) $request->get_param( 'id' );
+		$review = ( new ReviewRepository() )->by_id( $id );
+
+		if ( null === $review ) {
+			return new WP_Error( 'NOT_FOUND', __( 'Eleştiri bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$user_id = get_current_user_id();
+
+		if ( (int) $review['user_id'] === $user_id ) {
+			return new WP_Error(
+				'FORBIDDEN',
+				__( 'Kendi eleştirini şikâyet edemezsin.', 'animeh' ),
+				array( 'status' => 403 )
+			);
+		}
+
+		$reason = (string) $request->get_param( 'reason' );
+		$note   = (string) $request->get_param( 'note' );
+
+		if ( 'other' === $reason && '' === trim( $note ) ) {
+			return new WP_Error(
+				'VALIDATION_ERROR',
+				__( 'Diğer seçeneğini seçtiysen nedenini yazman gerekiyor.', 'animeh' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$result = ( new ModerationRepository() )->report(
+			$id,
+			(int) $review['work_id'],
+			$user_id,
+			$reason,
+			$note
+		);
+
+		if ( $result instanceof WP_Error ) {
+			return $result;
+		}
+
+		return new WP_REST_Response( array( 'ok' => true, 'id' => $result ), 201 );
 	}
 
 	/**

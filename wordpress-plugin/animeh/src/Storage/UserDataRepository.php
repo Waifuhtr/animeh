@@ -37,10 +37,29 @@ final class UserDataRepository {
 
 		$position = max( 0, $position );
 		$duration = max( 0, $duration );
+		$watched  = max( 0, $watched );
+
+		$existing = $this->progress( $user_id, $episode_id );
+
+		// Zero means "the file has not said how long it is yet", never "zero
+		// seconds long", so a stored length stands. A reported length always
+		// wins over the stored one, and never the larger of the two: the
+		// catalog carries an estimate — twenty-four minutes for a series whose
+		// episode is ninety seconds — and keeping the larger locked that guess
+		// in for good, so nothing was ever complete and nothing resumable.
+		if ( $duration <= 0 && null !== $existing ) {
+			$duration = (int) $existing['duration_seconds'];
+		}
+
+		// Only ever grows, so a report that arrives out of order, or a fresh
+		// session that starts its own count at zero, cannot take away time
+		// already earned.
+		if ( null !== $existing ) {
+			$watched = max( $watched, (int) $existing['watched_seconds'] );
+		}
 
 		// Never more than the episode is long: a client that miscounts, or one
 		// reporting a rewatch, must not inflate the profile's total.
-		$watched = max( 0, $watched );
 		if ( $duration > 0 ) {
 			$watched = min( $watched, $duration );
 		}
@@ -50,18 +69,17 @@ final class UserDataRepository {
 		$table     = CatalogSchema::history();
 
 		// ON DUPLICATE KEY makes this one statement against the unique
-		// (user_id, episode_id) index. `completed` is sticky: finishing an
-		// episode and then scrubbing back should not mark it unwatched.
-		// `watched_seconds` only ever grows, so a report that arrives out of
-		// order, or a fresh session that starts its own count at zero, cannot
-		// take away time already earned.
+		// (user_id, episode_id) index. The merge above already resolved the
+		// length and the running total, so the values written are the merged
+		// ones. `completed` stays sticky in SQL: finishing an episode and then
+		// scrubbing back should not mark it unwatched.
 		$sql = $wpdb->prepare(
 			"INSERT INTO {$table} (user_id, work_id, episode_id, position_seconds, duration_seconds, watched_seconds, completed, updated_at)
 			 VALUES (%d, %d, %d, %d, %d, %d, %d, %s)
 			 ON DUPLICATE KEY UPDATE
 			   position_seconds = VALUES(position_seconds),
-			   duration_seconds = GREATEST(duration_seconds, VALUES(duration_seconds)),
-			   watched_seconds = GREATEST(watched_seconds, VALUES(watched_seconds)),
+			   duration_seconds = VALUES(duration_seconds),
+			   watched_seconds = VALUES(watched_seconds),
 			   completed = GREATEST(completed, VALUES(completed)),
 			   work_id = VALUES(work_id),
 			   updated_at = VALUES(updated_at)",
@@ -115,6 +133,9 @@ final class UserDataRepository {
 		$episodes = CatalogSchema::episodes();
 		$works    = CatalogSchema::works();
 
+		$resumable   = self::resumable_sql( '' );
+		$h_resumable = self::resumable_sql( 'h.' );
+
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT h.*, e.number AS episode_number, e.season_number, e.title AS episode_title,
@@ -146,6 +167,42 @@ final class UserDataRepository {
 	 * @return array<int, array<string, mixed>>
 	 */
 	/**
+	 * The "worth continuing" test, as SQL.
+	 *
+	 * Both bounds are a share of the episode rather than fixed seconds, which
+	 * is what the app's own rule uses. Fixed ones were the bug: thirty seconds
+	 * in and forty-five off the end leaves a ninety-second episode resumable
+	 * for thirteen of its ninety seconds, so short uploads looked like the
+	 * feature was simply broken.
+	 *
+	 * The tail is written as an addition rather than `duration - margin`
+	 * because `duration_seconds` is UNSIGNED, and a very short episode would
+	 * underflow the subtraction.
+	 *
+	 * `completed` is not part of it. It means "watched enough of it to count",
+	 * which happens at seventy percent, and someone who stopped there still has
+	 * minutes left to continue into.
+	 *
+	 * @param string $prefix Table alias with its dot, or an empty string.
+	 */
+	private static function resumable_sql( string $prefix ): string {
+		$position = $prefix . 'position_seconds';
+		$duration = $prefix . 'duration_seconds';
+
+		// Read off WatchProgress rather than written out, so the rule the app
+		// applies and the rule the rail is built from cannot drift apart.
+		$share      = (int) ( 100 / WatchProgress::MARGIN_PERCENT );
+		$min_start  = WatchProgress::MIN_RESUME;
+		$max_start  = WatchProgress::MAX_RESUME;
+		$min_margin = WatchProgress::MIN_END_MARGIN;
+		$max_margin = WatchProgress::MAX_END_MARGIN;
+
+		return "{$position} >= GREATEST({$min_start}, LEAST({$max_start}, {$duration} DIV {$share}))
+					  AND ({$duration} = 0
+						   OR {$position} + GREATEST({$min_margin}, LEAST({$max_margin}, {$duration} DIV {$share})) < {$duration})";
+	}
+
+	/**
 	 * Being counted as watched no longer hides a row from this list.
 	 *
 	 * Completion is seventy percent, so an episode can be "watched" with
@@ -160,6 +217,9 @@ final class UserDataRepository {
 		$episodes = CatalogSchema::episodes();
 		$works    = CatalogSchema::works();
 
+		$resumable   = self::resumable_sql( '' );
+		$h_resumable = self::resumable_sql( 'h.' );
+
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT h.*, e.number AS episode_number, e.season_number, e.title AS episode_title,
@@ -171,13 +231,11 @@ final class UserDataRepository {
 					SELECT work_id, MAX(updated_at) AS latest
 					FROM {$history}
 					WHERE user_id = %d
-					  AND position_seconds > 30
-					  AND (duration_seconds = 0 OR position_seconds < duration_seconds - 45)
+					  AND {$resumable}
 					GROUP BY work_id
 				 ) newest ON newest.work_id = h.work_id AND newest.latest = h.updated_at
 				 WHERE h.user_id = %d
-				   AND h.position_seconds > 30
-				   AND (h.duration_seconds = 0 OR h.position_seconds < h.duration_seconds - 45)
+				   AND {$h_resumable}
 				   AND w.published = 1
 				 ORDER BY h.updated_at DESC
 				 LIMIT %d",

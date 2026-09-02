@@ -132,6 +132,35 @@ fun AdminDashboardScreen(
                     )
                 }
 
+                item {
+                    ListItem(
+                        headlineContent = { Text("TMDB") },
+                        supportingContent = {
+                            Text(
+                                if (current.data.tmdb.hasKey) {
+                                    "${current.data.tmdb.language} · anahtar var"
+                                } else {
+                                    stringResource(R.string.admin_tmdb_no_key)
+                                }
+                            )
+                        },
+                    )
+                }
+
+                if (current.data.reports > 0) {
+                    item {
+                        ListItem(
+                            headlineContent = { Text(stringResource(R.string.admin_reports)) },
+                            supportingContent = {
+                                Text(stringResource(R.string.admin_reports_open, current.data.reports))
+                            },
+                            leadingContent = { Icon(Icons.Filled.Flag, null, tint = StatusWarning) },
+                            trailingContent = { Icon(Icons.Filled.ChevronRight, null) },
+                            modifier = Modifier.clickable { onSection(Routes.ADMIN_REPORTS) },
+                        )
+                    }
+                }
+
                 if (current.data.errors.isNotEmpty()) {
                     item {
                         Text(
@@ -260,12 +289,27 @@ fun AdminWorkEditScreen(
     val saving by viewModel.saving.collectAsStateWithLifecycle()
     val error by viewModel.error.collectAsStateWithLifecycle()
     val saved by viewModel.saved.collectAsStateWithLifecycle()
+    val artwork by viewModel.artwork.collectAsStateWithLifecycle()
+    val fetching by viewModel.fetching.collectAsStateWithLifecycle()
 
     LaunchedEffect(saved) { if (saved) onBack() }
+
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(artwork) {
+        artwork?.let {
+            snackbar.showSnackbar(it)
+            viewModel.dismissArtwork()
+        }
+    }
+
+    val artworkDone = stringResource(R.string.admin_tmdb_done, 0)
+    val artworkNone = stringResource(R.string.admin_tmdb_none)
 
     AdminScaffold(
         title = if (viewModel.isNew) stringResource(R.string.admin_new_anime) else "Anime düzenle",
         onBack = onBack,
+        snackbarHost = snackbar,
     ) { padding ->
         Column(
             Modifier
@@ -279,6 +323,30 @@ fun AdminWorkEditScreen(
             Field("Açıklama", form.synopsis.orEmpty(), lines = 5) { value -> viewModel.update { it.copy(synopsis = value) } }
             Field("Poster URL", form.posterUrl.orEmpty()) { value -> viewModel.update { it.copy(posterUrl = value) } }
             Field("Banner URL", form.bannerUrl.orEmpty()) { value -> viewModel.update { it.copy(bannerUrl = value) } }
+
+            // Only on a work that exists: TMDB is matched by what is already
+            // stored, and there is nothing to match a form that has not been
+            // saved once.
+            if (!viewModel.isNew) {
+                OutlinedButton(
+                    onClick = {
+                        viewModel.fetchArtwork(
+                            doneMessage = { count -> artworkDone.replace("0", count.toString()) },
+                            emptyMessage = artworkNone,
+                        )
+                    },
+                    enabled = !fetching,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    if (fetching) {
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Icon(Icons.Filled.Image, null, Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.admin_tmdb_fetch))
+                    }
+                }
+            }
             Field("Stüdyo", form.studio.orEmpty()) { value -> viewModel.update { it.copy(studio = value) } }
             Field("Yıl", form.year?.toString().orEmpty(), numeric = true) { value ->
                 viewModel.update { it.copy(year = value.toIntOrNull()) }
@@ -400,6 +468,7 @@ internal fun AdminScaffold(
     title: String,
     onBack: () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
+    snackbarHost: SnackbarHostState? = null,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     Scaffold(
@@ -414,6 +483,7 @@ internal fun AdminScaffold(
                 actions = actions,
             )
         },
+        snackbarHost = { snackbarHost?.let { SnackbarHost(it) } },
         content = content,
     )
 }
@@ -446,6 +516,9 @@ private val SECTIONS = listOf(
     Triple(Routes.ADMIN_FONTS, R.string.admin_fonts, Icons.Filled.FontDownload),
     Triple(Routes.ADMIN_TERMS, R.string.admin_terms, Icons.Filled.Translate),
     Triple(Routes.ADMIN_USERS, R.string.admin_users, Icons.Filled.People),
+    Triple(Routes.ADMIN_REPORTS, R.string.admin_reports, Icons.Filled.Flag),
+    Triple(Routes.ADMIN_MODERATORS, R.string.admin_moderators, Icons.Filled.AdminPanelSettings),
     Triple(Routes.ADMIN_ANNOUNCEMENTS, R.string.admin_announcements, Icons.Filled.Campaign),
+    Triple(Routes.ADMIN_SERVER, R.string.admin_server, Icons.Filled.Settings),
     Triple(Routes.ADMIN_LOGS, R.string.admin_logs, Icons.Filled.Article),
 )

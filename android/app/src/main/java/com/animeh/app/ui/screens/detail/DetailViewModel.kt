@@ -1,8 +1,11 @@
 package com.animeh.app.ui.screens.detail
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.animeh.app.R
+import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
 import com.animeh.app.data.remote.dto.ReviewDto
@@ -30,6 +33,16 @@ data class DetailUiState(
     val myReview: ReviewDto? = null,
     val rating: Double = 0.0,
     val ratingCount: Int = 0,
+    /**
+     * A one-shot line for the snackbar.
+     *
+     * Two fields rather than one because the two cases differ in where the
+     * words come from: success is this app's own string, and a failure is
+     * usually a sentence the server wrote — which is more useful than any
+     * generic one here.
+     */
+    @StringRes val messageRes: Int? = null,
+    val messageText: String? = null,
 )
 
 @HiltViewModel
@@ -87,6 +100,39 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch {
             if (community.delete(review.id) is AppResult.Success) loadReviews()
         }
+    }
+
+    /**
+     * Send a report to the moderators.
+     *
+     * The list is left alone afterwards. Reporting is not a moderation
+     * decision — the review stays visible until someone with the capability
+     * decides otherwise, and hiding it here would tell the reporter they had
+     * more power than they do.
+     */
+    fun report(review: ReviewDto, reason: String, note: String) {
+        viewModelScope.launch {
+            val result = community.report(review.id, reason, note)
+
+            _state.update {
+                when (result) {
+                    is AppResult.Success ->
+                        it.copy(messageRes = R.string.report_sent, messageText = null)
+
+                    is AppResult.Failure -> {
+                        val error = result.error
+                        it.copy(
+                            messageRes = if (error is AppError.Message) null else error.messageRes,
+                            messageText = (error as? AppError.Message)?.text,
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissMessage() {
+        _state.update { it.copy(messageRes = null, messageText = null) }
     }
 
     fun vote(review: ReviewDto, vote: Int) {

@@ -41,6 +41,11 @@ final class MenuPage {
 	public const MIGRATION_SLUG = 'animeh-migration';
 
 	/**
+	 * Metadata keys and the client's server address.
+	 */
+	public const INTEGRATIONS_SLUG = 'animeh-integrations';
+
+	/**
 	 * Add the menu.
 	 */
 	public static function register(): void {
@@ -85,6 +90,15 @@ final class MenuPage {
 
 		add_submenu_page(
 			self::TEST_SLUG,
+			__( 'Entegrasyonlar', 'animeh' ),
+			__( 'Entegrasyonlar', 'animeh' ),
+			$capability,
+			self::INTEGRATIONS_SLUG,
+			array( IntegrationsPage::class, 'render' )
+		);
+
+		add_submenu_page(
+			self::TEST_SLUG,
 			__( 'Yedek ve Taşıma', 'animeh' ),
 			__( 'Yedek ve Taşıma', 'animeh' ),
 			$capability,
@@ -102,7 +116,8 @@ final class MenuPage {
 		return str_contains( $hook_suffix, self::TEST_SLUG )
 			|| str_contains( $hook_suffix, self::FONTS_SLUG )
 			|| str_contains( $hook_suffix, self::STORAGE_SLUG )
-			|| str_contains( $hook_suffix, self::MIGRATION_SLUG );
+			|| str_contains( $hook_suffix, self::MIGRATION_SLUG )
+			|| str_contains( $hook_suffix, self::INTEGRATIONS_SLUG );
 	}
 
 	/**

@@ -88,4 +88,80 @@ final class WatchProgress {
 
 		return max( 0, $watched ) + $step;
 	}
+
+	/**
+	 * Share of an episode that counts as "barely started" or "as good as over".
+	 *
+	 * Both ends of the resume rule are a percentage rather than a fixed number
+	 * of seconds. Fixed ones do not survive short episodes: thirty seconds in
+	 * and forty-five off the end leaves a ninety-second upload resumable for
+	 * thirteen of its ninety seconds, which reads as the feature being broken.
+	 */
+	public const MARGIN_PERCENT = 5;
+
+	/** Never ask for less than this before offering to continue. */
+	public const MIN_RESUME = 10;
+
+	/** Nor for more. */
+	public const MAX_RESUME = 30;
+
+	/** The shortest tail that still counts as the end. */
+	public const MIN_END_MARGIN = 5;
+
+	/** And the longest. */
+	public const MAX_END_MARGIN = 45;
+
+	/**
+	 * How far in the playhead must be before continuing is worth offering.
+	 *
+	 * @param int $duration Episode length in seconds, zero when unknown.
+	 */
+	public static function start_threshold( int $duration ): int {
+		if ( $duration <= 0 ) {
+			return self::MIN_RESUME;
+		}
+
+		return min(
+			self::MAX_RESUME,
+			max( self::MIN_RESUME, intdiv( $duration * self::MARGIN_PERCENT, 100 ) )
+		);
+	}
+
+	/**
+	 * How much of the tail is close enough to the end to have nothing left.
+	 *
+	 * @param int $duration Episode length in seconds, zero when unknown.
+	 */
+	public static function end_margin( int $duration ): int {
+		if ( $duration <= 0 ) {
+			return self::MIN_END_MARGIN;
+		}
+
+		return min(
+			self::MAX_END_MARGIN,
+			max( self::MIN_END_MARGIN, intdiv( $duration * self::MARGIN_PERCENT, 100 ) )
+		);
+	}
+
+	/**
+	 * Whether "continue watching" should offer this position.
+	 *
+	 * Completion deliberately plays no part. It means "watched enough of it to
+	 * count", which happens at seventy percent, and someone who stopped there
+	 * still has minutes left to continue into.
+	 *
+	 * @param int $position Playhead in seconds.
+	 * @param int $duration Episode length in seconds, zero when unknown.
+	 */
+	public static function is_resumable( int $position, int $duration ): bool {
+		if ( $position < self::start_threshold( $duration ) ) {
+			return false;
+		}
+
+		if ( $duration <= 0 ) {
+			return true;
+		}
+
+		return $position + self::end_margin( $duration ) < $duration;
+	}
 }

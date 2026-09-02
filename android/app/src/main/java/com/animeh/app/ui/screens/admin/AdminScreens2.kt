@@ -19,6 +19,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
@@ -32,6 +33,7 @@ import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.core.ClientLog
 import com.animeh.app.core.UiState
+import com.animeh.app.data.remote.dto.UserDto
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.components.ErrorState
 import com.animeh.app.ui.theme.*
@@ -359,6 +361,20 @@ fun AdminUsersScreen(onBack: () -> Unit, viewModel: AdminUsersViewModel = hiltVi
     val state by viewModel.state.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
 
+    // Which user the ban dialog is open for, or null when it is closed.
+    var banning by remember { mutableStateOf<UserDto?>(null) }
+
+    banning?.let { user ->
+        BanDialog(
+            user = user,
+            onDismiss = { banning = null },
+            onConfirm = { reason, days ->
+                banning = null
+                viewModel.ban(user.id, reason, days)
+            },
+        )
+    }
+
     AdminScaffold(stringResource(R.string.admin_users), onBack) { padding ->
         Column(Modifier.padding(padding)) {
             OutlinedTextField(
@@ -379,18 +395,48 @@ fun AdminUsersScreen(onBack: () -> Unit, viewModel: AdminUsersViewModel = hiltVi
                         ListItem(
                             headlineContent = { Text(user.displayName.ifBlank { user.username }) },
                             supportingContent = {
+                                val ban = user.ban
+
                                 Text(
                                     listOfNotNull(
                                         user.email,
                                         user.roles.joinToString(", ").takeIf { it.isNotBlank() },
                                         user.stats?.let { "${it.episodesCompleted} bölüm" },
+                                        // The sanction reads first when there
+                                        // is one: it is why the row is here.
+                                        ban?.let {
+                                            if (it.permanent) stringResource(R.string.admin_ban_banned)
+                                            else stringResource(R.string.admin_ban_until, it.expiresAt)
+                                        },
                                     ).joinToString(" · "),
                                     style = MaterialTheme.typography.bodySmall,
+                                    color = if (ban != null) StatusError else Color.Unspecified,
                                 )
                             },
                             trailingContent = {
-                                if (user.isAdmin) {
-                                    Icon(Icons.Filled.AdminPanelSettings, null, tint = AccentPrimary)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (user.isAdmin) {
+                                        Icon(
+                                            Icons.Filled.AdminPanelSettings,
+                                            null,
+                                            tint = AccentPrimary,
+                                        )
+                                    }
+
+                                    // Never offered against an administrator:
+                                    // the server refuses it too, and an action
+                                    // that always fails is worse than none.
+                                    if (!user.isAdmin) {
+                                        if (user.ban != null) {
+                                            TextButton(onClick = { viewModel.liftBan(user.id) }) {
+                                                Text(stringResource(R.string.admin_ban_lift))
+                                            }
+                                        } else {
+                                            TextButton(onClick = { banning = user }) {
+                                                Text(stringResource(R.string.admin_ban))
+                                            }
+                                        }
+                                    }
                                 }
                             },
                         )

@@ -255,6 +255,18 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
         AdminUsersScreen(onBack = { navController.popBackStack() })
     }
 
+    composable(Routes.ADMIN_REPORTS) {
+        AdminReportsScreen(onBack = { navController.popBackStack() })
+    }
+
+    composable(Routes.ADMIN_MODERATORS) {
+        AdminModeratorsScreen(onBack = { navController.popBackStack() })
+    }
+
+    composable(Routes.ADMIN_SERVER) {
+        AdminServerScreen(onBack = { navController.popBackStack() })
+    }
+
     composable(Routes.ADMIN_ANNOUNCEMENTS) {
         AdminAnnouncementsScreen(onBack = { navController.popBackStack() })
     }

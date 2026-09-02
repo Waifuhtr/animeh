@@ -1197,4 +1197,199 @@ describe( 'WatchProgress', static function (): void {
 
 		same( false, \Animeh\Support\WatchProgress::is_complete( $watched, 1440 ) );
 	} );
+
+	it( 'offers to continue a full-length episode across almost all of it', static function (): void {
+		$duration = 24 * 60;
+
+		// Five percent of 24 minutes is 72s, clamped to the 30s ceiling.
+		same( 30, \Animeh\Support\WatchProgress::start_threshold( $duration ) );
+		same( 45, \Animeh\Support\WatchProgress::end_margin( $duration ) );
+
+		same( false, \Animeh\Support\WatchProgress::is_resumable( 29, $duration ) );
+		same( true, \Animeh\Support\WatchProgress::is_resumable( 30, $duration ) );
+		same( true, \Animeh\Support\WatchProgress::is_resumable( 1394, $duration ) );
+		same( false, \Animeh\Support\WatchProgress::is_resumable( 1395, $duration ) );
+	} );
+
+	it( 'offers to continue a ninety-second episode, which fixed seconds did not', static function (): void {
+		$duration = 90;
+
+		// The old rule was "past 30s and more than 45s left", which left
+		// thirteen of the ninety seconds resumable and looked like a dead
+		// feature. Both margins are floors here: 5% of 90 is 4.
+		same( 10, \Animeh\Support\WatchProgress::start_threshold( $duration ) );
+		same( 5, \Animeh\Support\WatchProgress::end_margin( $duration ) );
+
+		same( false, \Animeh\Support\WatchProgress::is_resumable( 9, $duration ) );
+		same( true, \Animeh\Support\WatchProgress::is_resumable( 10, $duration ) );
+		same( true, \Animeh\Support\WatchProgress::is_resumable( 45, $duration ) );
+		same( true, \Animeh\Support\WatchProgress::is_resumable( 84, $duration ) );
+		same( false, \Animeh\Support\WatchProgress::is_resumable( 85, $duration ) );
+	} );
+
+	it( 'still offers to continue when the length is unknown', static function (): void {
+		same( false, \Animeh\Support\WatchProgress::is_resumable( 9, 0 ) );
+		same( true, \Animeh\Support\WatchProgress::is_resumable( 10, 0 ) );
+		same( true, \Animeh\Support\WatchProgress::is_resumable( 100000, 0 ) );
+	} );
+
+	it( 'never underflows on an episode shorter than the margin', static function (): void {
+		// The SQL spells the tail as an addition for the same reason: the
+		// column is UNSIGNED and duration - margin would wrap.
+		same( false, \Animeh\Support\WatchProgress::is_resumable( 1, 3 ) );
+		same( false, \Animeh\Support\WatchProgress::is_resumable( 3, 3 ) );
+	} );
+
+	it( 'counts an episode complete once the real length replaces the estimate', static function (): void {
+		// The catalog said 24 minutes for a 90-second upload. Against the
+		// estimate nothing was ever complete; against the measured length,
+		// 63 seconds played is enough.
+		same( false, \Animeh\Support\WatchProgress::is_complete( 63, 1440 ) );
+		same( true, \Animeh\Support\WatchProgress::is_complete( 63, 90 ) );
+	} );
+} );
+
+describe( 'TmdbMapper', static function (): void {
+	it( 'joins an image path onto the base and size', static function (): void {
+		same(
+			'https://image.tmdb.org/t/p/w500/abc.jpg',
+			\Animeh\Support\TmdbMapper::image( '/abc.jpg', 'w500' )
+		);
+
+		// A configuration call that came back with a trailing slash, and a
+		// path that came back without a leading one: both are TMDB's own
+		// shapes at different times.
+		same(
+			'https://image.tmdb.org/t/p/w300/still.jpg',
+			\Animeh\Support\TmdbMapper::image( 'still.jpg', 'w300', 'https://image.tmdb.org/t/p/' )
+		);
+	} );
+
+	it( 'returns nothing for a missing image rather than a URL that 404s', static function (): void {
+		same( '', \Animeh\Support\TmdbMapper::image( '', 'w500' ) );
+		same( '', \Animeh\Support\TmdbMapper::image( '   ', 'w500' ) );
+	} );
+
+	it( 'maps TMDB status onto the catalog vocabulary', static function (): void {
+		same( 'airing', \Animeh\Support\TmdbMapper::status( 'Returning Series' ) );
+		same( 'airing', \Animeh\Support\TmdbMapper::status( 'In Production' ) );
+		same( 'finished', \Animeh\Support\TmdbMapper::status( 'Ended' ) );
+		same( 'finished', \Animeh\Support\TmdbMapper::status( 'Canceled' ) );
+		same( 'upcoming', \Animeh\Support\TmdbMapper::status( 'Planned' ) );
+		same( 'unknown', \Animeh\Support\TmdbMapper::status( 'Something Else' ) );
+	} );
+
+	it( 'maps a TV payload onto catalog columns', static function (): void {
+		$tv = array(
+			'id'                 => 46260,
+			'name'               => 'Naruto',
+			'original_name'      => 'ナルト',
+			'overview'           => 'Bir ninja hikâyesi.',
+			'poster_path'        => '/poster.jpg',
+			'backdrop_path'      => '/backdrop.jpg',
+			'first_air_date'     => '2002-10-03',
+			'status'             => 'Ended',
+			'genres'             => array(
+				array( 'id' => 16, 'name' => 'Animasyon' ),
+				array( 'id' => 10759, 'name' => 'Aksiyon & Macera' ),
+			),
+			'number_of_episodes' => 220,
+			'episode_run_time'   => array( 24 ),
+			'vote_average'       => 8.3,
+		);
+
+		$mapped = \Animeh\Support\TmdbMapper::work( $tv );
+
+		same( 46260, $mapped['tmdb_id'] );
+		same( 'Naruto', $mapped['title'] );
+		same( 'Bir ninja hikâyesi.', $mapped['synopsis'] );
+		same( 'https://image.tmdb.org/t/p/w500/poster.jpg', $mapped['poster_url'] );
+		same( 'https://image.tmdb.org/t/p/w1280/backdrop.jpg', $mapped['banner_url'] );
+		same( 2002, $mapped['year'] );
+		same( 'finished', $mapped['status'] );
+		same( array( 'Animasyon', 'Aksiyon & Macera' ), $mapped['genres'] );
+		same( 220, $mapped['total_episodes'] );
+		same( 1440, $mapped['duration_seconds'] );
+	} );
+
+	it( 'survives a TV payload with every optional field missing', static function (): void {
+		$mapped = \Animeh\Support\TmdbMapper::work( array( 'id' => 7 ) );
+
+		same( 7, $mapped['tmdb_id'] );
+		same( '', $mapped['poster_url'] );
+		same( '', $mapped['banner_url'] );
+		same( 0, $mapped['year'] );
+		same( 'unknown', $mapped['status'] );
+		same( array(), $mapped['genres'] );
+		same( 0, $mapped['duration_seconds'] );
+	} );
+
+	it( 'maps an episode onto its still and title', static function (): void {
+		$mapped = \Animeh\Support\TmdbMapper::episode(
+			array(
+				'season_number'  => 1,
+				'episode_number' => 3,
+				'name'           => 'Sasuke ve Sakura',
+				'overview'       => 'Takım kuruluyor.',
+				'still_path'     => '/still3.jpg',
+				'runtime'        => 23,
+				'air_date'       => '2002-10-17',
+			)
+		);
+
+		same( 3, $mapped['number'] );
+		same( 'Sasuke ve Sakura', $mapped['title'] );
+		same( 'https://image.tmdb.org/t/p/w300/still3.jpg', $mapped['thumbnail_url'] );
+		same( 1380, $mapped['duration_seconds'] );
+	} );
+
+	it( 'takes an exact title over a more popular near-miss', static function (): void {
+		$results = array(
+			array( 'id' => 1, 'name' => 'Naruto Shippuden', 'first_air_date' => '2007-02-15', 'popularity' => 900.0 ),
+			array( 'id' => 2, 'name' => 'Naruto', 'first_air_date' => '2002-10-03', 'popularity' => 100.0 ),
+		);
+
+		$match = \Animeh\Support\TmdbMapper::best_match( $results, 'Naruto', 2002 );
+		same( 2, $match['id'] );
+	} );
+
+	it( 'uses the year to separate two shows with the same name', static function (): void {
+		$results = array(
+			array( 'id' => 10, 'name' => 'Fruits Basket', 'first_air_date' => '2001-07-05', 'popularity' => 50.0 ),
+			array( 'id' => 11, 'name' => 'Fruits Basket', 'first_air_date' => '2019-04-06', 'popularity' => 40.0 ),
+		);
+
+		same( 11, \Animeh\Support\TmdbMapper::best_match( $results, 'Fruits Basket', 2019 )['id'] );
+		same( 10, \Animeh\Support\TmdbMapper::best_match( $results, 'Fruits Basket', 2001 )['id'] );
+	} );
+
+	it( 'matches across punctuation and case differences', static function (): void {
+		$results = array(
+			array( 'id' => 20, 'name' => 'Re:ZERO -Starting Life in Another World-', 'first_air_date' => '2016-04-04' ),
+		);
+
+		same(
+			20,
+			\Animeh\Support\TmdbMapper::best_match( $results, 're zero starting life in another world', 2016 )['id']
+		);
+	} );
+
+	it( 'refuses to guess when nothing resembles the title', static function (): void {
+		$results = array(
+			array( 'id' => 30, 'name' => 'Breaking Bad', 'first_air_date' => '2008-01-20', 'popularity' => 5000.0 ),
+		);
+
+		// The wrong poster on a card is worse than no poster: popularity alone
+		// must never be enough to win a match.
+		same( null, \Animeh\Support\TmdbMapper::best_match( $results, 'Mushishi', 2005 ) );
+		same( null, \Animeh\Support\TmdbMapper::best_match( array(), 'Mushishi', 2005 ) );
+	} );
+
+	it( 'accepts a season that aired across New Year', static function (): void {
+		$results = array(
+			array( 'id' => 40, 'name' => 'Vinland Saga', 'first_air_date' => '2019-07-08' ),
+		);
+
+		same( 40, \Animeh\Support\TmdbMapper::best_match( $results, 'Vinland Saga', 2020 )['id'] );
+	} );
 } );

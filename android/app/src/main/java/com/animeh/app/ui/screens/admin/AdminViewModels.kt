@@ -173,6 +173,57 @@ class AdminWorkEditViewModel @Inject constructor(
         _form.update(block)
     }
 
+    private val _artwork = MutableStateFlow<String?>(null)
+
+    /** A line about the last TMDB fetch: what it filled, or why it did not. */
+    val artwork: StateFlow<String?> = _artwork.asStateFlow()
+
+    private val _fetching = MutableStateFlow(false)
+    val fetching: StateFlow<Boolean> = _fetching.asStateFlow()
+
+    fun dismissArtwork() {
+        _artwork.value = null
+    }
+
+    /**
+     * Pull the poster, the backdrop and the episode stills from TMDB.
+     *
+     * Only fills what is empty. A poster someone chose by hand is not a gap,
+     * and a run of this quietly replacing it would be the kind of change
+     * nobody notices until the wrong artwork is on the shelf.
+     *
+     * @param doneMessage  With one %d, for how many episodes were filled.
+     * @param emptyMessage When there was nothing to fill.
+     */
+    fun fetchArtwork(doneMessage: (Int) -> String, emptyMessage: String) {
+        if (workId <= 0) return
+
+        viewModelScope.launch {
+            _fetching.value = true
+
+            when (val result = repository.tmdbArtwork(workId)) {
+                is AppResult.Success -> {
+                    val data = result.data
+                    _artwork.value = if (data.filled.isEmpty() && data.episodesFilled == 0) {
+                        emptyMessage
+                    } else {
+                        doneMessage(data.episodesFilled)
+                    }
+
+                    // The row now holds URLs this form does not: re-read it so
+                    // the fields show what was actually written.
+                    load()
+                }
+
+                // The server's own sentence: "no key" and "no match" are the
+                // two likely failures and both name their own fix.
+                is AppResult.Failure -> _artwork.value = result.error.technical
+            }
+
+            _fetching.value = false
+        }
+    }
+
     fun save() {
         val current = _form.value
 
@@ -495,6 +546,192 @@ class AdminUsersViewModel @Inject constructor(
                 is AppResult.Success ->
                     if (result.data.items.isEmpty()) UiState.Empty else UiState.Success(result.data.items)
                 is AppResult.Failure -> UiState.Error(result.error)
+            }
+        }
+    }
+
+    /** [days] zero is permanent; anything else suspends for that many days. */
+    fun ban(userId: Long, reason: String, days: Int) {
+        viewModelScope.launch {
+            replace(repository.banUser(userId, reason, days))
+        }
+    }
+
+    fun liftBan(userId: Long) {
+        viewModelScope.launch {
+            replace(repository.liftBan(userId))
+        }
+    }
+
+    /**
+     * Swap one row for the version the server just returned.
+     *
+     * Rather than reloading: the list is searched and paged, and a reload
+     * would move the row someone just acted on out from under them.
+     */
+    private fun replace(result: AppResult<UserDto>) {
+        if (result !is AppResult.Success) return
+
+        val updated = result.data
+        _state.update { current ->
+            if (current !is UiState.Success) current
+            else UiState.Success(current.data.map { if (it.id == updated.id) updated else it })
+        }
+    }
+}
+
+/** The report queue: what people flagged, and what to do about it. */
+@HiltViewModel
+class AdminReportsViewModel @Inject constructor(
+    private val repository: AdminRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<UiState<List<ReportDto>>>(UiState.Loading)
+    val state: StateFlow<UiState<List<ReportDto>>> = _state.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            _state.value = UiState.Loading
+            _state.value = when (val result = repository.reports()) {
+                is AppResult.Success ->
+                    if (result.data.items.isEmpty()) UiState.Empty else UiState.Success(result.data.items)
+                is AppResult.Failure -> UiState.Error(result.error)
+            }
+        }
+    }
+
+    /** [action] is "delete" to remove the review, "dismiss" to let it stand. */
+    fun handle(reportId: Long, action: String) {
+        viewModelScope.launch {
+            if (repository.handleReport(reportId, action) !is AppResult.Success) return@launch
+
+            // Dropped locally rather than reloading: the queue is short, and
+            // the row that was just dealt with is the one that should go.
+            _state.update { current ->
+                if (current !is UiState.Success) current
+                else {
+                    val left = current.data.filterNot { it.id == reportId }
+                    if (left.isEmpty()) UiState.Empty else UiState.Success(left)
+                }
+            }
+        }
+    }
+}
+
+/** Who may moderate, added by the address they gave you. */
+@HiltViewModel
+class AdminModeratorsViewModel @Inject constructor(
+    private val repository: AdminRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<UiState<List<UserDto>>>(UiState.Loading)
+    val state: StateFlow<UiState<List<UserDto>>> = _state.asStateFlow()
+
+    private val _email = MutableStateFlow("")
+    val email: StateFlow<String> = _email.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    private val _busy = MutableStateFlow(false)
+    val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun setEmail(value: String) {
+        _email.value = value
+    }
+
+    fun dismissMessage() {
+        _message.value = null
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            _state.value = UiState.Loading
+            _state.value = when (val result = repository.moderators()) {
+                is AppResult.Success ->
+                    if (result.data.isEmpty()) UiState.Empty else UiState.Success(result.data)
+                is AppResult.Failure -> UiState.Error(result.error)
+            }
+        }
+    }
+
+    fun add() {
+        val address = _email.value.trim()
+        if (address.isBlank()) return
+
+        viewModelScope.launch {
+            _busy.value = true
+
+            when (val result = repository.addModerator(address)) {
+                is AppResult.Success -> {
+                    _email.value = ""
+                    load()
+                }
+
+                // The server's own sentence: "no account with that address"
+                // and "already an administrator" are both worth reading, and
+                // neither has a useful generic equivalent.
+                is AppResult.Failure -> _message.value = result.error.technical
+            }
+
+            _busy.value = false
+        }
+    }
+
+    fun remove(userId: Long) {
+        viewModelScope.launch {
+            if (repository.removeModerator(userId) is AppResult.Success) load()
+        }
+    }
+}
+
+/** Where every client is told to connect, and whether sign-ups are open. */
+@HiltViewModel
+class AdminServerViewModel @Inject constructor(
+    private val repository: AdminRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<UiState<AdminClientConfigDto>>(UiState.Loading)
+    val state: StateFlow<UiState<AdminClientConfigDto>> = _state.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun dismissMessage() {
+        _message.value = null
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            _state.value = UiState.Loading
+            _state.value = when (val result = repository.clientConfig()) {
+                is AppResult.Success -> UiState.Success(result.data)
+                is AppResult.Failure -> UiState.Error(result.error)
+            }
+        }
+    }
+
+    fun save(apiBase: String, registrationOpen: Boolean, savedMessage: String) {
+        viewModelScope.launch {
+            when (val result = repository.saveClientConfig(apiBase, registrationOpen)) {
+                is AppResult.Success -> {
+                    _state.value = UiState.Success(result.data)
+                    _message.value = savedMessage
+                }
+
+                is AppResult.Failure -> _message.value = result.error.technical
             }
         }
     }

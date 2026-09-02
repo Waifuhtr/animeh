@@ -7,6 +7,7 @@ import com.animeh.app.BuildConfig
 import com.animeh.app.data.remote.dto.AppSettingsDto
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -62,6 +63,21 @@ class SettingsStore @Inject constructor(
         val normalised = normaliseBase(value)
         context.dataStore.edit { it[KEY_API_BASE] = normalised }
         currentApiBase = normalised
+    }
+
+    /**
+     * The stored address, read once and mirrored into [currentApiBase].
+     *
+     * [primeApiBase] keeps collecting for the life of the process and so never
+     * returns; anything that has to know the address is right *before* it makes
+     * a request needs this instead.
+     */
+    suspend fun awaitApiBase(): String {
+        val stored = context.dataStore.data.first()[KEY_API_BASE]
+        val value = normaliseBase(stored ?: BuildConfig.DEFAULT_API_BASE)
+        currentApiBase = value
+
+        return value
     }
 
     /** Called once at startup so [currentApiBase] is right before any request. */

@@ -138,16 +138,23 @@ class LibraryRepository @Inject constructor(
         // order must not take away time already earned.
         val watched = maxOf(watchedSeconds, existing?.watchedSeconds ?: 0)
 
+        // The newest measurement wins, and zero means "not measured yet"
+        // rather than "zero long". Never the larger of the two: the catalog's
+        // twenty-four-minute estimate would then outlive the real length the
+        // file reported, and decide completion for an episode it never
+        // described.
+        val duration = if (durationSeconds > 0) durationSeconds else existing?.durationSeconds ?: 0
+
         // Decided from time played, never from the playhead — dragging to the
         // credits moves the position without watching any of it.
-        val completed = WatchProgress.isComplete(watched, durationSeconds)
+        val completed = WatchProgress.isComplete(watched, duration)
 
         progressDao.upsert(
             ProgressEntity(
                 episodeId = episodeId,
                 workId = workId,
                 positionSeconds = positionSeconds,
-                durationSeconds = durationSeconds,
+                durationSeconds = duration,
                 watchedSeconds = watched,
                 // Sticky, matching the server: finishing an episode and then
                 // scrubbing back must not mark it unwatched.
@@ -159,7 +166,7 @@ class LibraryRepository @Inject constructor(
 
         val pushed = ApiErrorMapper.call({ Unit }) {
             userApi.recordProgress(
-                ProgressRequest(episodeId, positionSeconds, durationSeconds, watched)
+                ProgressRequest(episodeId, positionSeconds, duration, watched)
             )
         }
 

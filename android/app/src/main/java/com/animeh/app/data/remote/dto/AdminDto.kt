@@ -9,6 +9,9 @@ data class DashboardDto(
     val errors: List<ErrorSummaryDto> = emptyList(),
     val storage: StorageStatusDto = StorageStatusDto(),
     val tenrai: TenraiSettingsDto = TenraiSettingsDto(),
+    val tmdb: TmdbSettingsDto = TmdbSettingsDto(),
+    /** How many review reports are waiting, for the badge on the tile. */
+    val reports: Int = 0,
 )
 
 @Serializable
@@ -282,3 +285,147 @@ data class AdminFontDto(
 
 @Serializable
 data class AdminFontListDto(val fonts: List<AdminFontDto> = emptyList())
+
+// ---------------------------------------------------------------------------
+// TMDB
+// ---------------------------------------------------------------------------
+
+@Serializable
+data class TmdbSettingsDto(
+    @SerialName("has_key") @Serializable(with = LenientBoolean::class) val hasKey: Boolean = false,
+    @SerialName("key_masked") val keyMasked: String = "",
+    val language: String = "tr-TR",
+    @Serializable(with = LenientBoolean::class) val enabled: Boolean = true,
+    @SerialName("image_base") val imageBase: String = "",
+)
+
+@Serializable
+data class TmdbSettingsEnvelopeDto(val tmdb: TmdbSettingsDto = TmdbSettingsDto())
+
+@Serializable
+data class TmdbSettingsRequest(
+    /** Empty keeps whatever is stored: the field shows a mask, not the key. */
+    val key: String = "",
+    val language: String = "tr-TR",
+    val enabled: Boolean = true,
+)
+
+@Serializable
+data class TmdbSearchResultDto(
+    @SerialName("tmdb_id") val tmdbId: Long = 0,
+    val title: String = "",
+    val original: String = "",
+    val synopsis: String = "",
+    val year: Int = 0,
+    @SerialName("poster_url") val posterUrl: String = "",
+)
+
+@Serializable
+data class TmdbSearchDto(val items: List<TmdbSearchResultDto> = emptyList())
+
+@Serializable
+data class TmdbArtworkRequest(
+    @SerialName("work_id") val workId: Long,
+    /** Zero asks the server to match by title; non-zero names the show. */
+    @SerialName("tmdb_id") val tmdbId: Long = 0,
+    val episodes: Boolean = true,
+    val synopsis: Boolean = true,
+    /** Off by default: a poster someone chose by hand is not a gap to fill. */
+    val overwrite: Boolean = false,
+)
+
+@Serializable
+data class TmdbArtworkResultDto(
+    @SerialName("tmdb_id") val tmdbId: Long = 0,
+    val filled: List<String> = emptyList(),
+    @SerialName("episodes_filled") val episodesFilled: Int = 0,
+)
+
+// ---------------------------------------------------------------------------
+// Moderation
+// ---------------------------------------------------------------------------
+
+@Serializable
+data class ReportRequest(
+    val reason: String,
+    /** Only meaningful — and required — when the reason is "other". */
+    val note: String = "",
+)
+
+@Serializable
+data class ReportResultDto(
+    @Serializable(with = LenientBoolean::class) val ok: Boolean = true,
+    val id: Long = 0,
+)
+
+@Serializable
+data class ReportDto(
+    val id: Long = 0,
+    @SerialName("review_id") val reviewId: Long = 0,
+    @SerialName("work_id") val workId: Long = 0,
+    @SerialName("work_title") val workTitle: String = "",
+    val reason: String = "other",
+    val note: String = "",
+    val status: String = "open",
+    @SerialName("created_at") val createdAt: String = "",
+    val reporter: UserDto = UserDto(),
+    @SerialName("review_author") val reviewAuthor: UserDto = UserDto(),
+    @SerialName("review_body") val reviewBody: String = "",
+    @SerialName("review_score") val reviewScore: Int = 0,
+    @SerialName("review_spoiler") @Serializable(with = LenientBoolean::class) val reviewSpoiler: Boolean = false,
+)
+
+@Serializable
+data class ReportListDto(
+    val items: List<ReportDto> = emptyList(),
+    val open: Int = 0,
+)
+
+@Serializable
+data class ReportActionRequest(
+    /** "delete" removes the review, "dismiss" says there was nothing wrong. */
+    val action: String,
+)
+
+@Serializable
+data class ReportHandledDto(
+    @Serializable(with = LenientBoolean::class) val ok: Boolean = true,
+    val open: Int = 0,
+)
+
+@Serializable
+data class BanRequest(
+    val reason: String = "",
+    val note: String = "",
+    /** Zero is permanent; anything else is that many days. */
+    val days: Int = 0,
+)
+
+@Serializable
+data class AdminUserEnvelopeDto(val user: UserDto = UserDto())
+
+@Serializable
+data class ModeratorListDto(val items: List<UserDto> = emptyList())
+
+@Serializable
+data class ModeratorRequest(val email: String)
+
+// ---------------------------------------------------------------------------
+// Where clients are told to connect
+// ---------------------------------------------------------------------------
+
+@Serializable
+data class AdminClientConfigDto(
+    @SerialName("api_base") val apiBase: String = "",
+    /** Empty means "wherever this site answers"; set means it was overridden. */
+    @SerialName("api_base_override") val apiBaseOverride: String = "",
+    @SerialName("default_base") val defaultBase: String = "",
+    @SerialName("registration_open") @Serializable(with = LenientBoolean::class)
+    val registrationOpen: Boolean = true,
+)
+
+@Serializable
+data class AdminClientConfigRequest(
+    @SerialName("api_base") val apiBase: String = "",
+    @SerialName("registration_open") val registrationOpen: Boolean = true,
+)

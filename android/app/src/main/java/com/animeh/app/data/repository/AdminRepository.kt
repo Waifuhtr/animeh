@@ -102,6 +102,82 @@ class AdminRepository @Inject constructor(
     suspend fun users(search: String = "", page: Int = 1): AppResult<AdminUserListDto> =
         ApiErrorMapper.call { api.users(search, page) }
 
+    // -- TMDB ---------------------------------------------------------------
+
+    suspend fun tmdbSettings(): AppResult<TmdbSettingsDto> =
+        ApiErrorMapper.call({ it.tmdb }) { api.tmdbSettings() }
+
+    suspend fun saveTmdbSettings(
+        key: String,
+        language: String,
+        enabled: Boolean,
+    ): AppResult<TmdbSettingsDto> =
+        ApiErrorMapper.call({ it.tmdb }) {
+            api.saveTmdbSettings(TmdbSettingsRequest(key.trim(), language.trim(), enabled))
+        }
+
+    suspend fun tmdbSearch(query: String, year: Int = 0): AppResult<List<TmdbSearchResultDto>> =
+        ApiErrorMapper.call({ it.items }) { api.tmdbSearch(query, year) }
+
+    /**
+     * Fill a work's artwork from TMDB.
+     *
+     * [tmdbId] zero asks the server to find the show by title; it refuses
+     * rather than guessing when nothing matches, which is why the screen also
+     * offers a search.
+     */
+    suspend fun tmdbArtwork(
+        workId: Long,
+        tmdbId: Long = 0,
+        episodes: Boolean = true,
+        overwrite: Boolean = false,
+    ): AppResult<TmdbArtworkResultDto> =
+        ApiErrorMapper.call {
+            api.tmdbArtwork(TmdbArtworkRequest(workId, tmdbId, episodes, true, overwrite))
+        }
+
+    // -- Moderation ---------------------------------------------------------
+
+    suspend fun reports(status: String = "open"): AppResult<ReportListDto> =
+        ApiErrorMapper.call { api.reports(status) }
+
+    suspend fun handleReport(reportId: Long, action: String): AppResult<Int> =
+        ApiErrorMapper.call({ it.open }) { api.handleReport(reportId, ReportActionRequest(action)) }
+
+    /** [days] zero is permanent; anything else is a suspension of that length. */
+    suspend fun banUser(
+        userId: Long,
+        reason: String,
+        days: Int,
+        note: String = "",
+    ): AppResult<UserDto> =
+        ApiErrorMapper.call({ it.user }) { api.banUser(userId, BanRequest(reason, note, days)) }
+
+    suspend fun liftBan(userId: Long): AppResult<UserDto> =
+        ApiErrorMapper.call({ it.user }) { api.liftBan(userId) }
+
+    suspend fun moderators(): AppResult<List<UserDto>> =
+        ApiErrorMapper.call({ it.items }) { api.moderators() }
+
+    suspend fun addModerator(email: String): AppResult<UserDto> =
+        ApiErrorMapper.call({ it.user }) { api.addModerator(ModeratorRequest(email.trim())) }
+
+    suspend fun removeModerator(userId: Long): AppResult<Unit> =
+        ApiErrorMapper.call({ Unit }) { api.removeModerator(userId) }
+
+    // -- Where clients connect ----------------------------------------------
+
+    suspend fun clientConfig(): AppResult<AdminClientConfigDto> =
+        ApiErrorMapper.call { api.clientConfig() }
+
+    suspend fun saveClientConfig(
+        apiBase: String,
+        registrationOpen: Boolean,
+    ): AppResult<AdminClientConfigDto> =
+        ApiErrorMapper.call {
+            api.saveClientConfig(AdminClientConfigRequest(apiBase.trim(), registrationOpen))
+        }
+
     suspend fun announcements(): AppResult<List<AdminAnnouncementDto>> =
         ApiErrorMapper.call({ it.items }) { api.announcements() }
 

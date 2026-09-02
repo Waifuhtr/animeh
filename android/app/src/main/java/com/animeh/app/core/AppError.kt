@@ -73,6 +73,20 @@ sealed class AppError(
     class Message(val text: String, code: String = "VALIDATION_ERROR") :
         AppError(R.string.error_unknown, code, text)
 
+    /**
+     * The account has been suspended or banned.
+     *
+     * Its own type rather than a [Forbidden] because it is the one refusal
+     * that has to interrupt whatever the user was doing and explain itself:
+     * every other 403 means "not this, try something else".
+     */
+    class Banned(
+        val reason: String,
+        val expiresAt: String,
+        val permanent: Boolean,
+        technical: String? = null,
+    ) : AppError(R.string.error_banned, "ACCOUNT_BANNED", technical)
+
     /** Anything unclassified. */
     class Unknown(technical: String? = null) :
         AppError(R.string.error_unknown, "UNKNOWN_ERROR", technical)

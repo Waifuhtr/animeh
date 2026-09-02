@@ -43,6 +43,7 @@ object Routes {
     const val ADMIN_ANNOUNCEMENTS = "admin/announcements"
     const val ADMIN_LOGS = "admin/logs"
     const val ADMIN_FONTS = "admin/fonts"
+    const val ADMIN_TERMS = "admin/terms"
 
     private const val ADMIN_WORK_BASE = "admin/work"
     const val ADMIN_WORK_EDIT = "$ADMIN_WORK_BASE/{workId}"

@@ -177,4 +177,44 @@
     <string name="admin_uploading">Yükleniyor… %1$d%%</string>
     <string name="admin_delete_confirm">Bu kayıt kalıcı olarak silinecek. Emin misin?</string>
     <string name="admin_no_permission">Yönetim paneline erişim yetkin yok.</string>
+
+    <!-- Hero slider -->
+    <string name="hero_new_episode">Yeni Bölüm</string>
+    <string name="hero_details">Detaylar</string>
+
+    <!-- Work status, shown as a tag on cards -->
+    <string name="status_airing">Devam ediyor</string>
+    <string name="status_finished">Tamamlandı</string>
+    <string name="status_upcoming">Yakında</string>
+
+    <!-- Reviews -->
+    <string name="reviews_title">Eleştiriler</string>
+    <string name="reviews_empty">Henüz eleştiri yok. İlk yazan sen ol.</string>
+    <string name="reviews_write">Eleştiri yaz</string>
+    <string name="reviews_edit">Eleştirini düzenle</string>
+    <string name="reviews_delete">Eleştirini sil</string>
+    <string name="reviews_score">Puanın: %1$d / 10</string>
+    <string name="reviews_body_hint">Ne düşündün? (isteğe bağlı)</string>
+    <string name="reviews_spoiler_mark">Spoiler içeriyor</string>
+    <string name="reviews_spoiler_hidden">Bu eleştiri spoiler içeriyor. Görmek için dokun.</string>
+    <string name="reviews_agree">Katılıyorum</string>
+    <string name="reviews_disagree">Katılmıyorum</string>
+    <string name="reviews_sign_in">Eleştiri yazmak için giriş yap.</string>
+    <string name="reviews_average">%1$s / 10 · %2$d değerlendirme</string>
+    <string name="reviews_none_yet">Henüz puanlanmadı</string>
+    <string name="reviews_sort_useful">Faydalı</string>
+    <string name="reviews_sort_recent">Yeni</string>
+
+    <!-- Profile -->
+    <string name="profile_series_completed">Tamamlanan seri</string>
+    <string name="profile_change_photo">Profil fotoğrafını değiştir</string>
+    <string name="profile_photo_uploading">Fotoğraf yükleniyor…</string>
+
+    <!-- Admin: vocabulary labels -->
+    <string name="admin_terms">Tür ve etiket adları</string>
+    <string name="admin_terms_hint">Sistemdeki değer solda. Sağa yazdığın ad uygulamada görünür; boş bırakırsan sistemdeki hâli görünür.</string>
+    <string name="admin_terms_kind_genre">Tür</string>
+    <string name="admin_terms_kind_status">Durum</string>
+    <string name="admin_terms_kind_format">Biçim</string>
+    <string name="admin_terms_kind_season">Sezon</string>
 </resources>

@@ -1,5 +1,7 @@
 package com.animeh.app.ui.screens.profile
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -51,6 +53,11 @@ fun ProfileScreen(
     }
 
     val stats by viewModel.stats.collectAsStateWithLifecycle()
+    val uploading by viewModel.uploadingAvatar.collectAsStateWithLifecycle()
+
+    val pickImage = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let(viewModel::uploadAvatar) }
 
     Column(
         Modifier
@@ -62,15 +69,42 @@ fun ProfileScreen(
             Modifier.fillMaxWidth().padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AsyncImage(
-                model = user.avatar,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(SurfaceCard),
-            )
+            Box {
+                AsyncImage(
+                    model = user.avatar,
+                    contentDescription = stringResource(R.string.profile_change_photo),
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(CircleShape)
+                        .background(SurfaceCard)
+                        .clickable(enabled = !uploading) {
+                            pickImage.launch("image/*")
+                        },
+                )
+
+                // Over the picture rather than beside it: the picture is the
+                // button, and a separate control would need explaining.
+                if (uploading) {
+                    CircularProgressIndicator(
+                        Modifier.size(72.dp).padding(8.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = CircleShape,
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                    ) {
+                        Icon(
+                            Icons.Filled.PhotoCamera,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(22.dp).padding(4.dp),
+                        )
+                    }
+                }
+            }
 
             Spacer(Modifier.width(16.dp))
 
@@ -103,8 +137,8 @@ fun ProfileScreen(
                     modifier = Modifier.weight(1f),
                 )
                 StatCard(
-                    value = current.worksStarted.toString(),
-                    label = stringResource(R.string.profile_series_started),
+                    value = current.worksCompleted.toString(),
+                    label = stringResource(R.string.profile_series_completed),
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -161,7 +195,19 @@ private fun StatCard(value: String, label: String, modifier: Modifier = Modifier
     }
 }
 
+/**
+ * A watch total someone can read at a glance.
+ *
+ * Hours and minutes together once past an hour: "37s" hides whether that is
+ * nearly 38 hours or barely 37, and this number is the one people compare.
+ */
 private fun formatHours(seconds: Long): String {
     val hours = seconds / 3600
-    return if (hours > 0) "${hours}s" else "${seconds / 60}dk"
+    val minutes = (seconds % 3600) / 60
+
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}s ${minutes}dk"
+        hours > 0 -> "${hours}s"
+        else -> "${minutes}dk"
+    }
 }

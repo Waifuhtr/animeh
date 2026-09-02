@@ -135,6 +135,24 @@ fun DetailScreen(
                         )
                     }
                 }
+
+                item { Spacer(Modifier.height(24.dp)) }
+
+                item {
+                    ReviewSection(
+                        reviews = state.reviews,
+                        mine = state.myReview,
+                        average = state.rating,
+                        ratingCount = state.ratingCount,
+                        signedIn = signedIn,
+                        onSubmit = viewModel::submitReview,
+                        onDelete = viewModel::deleteReview,
+                        onVote = viewModel::vote,
+                        onSignIn = onSignIn,
+                    )
+                }
+
+                item { Spacer(Modifier.height(32.dp)) }
             }
         }
     }

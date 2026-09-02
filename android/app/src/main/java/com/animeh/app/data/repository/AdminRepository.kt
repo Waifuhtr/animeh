@@ -79,6 +79,16 @@ class AdminRepository @Inject constructor(
     suspend fun deleteSource(id: Long): AppResult<Unit> =
         ApiErrorMapper.call({ Unit }) { api.deleteSource(id) }
 
+    /** Every vocabulary value the catalog uses, with its label if it has one. */
+    suspend fun terms(): AppResult<List<AdminTermDto>> =
+        ApiErrorMapper.call({ it.items }) { api.terms() }
+
+    /** Set a label, or clear it by passing an empty one. */
+    suspend fun saveTerm(kind: String, source: String, display: String): AppResult<Unit> =
+        ApiErrorMapper.call({ Unit }) {
+            api.saveTerm(AdminTermRequest(kind, source, display.trim()))
+        }
+
     suspend fun tenraiSearch(query: String, page: Int = 1): AppResult<List<TenraiSearchResultDto>> =
         ApiErrorMapper.call({ it.items }) { api.tenraiSearch(query, page) }
 

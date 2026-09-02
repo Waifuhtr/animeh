@@ -444,6 +444,7 @@ private val SECTIONS = listOf(
     Triple(Routes.ADMIN_WORKS, R.string.admin_anime, Icons.Filled.MovieFilter),
     Triple(Routes.ADMIN_TENRAI, R.string.admin_tenrai, Icons.Filled.CloudDownload),
     Triple(Routes.ADMIN_FONTS, R.string.admin_fonts, Icons.Filled.FontDownload),
+    Triple(Routes.ADMIN_TERMS, R.string.admin_terms, Icons.Filled.Translate),
     Triple(Routes.ADMIN_USERS, R.string.admin_users, Icons.Filled.People),
     Triple(Routes.ADMIN_ANNOUNCEMENTS, R.string.admin_announcements, Icons.Filled.Campaign),
     Triple(Routes.ADMIN_LOGS, R.string.admin_logs, Icons.Filled.Article),

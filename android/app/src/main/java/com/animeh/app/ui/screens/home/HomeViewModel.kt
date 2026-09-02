@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
 import com.animeh.app.data.repository.CatalogRepository
+import com.animeh.app.data.repository.CommunityRepository
 import com.animeh.app.domain.Announcement
 import com.animeh.app.domain.HomeFeed
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -17,10 +18,14 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val repository: CatalogRepository,
+    private val community: CommunityRepository,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UiState<HomeFeed>>(UiState.Loading)
     val state: StateFlow<UiState<HomeFeed>> = _state.asStateFlow()
+
+    /** Display names for genres and the rest, applied wherever one is drawn. */
+    val labels = community.terms
 
     private val _announcements = MutableStateFlow<List<Announcement>>(emptyList())
     val announcements: StateFlow<List<Announcement>> = _announcements.asStateFlow()
@@ -54,6 +59,8 @@ class HomeViewModel @Inject constructor(
                 _announcements.value = it.data
             }
         }
+
+        viewModelScope.launch { community.refreshTerms() }
     }
 
     fun refresh() {

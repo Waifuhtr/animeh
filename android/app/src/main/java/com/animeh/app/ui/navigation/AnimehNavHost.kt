@@ -266,4 +266,8 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
     composable(Routes.ADMIN_FONTS) {
         AdminFontsScreen(onBack = { navController.popBackStack() })
     }
+
+    composable(Routes.ADMIN_TERMS) {
+        AdminTermsScreen(onBack = { navController.popBackStack() })
+    }
 }

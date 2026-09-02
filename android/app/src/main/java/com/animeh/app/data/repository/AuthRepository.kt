@@ -14,6 +14,8 @@ import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.UserApi
 import com.animeh.app.data.remote.dto.*
 import kotlinx.coroutines.flow.StateFlow
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -123,6 +125,27 @@ class AuthRepository @Inject constructor(
                 }
             }
 
+    /**
+     * Replace the profile picture.
+     *
+     * The saved user is updated from the response rather than refetched: the
+     * server has just told us the new address, and the avatar on screen should
+     * change with the upload, not with the next profile load.
+     */
+    suspend fun uploadAvatar(bytes: ByteArray): AppResult<String> =
+        ApiErrorMapper.call({ it }) {
+            userApi.uploadAvatar(bytes.toRequestBody(IMAGE_MEDIA_TYPE))
+        }.also { result ->
+            if (result is AppResult.Success) {
+                result.data.user?.let { sessionStore.updateUser(it) }
+            }
+        }.let { result ->
+            when (result) {
+                is AppResult.Success -> AppResult.Success(result.data.avatar)
+                is AppResult.Failure -> result
+            }
+        }
+
     suspend fun updateProfile(displayName: String?, email: String?): AppResult<UserDto> =
         ApiErrorMapper.call({ it.user }) {
             userApi.updateProfile(UpdateProfileRequest(displayName, email))
@@ -147,5 +170,12 @@ class AuthRepository @Inject constructor(
 
     private companion object {
         const val MIN_PASSWORD_LENGTH = 8
+
+        /**
+         * The server decides the real type from the bytes, so this is only what
+         * the request declares; a generic image type keeps it from claiming a
+         * format the file is not.
+         */
+        val IMAGE_MEDIA_TYPE = "application/octet-stream".toMediaType()
     }
 }

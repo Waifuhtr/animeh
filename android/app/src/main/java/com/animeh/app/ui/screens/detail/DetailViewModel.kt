@@ -5,7 +5,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
+import com.animeh.app.data.remote.dto.ReviewDto
 import com.animeh.app.data.repository.CatalogRepository
+import com.animeh.app.data.repository.CommunityRepository
 import com.animeh.app.data.repository.LibraryRepository
 import com.animeh.app.domain.Episode
 import com.animeh.app.domain.Work
@@ -24,12 +26,17 @@ data class DetailUiState(
     val isFavorite: Boolean = false,
     val inWatchlist: Boolean = false,
     val fromCache: Boolean = false,
+    val reviews: List<ReviewDto> = emptyList(),
+    val myReview: ReviewDto? = null,
+    val rating: Double = 0.0,
+    val ratingCount: Int = 0,
 )
 
 @HiltViewModel
 class DetailViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val libraryRepository: LibraryRepository,
+    private val community: CommunityRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -38,9 +45,65 @@ class DetailViewModel @Inject constructor(
     private val _state = MutableStateFlow(DetailUiState())
     val state: StateFlow<DetailUiState> = _state.asStateFlow()
 
+    /** Display names, for the genre chips on this screen. */
+    val labels = community.terms
+
     init {
         load()
         observeLibrary()
+        loadReviews()
+    }
+
+    fun loadReviews() {
+        viewModelScope.launch {
+            // Silent on failure: reviews are below the fold, and an error
+            // banner over the episode list for them would be out of proportion.
+            val result = community.reviews(workId)
+
+            if (result is AppResult.Success) {
+                _state.update {
+                    it.copy(
+                        reviews = result.data.items,
+                        myReview = result.data.mine,
+                        rating = result.data.rating,
+                        ratingCount = result.data.ratingCount,
+                    )
+                }
+            }
+        }
+    }
+
+    fun submitReview(score: Int, body: String, spoiler: Boolean) {
+        viewModelScope.launch {
+            if (community.save(workId, score, body, spoiler) is AppResult.Success) {
+                // Refetched rather than patched in: posting changes the average
+                // and the ordering, neither of which can be worked out here.
+                loadReviews()
+            }
+        }
+    }
+
+    fun deleteReview(review: ReviewDto) {
+        viewModelScope.launch {
+            if (community.delete(review.id) is AppResult.Success) loadReviews()
+        }
+    }
+
+    fun vote(review: ReviewDto, vote: Int) {
+        viewModelScope.launch {
+            val result = community.vote(review.id, vote)
+
+            // One row changed, so only that row is replaced — refetching would
+            // reorder the list under a thumb that just tapped it.
+            if (result is AppResult.Success) {
+                val updated = result.data ?: return@launch
+                _state.update { current ->
+                    current.copy(
+                        reviews = current.reviews.map { if (it.id == updated.id) updated else it }
+                    )
+                }
+            }
+        }
     }
 
     fun load() {

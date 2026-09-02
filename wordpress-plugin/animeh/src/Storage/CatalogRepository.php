@@ -741,13 +741,25 @@ final class CatalogRepository {
 	 * @param string $sort Requested sort.
 	 */
 	private function work_order( string $sort ): string {
+		$works   = CatalogSchema::works();
+		$reviews = CatalogSchema::reviews();
+
+		// What readers scored a title, pulled towards a prior so that one
+		// enthusiastic review cannot outrank a title fifty people liked. The
+		// prior is five notional reviews at seven out of ten; a work with no
+		// reviews therefore sits at exactly seven and is ordered by its
+		// imported score, which is the honest answer until someone reviews it.
+		$rated = "(SELECT (COALESCE(SUM(r.score), 0) + 35) / (COUNT(r.id) + 5)
+			FROM {$reviews} r WHERE r.work_id = {$works}.id)";
+
 		return match ( $sort ) {
-			'score'      => 'score DESC, popularity ASC, id DESC',
-			'popular'    => 'popularity ASC, score DESC, id DESC',
-			'title'      => 'title ASC, id ASC',
-			'year'       => 'year DESC, title ASC',
-			'oldest'     => 'created_at ASC, id ASC',
-			default      => 'updated_at DESC, id DESC',
+			'score'       => 'score DESC, popularity ASC, id DESC',
+			'popular'     => 'popularity ASC, score DESC, id DESC',
+			'recommended' => "{$rated} DESC, score DESC, popularity ASC, id DESC",
+			'title'       => 'title ASC, id ASC',
+			'year'        => 'year DESC, title ASC',
+			'oldest'      => 'created_at ASC, id ASC',
+			default       => 'updated_at DESC, id DESC',
 		};
 	}
 

@@ -15,46 +15,53 @@ declare( strict_types = 1 );
 
 namespace Animeh\Storage;
 
+use Animeh\Support\WatchProgress;
+
 /**
  * Per-user progress and lists.
  */
 final class UserDataRepository {
 
 	/**
-	 * How far into an episode counts as "finished".
+	 * Record where a user is in an episode, and how much of it they saw.
 	 *
-	 * Ninety percent, because credits are not worth making someone sit through
-	 * for an episode to leave "continue watching".
-	 */
-	private const COMPLETE_RATIO = 0.9;
-
-	/**
-	 * Record where a user is in an episode.
-	 *
-	 * @param int $user_id  User.
-	 * @param int $work_id  Work.
+	 * @param int $user_id    User.
+	 * @param int $work_id    Work.
 	 * @param int $episode_id Episode.
-	 * @param int $position Seconds into the episode.
-	 * @param int $duration Episode length in seconds, 0 when unknown.
+	 * @param int $position   Seconds into the episode — the resume point.
+	 * @param int $duration   Episode length in seconds, 0 when unknown.
+	 * @param int $watched    Seconds genuinely played, seeks excluded.
 	 */
-	public function record_progress( int $user_id, int $work_id, int $episode_id, int $position, int $duration ): bool {
+	public function record_progress( int $user_id, int $work_id, int $episode_id, int $position, int $duration, int $watched = 0 ): bool {
 		global $wpdb;
 
-		$position  = max( 0, $position );
-		$duration  = max( 0, $duration );
-		$completed = $duration > 0 && $position >= (int) floor( $duration * self::COMPLETE_RATIO ) ? 1 : 0;
+		$position = max( 0, $position );
+		$duration = max( 0, $duration );
+
+		// Never more than the episode is long: a client that miscounts, or one
+		// reporting a rewatch, must not inflate the profile's total.
+		$watched = max( 0, $watched );
+		if ( $duration > 0 ) {
+			$watched = min( $watched, $duration );
+		}
+
+		$completed = WatchProgress::is_complete( $watched, $duration ) ? 1 : 0;
 		$now       = current_time( 'mysql', true );
 		$table     = CatalogSchema::history();
 
 		// ON DUPLICATE KEY makes this one statement against the unique
 		// (user_id, episode_id) index. `completed` is sticky: finishing an
 		// episode and then scrubbing back should not mark it unwatched.
+		// `watched_seconds` only ever grows, so a report that arrives out of
+		// order, or a fresh session that starts its own count at zero, cannot
+		// take away time already earned.
 		$sql = $wpdb->prepare(
-			"INSERT INTO {$table} (user_id, work_id, episode_id, position_seconds, duration_seconds, completed, updated_at)
-			 VALUES (%d, %d, %d, %d, %d, %d, %s)
+			"INSERT INTO {$table} (user_id, work_id, episode_id, position_seconds, duration_seconds, watched_seconds, completed, updated_at)
+			 VALUES (%d, %d, %d, %d, %d, %d, %d, %s)
 			 ON DUPLICATE KEY UPDATE
 			   position_seconds = VALUES(position_seconds),
 			   duration_seconds = GREATEST(duration_seconds, VALUES(duration_seconds)),
+			   watched_seconds = GREATEST(watched_seconds, VALUES(watched_seconds)),
 			   completed = GREATEST(completed, VALUES(completed)),
 			   work_id = VALUES(work_id),
 			   updated_at = VALUES(updated_at)",
@@ -63,6 +70,7 @@ final class UserDataRepository {
 			$episode_id,
 			$position,
 			$duration,
+			$watched,
 			$completed,
 			$now
 		);
@@ -313,12 +321,14 @@ final class UserDataRepository {
 		$history = CatalogSchema::history();
 		$library = CatalogSchema::library();
 
+		$episodes = CatalogSchema::episodes();
+
 		$row = $wpdb->get_row(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT
 					COUNT(*) AS episodes_started,
 					SUM(completed) AS episodes_completed,
-					SUM(position_seconds) AS seconds_watched,
+					SUM(watched_seconds) AS seconds_watched,
 					COUNT(DISTINCT work_id) AS works_started
 				 FROM {$history} WHERE user_id = %d",
 				$user_id
@@ -330,11 +340,34 @@ final class UserDataRepository {
 			$wpdb->prepare( "SELECT COUNT(*) FROM {$library} WHERE user_id = %d AND list = 'favorite'", $user_id ) // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 		);
 
+		// A series counts as finished when every published episode of it is
+		// finished. Compared against the episode table rather than the work's
+		// `total_episodes`, which is what the source announced and is often
+		// ahead of what has actually been added here.
+		$works_completed = (int) $wpdb->get_var(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT COUNT(*) FROM (
+					SELECT h.work_id, COUNT(*) AS done
+					FROM {$history} h
+					WHERE h.user_id = %d AND h.completed = 1
+					GROUP BY h.work_id
+				 ) watched
+				 INNER JOIN (
+					SELECT work_id, COUNT(*) AS total
+					FROM {$episodes} WHERE published = 1
+					GROUP BY work_id
+				 ) published ON published.work_id = watched.work_id
+				 WHERE published.total > 0 AND watched.done >= published.total",
+				$user_id
+			)
+		);
+
 		return array(
 			'episodes_started'   => (int) ( $row['episodes_started'] ?? 0 ),
 			'episodes_completed' => (int) ( $row['episodes_completed'] ?? 0 ),
 			'seconds_watched'    => (int) ( $row['seconds_watched'] ?? 0 ),
 			'works_started'      => (int) ( $row['works_started'] ?? 0 ),
+			'works_completed'    => $works_completed,
 			'favorites'          => $favorites,
 		);
 	}

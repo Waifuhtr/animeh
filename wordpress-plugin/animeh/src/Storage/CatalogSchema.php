@@ -27,7 +27,7 @@ final class CatalogSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '3';
+	public const VERSION = '4';
 
 	/**
 	 * Option holding the installed catalog version.
@@ -117,6 +117,35 @@ final class CatalogSchema {
 	}
 
 	/**
+	 * User reviews: one per user per work, scored out of ten.
+	 */
+	public static function reviews(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_reviews';
+	}
+
+	/**
+	 * Agree/disagree votes on a review.
+	 */
+	public static function review_votes(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_review_votes';
+	}
+
+	/**
+	 * Display names for catalog vocabulary: genres, statuses, formats, seasons.
+	 *
+	 * The imported value stays the key — matching and filtering keep working on
+	 * `comedy` whatever it is shown as — and only the label the reader sees is
+	 * editable. Translating the stored value instead would break every existing
+	 * filter the moment someone renamed one.
+	 */
+	public static function terms(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_terms';
+	}
+
+	/**
 	 * Every catalog table, unprefixed — the snapshot reads this list.
 	 *
 	 * @return string[]
@@ -130,6 +159,9 @@ final class CatalogSchema {
 			'animeh_history',
 			'animeh_library',
 			'animeh_announcements',
+			'animeh_reviews',
+			'animeh_review_votes',
+			'animeh_terms',
 		);
 	}
 
@@ -251,6 +283,11 @@ final class CatalogSchema {
 			episode_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			position_seconds int(10) unsigned NOT NULL DEFAULT 0,
 			duration_seconds int(10) unsigned NOT NULL DEFAULT 0,
+			-- Seconds actually played, which is not the position: skipping to
+			-- the end sets a high position while nothing was watched. Only this
+			-- column decides whether an episode counts, and it is what the
+			-- profile's total is summed from.
+			watched_seconds int(10) unsigned NOT NULL DEFAULT 0,
 			completed tinyint(1) NOT NULL DEFAULT 0,
 			updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
 			PRIMARY KEY  (id),
@@ -318,7 +355,52 @@ final class CatalogSchema {
 			KEY created_at (created_at)
 		) {$charset};";
 
-		foreach ( array( $works, $seasons, $episodes, $sources, $history, $library, $tokens, $announcements, $logs ) as $sql ) {
+		// One review per user per work, enforced by the unique key so a second
+		// submission edits the first rather than stacking. The vote counters are
+		// kept on the row: sorting a work's reviews by how many people found
+		// them useful is the common read, and counting the votes table on every
+		// list would be a join per review.
+		$reviews = 'CREATE TABLE ' . self::reviews() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			work_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			score tinyint(3) unsigned NOT NULL DEFAULT 0,
+			body longtext NOT NULL,
+			spoiler tinyint(1) NOT NULL DEFAULT 0,
+			up_votes int(10) unsigned NOT NULL DEFAULT 0,
+			down_votes int(10) unsigned NOT NULL DEFAULT 0,
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY user_work (user_id,work_id),
+			KEY work_created (work_id,created_at),
+			KEY work_score (work_id,score)
+		) {$charset};";
+
+		// The unique key is what makes a repeated tap change a vote instead of
+		// adding another one, and what lets the counters above be trusted.
+		$review_votes = 'CREATE TABLE ' . self::review_votes() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			review_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			vote tinyint(4) NOT NULL DEFAULT 0,
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY review_user (review_id,user_id),
+			KEY review_id (review_id)
+		) {$charset};";
+
+		$terms = 'CREATE TABLE ' . self::terms() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			kind varchar(16) NOT NULL DEFAULT 'genre',
+			source varchar(191) NOT NULL DEFAULT '',
+			display varchar(191) NOT NULL DEFAULT '',
+			updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY kind_source (kind,source)
+		) {$charset};";
+
+		foreach ( array( $works, $seasons, $episodes, $sources, $history, $library, $tokens, $announcements, $logs, $reviews, $review_votes, $terms ) as $sql ) {
 			dbDelta( $sql );
 		}
 
@@ -347,6 +429,9 @@ final class CatalogSchema {
 			self::logs(),
 			self::announcements(),
 			self::tokens(),
+			self::terms(),
+			self::review_votes(),
+			self::reviews(),
 			self::library(),
 			self::history(),
 			self::sources(),

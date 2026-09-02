@@ -14,7 +14,9 @@ declare( strict_types = 1 );
 
 namespace Animeh\Rest;
 
+use Animeh\Storage\B2Client;
 use Animeh\Storage\LogRepository;
+use Animeh\Storage\StorageSettings;
 use Animeh\Storage\TokenRepository;
 use Animeh\Support\RateLimit;
 use WP_Error;
@@ -419,11 +421,50 @@ final class AuthController {
 			'username'     => $user->user_login,
 			'display_name' => $user->display_name,
 			'email'        => $user->user_email,
-			'avatar'       => get_avatar_url( $user->ID, array( 'size' => 256 ) ),
+			// The uploaded picture wins over Gravatar, which is only ever a
+			// fallback for an account that has not set one.
+			'avatar'       => self::avatar_url( $user->ID ),
 			'roles'        => array_values( $user->roles ),
 			'is_admin'     => user_can( $user, Permissions::CAPABILITY ) || user_can( $user, 'manage_options' ),
 			'registered'   => $user->user_registered,
 		);
+	}
+
+	/**
+	 * User meta holding the key of an uploaded profile picture.
+	 */
+	public const AVATAR_META = 'animeh_avatar_key';
+
+	/**
+	 * A user's picture: their own upload, else Gravatar.
+	 *
+	 * The key rather than a URL is stored, because a signed link expires and a
+	 * bucket can be moved; the address is worked out at read time from whatever
+	 * storage is configured now.
+	 *
+	 * @param int $user_id Account.
+	 */
+	public static function avatar_url( int $user_id ): string {
+		$key = (string) get_user_meta( $user_id, self::AVATAR_META, true );
+
+		if ( '' !== $key ) {
+			$settings = StorageSettings::load();
+
+			if ( $settings->is_configured() ) {
+				if ( $settings->public_bucket ) {
+					$friendly = $settings->friendly_url( $key );
+					$url      = '' !== $friendly ? $friendly : $settings->s3_url( $key );
+				} else {
+					$url = ( new B2Client( $settings ) )->presign_get( $key );
+				}
+
+				if ( '' !== $url ) {
+					return $url;
+				}
+			}
+		}
+
+		return (string) get_avatar_url( $user_id, array( 'size' => 256 ) );
 	}
 
 	/**

@@ -37,6 +37,12 @@ final class StorageKey {
 	public const SYSTEM_ROOT = '_animeh';
 
 	/**
+	 * Prefix for profile pictures, kept out of the media tree so that a
+	 * catalog cleanup can never reach a user's own upload.
+	 */
+	public const PROFILE_ROOT = 'profil';
+
+	/**
 	 * Transliterations applied before slugging.
 	 *
 	 * Turkish first, because the titles this library holds are Turkish-facing
@@ -162,6 +168,28 @@ final class StorageKey {
 	 */
 	public static function system_file( string $name ): string {
 		return self::SYSTEM_ROOT . '/' . ltrim( $name, '/' );
+	}
+
+	/**
+	 * Key for a user's profile picture.
+	 *
+	 * The user id, not their name: a rename must not orphan the file, and the
+	 * id is the one part of an account that never changes. The suffix makes
+	 * each upload a new object so a replaced picture is not served from a
+	 * cache that still holds the old one.
+	 *
+	 * @param int    $user_id  Account.
+	 * @param string $filename What was picked, for its extension.
+	 */
+	public static function profile_image( int $user_id, string $filename ): string {
+		$safe      = self::safe_filename( $filename );
+		$extension = strtolower( (string) pathinfo( $safe, PATHINFO_EXTENSION ) );
+
+		if ( ! in_array( $extension, array( 'jpg', 'jpeg', 'png', 'webp' ), true ) ) {
+			$extension = 'jpg';
+		}
+
+		return self::PROFILE_ROOT . '/' . $user_id . '/' . time() . '.' . $extension;
 	}
 
 	/**

@@ -19,6 +19,7 @@ use Animeh\Rest\AdminController;
 use Animeh\Rest\Auth;
 use Animeh\Rest\AuthController;
 use Animeh\Rest\CatalogController;
+use Animeh\Rest\CommunityController;
 use Animeh\Rest\FontsController;
 use Animeh\Rest\MeController;
 use Animeh\Rest\MigrationController;
@@ -68,6 +69,7 @@ final class Plugin {
 				( new AuthController() )->register_routes();
 				( new CatalogController() )->register_routes();
 				( new MeController() )->register_routes();
+				( new CommunityController() )->register_routes();
 				( new AdminController() )->register_routes();
 			}
 		);

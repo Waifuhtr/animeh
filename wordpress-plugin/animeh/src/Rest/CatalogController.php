@@ -247,7 +247,8 @@ final class CatalogController {
 	public function home(): WP_REST_Response {
 		$repo = new CatalogRepository();
 
-		$hero     = $repo->works( array( 'sort' => 'score', 'per_page' => 5 ) );
+		// The five most popular, as the slider is meant to show.
+		$hero     = $repo->works( array( 'sort' => 'popular', 'per_page' => 5 ) );
 		$popular  = $repo->works( array( 'sort' => 'popular', 'per_page' => 20 ) );
 		$recent   = $repo->works( array( 'sort' => 'recent', 'per_page' => 20 ) );
 		$airing   = $repo->works( array( 'status' => 'airing', 'sort' => 'score', 'per_page' => 20 ) );

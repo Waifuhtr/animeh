@@ -1131,3 +1131,70 @@ describe( 'TenraiMapper', static function () {
 		same( '["アクション"]', \Animeh\Support\TenraiMapper::names( array( array( 'name' => 'アクション' ) ) ) );
 	} );
 } );
+
+describe( 'WatchProgress', static function (): void {
+
+	it( 'counts a 24 minute episode at about seventeen minutes', static function () {
+		$duration = 24 * 60;
+
+		same( 1008, \Animeh\Support\WatchProgress::threshold( $duration ) ); // 16m48s.
+		same( false, \Animeh\Support\WatchProgress::is_complete( 16 * 60, $duration ) );
+		same( true, \Animeh\Support\WatchProgress::is_complete( 17 * 60, $duration ) );
+	} );
+
+	it( 'counts a 10 minute episode at about seven', static function () {
+		$duration = 10 * 60;
+
+		same( 420, \Animeh\Support\WatchProgress::threshold( $duration ) );
+		same( false, \Animeh\Support\WatchProgress::is_complete( 6 * 60, $duration ) );
+		same( true, \Animeh\Support\WatchProgress::is_complete( 7 * 60, $duration ) );
+	} );
+
+	it( 'does not count an episode that was skipped to the end', static function () {
+		// The whole point: the playhead is at the credits, nothing was watched.
+		same( false, \Animeh\Support\WatchProgress::is_complete( 12, 24 * 60 ) );
+	} );
+
+	it( 'counts nothing when the length is unknown', static function () {
+		same( 0, \Animeh\Support\WatchProgress::threshold( 0 ) );
+		same( false, \Animeh\Support\WatchProgress::is_complete( 9999, 0 ) );
+	} );
+
+	it( 'credits ordinary playback between two reports', static function () {
+		same( 105, \Animeh\Support\WatchProgress::accumulate( 100, 200, 205, 10 ) );
+	} );
+
+	it( 'credits nothing for a jump forward', static function () {
+		// 200 -> 900 in one ten-second interval is a seek, not viewing.
+		same( 100, \Animeh\Support\WatchProgress::accumulate( 100, 200, 900, 10 ) );
+	} );
+
+	it( 'credits nothing for a rewind, which was already counted', static function () {
+		same( 100, \Animeh\Support\WatchProgress::accumulate( 100, 500, 200, 10 ) );
+	} );
+
+	it( 'accumulates a full episode a report at a time', static function () {
+		$watched = 0;
+		for ( $at = 0; $at < 1440; $at += 10 ) {
+			$watched = \Animeh\Support\WatchProgress::accumulate( $watched, $at, $at + 10, 10 );
+		}
+
+		same( 1440, $watched );
+		same( true, \Animeh\Support\WatchProgress::is_complete( $watched, 1440 ) );
+	} );
+
+	it( 'leaves a skimmed episode short of the threshold', static function () {
+		// Watch ten seconds, jump a minute, repeat: a lot of ground covered,
+		// very little of it seen.
+		$watched = 0;
+		$at      = 0;
+		while ( $at < 1440 ) {
+			$watched = \Animeh\Support\WatchProgress::accumulate( $watched, $at, $at + 10, 10 );
+			$at     += 10;
+			$watched = \Animeh\Support\WatchProgress::accumulate( $watched, $at, $at + 60, 10 );
+			$at     += 60;
+		}
+
+		same( false, \Animeh\Support\WatchProgress::is_complete( $watched, 1440 ) );
+	} );
+} );

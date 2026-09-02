@@ -151,6 +151,11 @@ final class MeController {
 						'episode_id'       => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 						'position_seconds' => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 						'duration_seconds' => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
+						// Seconds the player actually played, which is what
+						// decides completion. Absent from an older client, in
+						// which case nothing is credited rather than the
+						// playhead being trusted.
+						'watched_seconds'  => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
 					),
 				),
 				array(
@@ -383,7 +388,8 @@ final class MeController {
 			(int) $episode['work_id'],
 			$episode_id,
 			$position,
-			$duration
+			$duration,
+			(int) $request->get_param( 'watched_seconds' )
 		);
 
 		return new WP_REST_Response( array( 'ok' => true ) );

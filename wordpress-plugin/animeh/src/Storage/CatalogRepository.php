@@ -124,6 +124,30 @@ final class CatalogRepository {
 	}
 
 	/**
+	 * One work by the TMDB show it was imported from.
+	 *
+	 * The counterpart of the above, and it exists for the same reason:
+	 * re-importing a title has to update the row rather than add a second one.
+	 *
+	 * @param int $tmdb_id TMDB TV id.
+	 * @return array<string, mixed>|null
+	 */
+	public function work_by_tmdb_id( int $tmdb_id ): ?array {
+		global $wpdb;
+
+		if ( $tmdb_id <= 0 ) {
+			return null;
+		}
+
+		$row = $wpdb->get_row(
+			$wpdb->prepare( 'SELECT * FROM ' . CatalogSchema::works() . ' WHERE tmdb_id = %d', $tmdb_id ), // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+			ARRAY_A
+		);
+
+		return is_array( $row ) ? $row : null;
+	}
+
+	/**
 	 * A page of works.
 	 *
 	 * @param array<string, mixed> $args search, genre, year, season, status, sort, page, per_page, include_unpublished.

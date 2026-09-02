@@ -513,6 +513,88 @@ class AdminTenraiViewModel @Inject constructor(
     }
 }
 
+/**
+ * Searching TMDB and importing from it.
+ *
+ * A near-twin of [AdminTenraiViewModel] rather than a shared base class: the
+ * two sources answer with different shapes, and the day one of them grows a
+ * field the other has not got, a shared parent is where that becomes painful.
+ */
+@HiltViewModel
+class AdminTmdbViewModel @Inject constructor(
+    private val repository: AdminRepository,
+) : ViewModel() {
+
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query.asStateFlow()
+
+    private val _results = MutableStateFlow<UiState<List<TmdbSearchResultDto>>>(UiState.Empty)
+    val results: StateFlow<UiState<List<TmdbSearchResultDto>>> = _results.asStateFlow()
+
+    private val _importing = MutableStateFlow<Long?>(null)
+    val importing: StateFlow<Long?> = _importing.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    private var searchJob: Job? = null
+
+    fun setQuery(value: String) {
+        _query.value = value
+        searchJob?.cancel()
+
+        if (value.length < MIN_QUERY) {
+            _results.value = UiState.Empty
+            return
+        }
+
+        searchJob = viewModelScope.launch {
+            // Debounced harder than the local search: this one goes through to
+            // a third-party API whose rate limit is not ours to spend.
+            delay(600)
+            _results.value = UiState.Loading
+
+            _results.value = when (val result = repository.tmdbSearch(value)) {
+                is AppResult.Success ->
+                    if (result.data.isEmpty()) UiState.Empty else UiState.Success(result.data)
+                is AppResult.Failure -> UiState.Error(result.error)
+            }
+        }
+    }
+
+    fun import(tmdbId: Long, withEpisodes: Boolean = true) {
+        viewModelScope.launch {
+            _importing.value = tmdbId
+
+            when (val result = repository.tmdbImport(tmdbId, withEpisodes)) {
+                is AppResult.Success -> {
+                    _message.value = if (result.data.updated) {
+                        "Güncellendi · ${result.data.importedEpisodes} bölüm"
+                    } else {
+                        "İçe aktarıldı · ${result.data.importedEpisodes} bölüm"
+                    }
+                    // Refresh so the row switches to "update".
+                    setQuery(_query.value)
+                }
+
+                // The server's own sentence: "no key" and "TMDB said 401" both
+                // name their own fix, and neither has a useful generic form.
+                is AppResult.Failure -> _message.value = result.error.technical ?: "İçe aktarma başarısız"
+            }
+
+            _importing.value = null
+        }
+    }
+
+    fun dismissMessage() {
+        _message.value = null
+    }
+
+    private companion object {
+        const val MIN_QUERY = 3
+    }
+}
+
 @HiltViewModel
 class AdminUsersViewModel @Inject constructor(
     private val repository: AdminRepository,

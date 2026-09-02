@@ -317,7 +317,24 @@ data class TmdbSearchResultDto(
     val original: String = "",
     val synopsis: String = "",
     val year: Int = 0,
+    val score: Double = 0.0,
     @SerialName("poster_url") val posterUrl: String = "",
+    /** Non-zero when this title is already in the catalog, so the panel can
+     *  offer "update" instead of a second import. */
+    @SerialName("imported_id") val importedId: Long = 0,
+)
+
+@Serializable
+data class TmdbImportRequest(
+    @SerialName("tmdb_id") val tmdbId: Long,
+    @SerialName("import_episodes") val importEpisodes: Boolean = true,
+    val publish: Boolean = false,
+)
+
+@Serializable
+data class TmdbImportResultDto(
+    @SerialName("imported_episodes") val importedEpisodes: Int = 0,
+    @Serializable(with = LenientBoolean::class) val updated: Boolean = false,
 )
 
 @Serializable

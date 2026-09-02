@@ -255,6 +255,10 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
         AdminUsersScreen(onBack = { navController.popBackStack() })
     }
 
+    composable(Routes.ADMIN_TMDB) {
+        AdminTmdbScreen(onBack = { navController.popBackStack() })
+    }
+
     composable(Routes.ADMIN_REPORTS) {
         AdminReportsScreen(onBack = { navController.popBackStack() })
     }

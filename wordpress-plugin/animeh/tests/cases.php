@@ -1392,4 +1392,38 @@ describe( 'TmdbMapper', static function (): void {
 
 		same( 40, \Animeh\Support\TmdbMapper::best_match( $results, 'Vinland Saga', 2020 )['id'] );
 	} );
+
+	it( 'maps a whole season into episode rows, in order', static function (): void {
+		// The shape the import walks: a season payload with its episode list.
+		$season = array(
+			'season_number' => 2,
+			'episodes'      => array(
+				array( 'season_number' => 2, 'episode_number' => 1, 'name' => 'Bir', 'still_path' => '/a.jpg', 'runtime' => 24 ),
+				array( 'season_number' => 2, 'episode_number' => 2, 'name' => 'İki', 'still_path' => '', 'runtime' => 0 ),
+			),
+		);
+
+		$rows = array();
+		foreach ( $season['episodes'] as $entry ) {
+			$rows[] = \Animeh\Support\TmdbMapper::episode( $entry );
+		}
+
+		same( 2, count( $rows ) );
+		same( 1, $rows[0]['number'] );
+		same( 2, $rows[0]['season_number'] );
+		same( 'https://image.tmdb.org/t/p/w300/a.jpg', $rows[0]['thumbnail_url'] );
+		same( 1440, $rows[0]['duration_seconds'] );
+
+		// A still TMDB does not have stays empty rather than becoming a URL
+		// that 404s, and an unknown runtime stays zero rather than guessing.
+		same( 'İki', $rows[1]['title'] );
+		same( '', $rows[1]['thumbnail_url'] );
+		same( 0, $rows[1]['duration_seconds'] );
+	} );
+
+	it( 'never numbers an imported episode zero', static function (): void {
+		// The import skips these: a row with number 0 would sort before the
+		// first episode and has no place in the numbering.
+		same( 0, \Animeh\Support\TmdbMapper::episode( array( 'name' => 'Özel' ) )['number'] );
+	} );
 } );

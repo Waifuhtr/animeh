@@ -1,5 +1,6 @@
 package com.animeh.app.ui.screens.admin
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,18 +9,22 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PersonOff
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.core.UiState
 import com.animeh.app.data.remote.dto.ReportDto
@@ -466,3 +471,112 @@ internal fun BanDialog(
 
 /** Zero is permanent; the rest are days. Kept short on purpose. */
 private val BAN_DURATIONS = listOf(1, 3, 7, 30, 0)
+
+/**
+ * Searching TMDB and bringing a show over, episodes and all.
+ *
+ * Deliberately the same screen as the Tenrai one rather than a variation on
+ * it: which source a title comes from is a judgement about that title — Tenrai
+ * knows anime numbering, seasons and filler; TMDB has the artwork and the
+ * Turkish text — and an operator switching between them should not have to
+ * learn a second set of controls to do it.
+ */
+@Composable
+fun AdminTmdbScreen(
+    onBack: () -> Unit,
+    viewModel: AdminTmdbViewModel = hiltViewModel(),
+) {
+    val query by viewModel.query.collectAsStateWithLifecycle()
+    val results by viewModel.results.collectAsStateWithLifecycle()
+    val importing by viewModel.importing.collectAsStateWithLifecycle()
+    val message by viewModel.message.collectAsStateWithLifecycle()
+
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(message) {
+        message?.let {
+            snackbar.showSnackbar(it)
+            viewModel.dismissMessage()
+        }
+    }
+
+    AdminScaffold(
+        title = stringResource(R.string.admin_tmdb_search),
+        onBack = onBack,
+        snackbarHost = snackbar,
+    ) { padding ->
+        Column(Modifier.padding(padding)) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = viewModel::setQuery,
+                placeholder = { Text(stringResource(R.string.admin_tmdb_search)) },
+                leadingIcon = { Icon(Icons.Filled.Search, null) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
+
+            when (val current = results) {
+                is UiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+
+                is UiState.Error -> ErrorState(current.error)
+
+                is UiState.Empty -> EmptyState(
+                    if (query.length < 3) stringResource(R.string.admin_search_min)
+                    else stringResource(R.string.discover_no_results),
+                    Icons.Filled.Image,
+                )
+
+                is UiState.Success -> LazyColumn {
+                    items(current.data, key = { it.tmdbId }) { result ->
+                        ListItem(
+                            headlineContent = {
+                                Text(result.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            },
+                            supportingContent = {
+                                Text(
+                                    listOfNotNull(
+                                        result.year.takeIf { it > 0 }?.toString(),
+                                        result.original.takeIf {
+                                            it.isNotBlank() && it != result.title
+                                        },
+                                        "★ %.1f".format(result.score).takeIf { result.score > 0 },
+                                    ).joinToString(" · "),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            },
+                            leadingContent = {
+                                AsyncImage(
+                                    model = result.posterUrl,
+                                    contentDescription = null,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier
+                                        .width(44.dp)
+                                        .height(62.dp)
+                                        .clip(MaterialTheme.shapes.extraSmall)
+                                        .background(SurfaceCard),
+                                )
+                            },
+                            trailingContent = {
+                                if (importing == result.tmdbId) {
+                                    CircularProgressIndicator(Modifier.size(22.dp), strokeWidth = 2.dp)
+                                } else {
+                                    TextButton(onClick = { viewModel.import(result.tmdbId) }) {
+                                        Text(
+                                            stringResource(
+                                                if (result.importedId > 0) R.string.admin_tenrai_update
+                                                else R.string.admin_tenrai_import
+                                            )
+                                        )
+                                    }
+                                }
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

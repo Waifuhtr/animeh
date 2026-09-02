@@ -15,6 +15,7 @@ declare( strict_types = 1 );
 namespace Animeh\Rest;
 
 use Animeh\Storage\CatalogRepository;
+use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\ModerationRepository;
 use Animeh\Storage\ReviewRepository;
@@ -258,6 +259,21 @@ final class AdminController {
 					'q'    => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 					'year' => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
 					'page' => array( 'type' => 'integer', 'default' => 1, 'sanitize_callback' => 'absint' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$namespace,
+			'/admin/tmdb/import',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'tmdb_import' ),
+				'permission_callback' => $guard,
+				'args'                => array(
+					'tmdb_id'         => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+					'import_episodes' => array( 'type' => 'boolean', 'default' => true ),
+					'publish'         => array( 'type' => 'boolean', 'default' => false ),
 				),
 			)
 		);
@@ -1042,6 +1058,7 @@ final class AdminController {
 		}
 
 		$base  = TmdbClient::image_base();
+		$repo  = new CatalogRepository();
 		$items = array();
 
 		foreach ( (array) ( $response['results'] ?? array() ) as $entry ) {
@@ -1049,13 +1066,19 @@ final class AdminController {
 				continue;
 			}
 
+			$tmdb_id  = (int) ( $entry['id'] ?? 0 );
+			$existing = $repo->work_by_tmdb_id( $tmdb_id );
+
 			$items[] = array(
-				'tmdb_id'    => (int) ( $entry['id'] ?? 0 ),
+				'tmdb_id'    => $tmdb_id,
 				'title'      => (string) ( $entry['name'] ?? '' ),
 				'original'   => (string) ( $entry['original_name'] ?? '' ),
 				'synopsis'   => (string) ( $entry['overview'] ?? '' ),
 				'year'       => TmdbMapper::year( (string) ( $entry['first_air_date'] ?? '' ) ),
+				'score'      => round( (float) ( $entry['vote_average'] ?? 0 ), 2 ),
 				'poster_url' => TmdbMapper::image( (string) ( $entry['poster_path'] ?? '' ), TmdbMapper::POSTER_SIZE, $base ),
+				// So the panel can offer "update" rather than a second import.
+				'imported_id' => null === $existing ? 0 : (int) $existing['id'],
 			);
 		}
 
@@ -1063,12 +1086,194 @@ final class AdminController {
 	}
 
 	/**
+	 * Import a show from TMDB, with its episodes.
+	 *
+	 * The counterpart of `tenrai_import`, and the same shape on purpose: TMDB
+	 * is a metadata source in its own right, not only a way to fill in gaps in
+	 * a title that came from somewhere else. Which of the two to import from
+	 * is a judgement about the title — Tenrai knows anime numbering, seasons
+	 * and filler episodes; TMDB has artwork and Turkish text — and the panel
+	 * offers both rather than deciding.
+	 *
+	 * Re-importing updates the existing row rather than adding a second one,
+	 * and the fields an operator is likely to have typed themselves are left
+	 * alone on an update.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function tmdb_import( WP_REST_Request $request ) {
+		$tmdb_id = (int) $request->get_param( 'tmdb_id' );
+		$client  = new TmdbClient();
+		$details = $client->tv( $tmdb_id );
+
+		if ( $details instanceof WP_Error ) {
+			return $details;
+		}
+
+		if ( empty( $details['id'] ) ) {
+			return new WP_Error(
+				'TMDB_ERROR',
+				__( 'TMDB bu dizi için veri döndürmedi.', 'animeh' ),
+				array( 'status' => 404 )
+			);
+		}
+
+		$base   = TmdbClient::image_base();
+		$mapped = TmdbMapper::work( $details, $base );
+		$repo   = new CatalogRepository();
+
+		$existing = $repo->work_by_tmdb_id( $tmdb_id );
+		$work_id  = null === $existing ? 0 : (int) $existing['id'];
+
+		$row = array(
+			'kind'             => CatalogSchema::KIND_ANIME,
+			'tmdb_id'          => $tmdb_id,
+			'title'            => $mapped['title'],
+			'title_english'    => $mapped['title_english'],
+			'synopsis'         => $mapped['synopsis'],
+			'poster_url'       => $mapped['poster_url'],
+			'banner_url'       => $mapped['banner_url'],
+			'score'            => $mapped['score'],
+			'year'             => $mapped['year'],
+			'status'           => $mapped['status'],
+			'genres'           => wp_json_encode( $mapped['genres'] ),
+			'total_episodes'   => $mapped['total_episodes'],
+			'duration_seconds' => $mapped['duration_seconds'],
+		);
+
+		if ( null !== $existing ) {
+			// Local edits win over upstream on these: someone typed them, and
+			// a refresh of the metadata is not a request to undo that.
+			$row['slug']      = (string) $existing['slug'];
+			$row['published'] = (int) $existing['published'];
+			$row['studio']    = (string) $existing['studio'];
+			$row['season']    = (string) $existing['season'];
+			$row['format']    = (string) $existing['format'];
+			$row['tenrai_id'] = (int) $existing['tenrai_id'];
+			$row['mal_id']    = (int) $existing['mal_id'];
+		} else {
+			$row['published']  = $request->get_param( 'publish' ) ? 1 : 0;
+			$row['created_by'] = get_current_user_id();
+		}
+
+		$saved = $repo->save_work( $row, $work_id );
+		if ( $saved instanceof WP_Error ) {
+			return $saved;
+		}
+
+		$imported_episodes = 0;
+
+		if ( $request->get_param( 'import_episodes' ) ) {
+			$imported_episodes = $this->import_tmdb_episodes( $repo, $client, $saved, $details, $base );
+		}
+
+		( new LogRepository() )->record(
+			'info',
+			'TMDB_IMPORT',
+			'TMDB içe aktarma',
+			array( 'tmdb_id' => $tmdb_id, 'work_id' => $saved, 'episodes' => $imported_episodes ),
+			get_current_user_id()
+		);
+
+		$work = $repo->work( $saved );
+
+		return new WP_REST_Response(
+			array(
+				'work'              => null === $work ? null : CatalogController::work_payload( $work ),
+				'imported_episodes' => $imported_episodes,
+				'updated'           => null !== $existing,
+			),
+			null === $existing ? 201 : 200
+		);
+	}
+
+	/**
+	 * Create the episode rows for a freshly imported show.
+	 *
+	 * Season zero is skipped. TMDB files specials there and numbers them from
+	 * one, and this schema numbers seasons from one too — so importing them
+	 * would land episode 1 of the specials on top of episode 1 of the series
+	 * and quietly replace it. Losing the OVAs is the smaller loss.
+	 *
+	 * Episodes arrive unpublished: metadata existing is not the same as a
+	 * video being attached, and publishing here would put an unplayable
+	 * episode in front of a reader.
+	 *
+	 * @param CatalogRepository    $repo    Catalog.
+	 * @param TmdbClient           $client  TMDB.
+	 * @param int                  $work_id Work just saved.
+	 * @param array<string, mixed> $details TMDB TV details payload.
+	 * @param string               $base    Image base.
+	 */
+	private function import_tmdb_episodes(
+		CatalogRepository $repo,
+		TmdbClient $client,
+		int $work_id,
+		array $details,
+		string $base
+	): int {
+		$imported = 0;
+
+		foreach ( (array) ( $details['seasons'] ?? array() ) as $season ) {
+			if ( ! is_array( $season ) ) {
+				continue;
+			}
+
+			$number = (int) ( $season['season_number'] ?? 0 );
+			if ( $number < 1 ) {
+				continue;
+			}
+
+			$payload = $client->season( (int) $details['id'], $number );
+			if ( $payload instanceof WP_Error ) {
+				// A season TMDB will not serve is skipped rather than failing
+				// the whole import: the other seasons are still worth having.
+				continue;
+			}
+
+			foreach ( (array) ( $payload['episodes'] ?? array() ) as $entry ) {
+				if ( ! is_array( $entry ) ) {
+					continue;
+				}
+
+				$episode = TmdbMapper::episode( $entry, $base );
+				if ( $episode['number'] <= 0 ) {
+					continue;
+				}
+
+				$row = array(
+					'season_number'    => $number,
+					'number'           => $episode['number'],
+					'title'            => $episode['title'],
+					'synopsis'         => $episode['synopsis'],
+					'thumbnail_url'    => $episode['thumbnail_url'],
+					'duration_seconds' => $episode['duration_seconds'],
+					'published'        => 0,
+				);
+
+				if ( '' !== $episode['published_at'] ) {
+					$row['published_at'] = $episode['published_at'] . ' 00:00:00';
+				}
+
+				$result = $repo->save_episode( $work_id, $row );
+				if ( ! $result instanceof WP_Error ) {
+					++$imported;
+				}
+			}
+		}
+
+		return $imported;
+	}
+
+	/**
 	 * Fill a work's artwork — and optionally its episodes' — from TMDB.
 	 *
-	 * This is the reason the integration exists: an imported catalog has
-	 * numbering and titles but blank episode thumbnails, and TMDB is where the
-	 * stills are. Existing values are kept unless `overwrite` is set, so a
-	 * poster someone chose by hand is not replaced by a run of this.
+	 * Separate from the import above because the common case is a title that
+	 * came from Tenrai and only needs the pictures: an import would overwrite
+	 * the numbering and the titles that were the reason to use Tenrai for it.
+	 * Existing values are kept unless `overwrite` is set, so a poster someone
+	 * chose by hand is not replaced by a run of this.
 	 *
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error

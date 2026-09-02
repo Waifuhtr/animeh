@@ -44,6 +44,7 @@ object Routes {
     const val ADMIN_LOGS = "admin/logs"
     const val ADMIN_FONTS = "admin/fonts"
     const val ADMIN_TERMS = "admin/terms"
+    const val ADMIN_TMDB = "admin/tmdb"
     const val ADMIN_REPORTS = "admin/reports"
     const val ADMIN_MODERATORS = "admin/moderators"
     const val ADMIN_SERVER = "admin/server"

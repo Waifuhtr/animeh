@@ -303,7 +303,8 @@ fun AdminTenraiScreen(
                 }
                 is UiState.Error -> ErrorState(current.error)
                 is UiState.Empty -> EmptyState(
-                    if (query.length < 3) "En az 3 harf yaz." else stringResource(R.string.discover_no_results),
+                    if (query.length < 3) stringResource(R.string.admin_search_min)
+                    else stringResource(R.string.discover_no_results),
                     Icons.Filled.CloudDownload,
                 )
                 is UiState.Success -> LazyColumn {

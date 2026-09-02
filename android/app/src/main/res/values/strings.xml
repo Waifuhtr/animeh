@@ -269,7 +269,8 @@
     <!-- Admin: TMDB -->
     <string name="admin_tmdb">TMDB görselleri</string>
     <string name="admin_tmdb_fetch">TMDB\'den görselleri getir</string>
-    <string name="admin_tmdb_search">TMDB\'de ara</string>
+    <string name="admin_tmdb_search">TMDB\'den içe aktar</string>
+    <string name="admin_search_min">En az 3 harf yaz.</string>
     <string name="admin_tmdb_overwrite">Mevcut görselleri de değiştir</string>
     <string name="admin_tmdb_no_key">TMDB anahtarı girilmemiş. WordPress yönetim panelindeki Animeh → Entegrasyonlar sayfasından ekleyebilirsin.</string>
     <string name="admin_tmdb_done">Kapak ve %1$d bölüm görseli güncellendi.</string>

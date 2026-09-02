@@ -120,6 +120,19 @@ class AdminRepository @Inject constructor(
         ApiErrorMapper.call({ it.items }) { api.tmdbSearch(query, year) }
 
     /**
+     * Bring a show over from TMDB, with its episodes.
+     *
+     * The counterpart of [tenraiImport]: TMDB is a source in its own right,
+     * not only a way to fill gaps in a title imported from elsewhere.
+     */
+    suspend fun tmdbImport(
+        tmdbId: Long,
+        importEpisodes: Boolean = true,
+        publish: Boolean = false,
+    ): AppResult<TmdbImportResultDto> =
+        ApiErrorMapper.call { api.tmdbImport(TmdbImportRequest(tmdbId, importEpisodes, publish)) }
+
+    /**
      * Fill a work's artwork from TMDB.
      *
      * [tmdbId] zero asks the server to find the show by title; it refuses

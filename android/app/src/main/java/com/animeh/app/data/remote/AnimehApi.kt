@@ -305,6 +305,9 @@ interface AdminApi {
         @Query("year") year: Int = 0,
     ): Response<TmdbSearchDto>
 
+    @POST("admin/tmdb/import")
+    suspend fun tmdbImport(@Body body: TmdbImportRequest): Response<TmdbImportResultDto>
+
     @POST("admin/tmdb/artwork")
     suspend fun tmdbArtwork(@Body body: TmdbArtworkRequest): Response<TmdbArtworkResultDto>
 

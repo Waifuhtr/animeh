@@ -6,6 +6,7 @@ import android.util.Log
 import com.animeh.app.data.local.dao.FontDao
 import com.animeh.app.data.local.entity.FontEntity
 import com.animeh.app.domain.SubtitleFont
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -37,7 +38,9 @@ import javax.inject.Singleton
  */
 @Singleton
 class FontResolver @Inject constructor(
-    private val context: Context,
+    // Hilt binds the application context under this qualifier; a bare `Context`
+    // has no binding in the singleton component at all.
+    @ApplicationContext private val context: Context,
     private val fontDao: FontDao,
     @Named("base_client") private val client: OkHttpClient,
 ) {

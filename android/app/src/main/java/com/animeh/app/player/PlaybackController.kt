@@ -23,6 +23,7 @@ import com.animeh.app.domain.MediaSource
 import com.animeh.app.domain.Playback
 import com.animeh.app.player.ass.AssParser
 import com.animeh.app.player.ass.FontResolver
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -61,7 +62,7 @@ import javax.inject.Singleton
 @OptIn(UnstableApi::class)
 @Singleton
 class PlaybackController @Inject constructor(
-    private val context: Context,
+    @ApplicationContext private val context: Context,
     @Named("base_client") private val httpClient: OkHttpClient,
     private val networkMonitor: NetworkMonitor,
     private val fontResolver: FontResolver,

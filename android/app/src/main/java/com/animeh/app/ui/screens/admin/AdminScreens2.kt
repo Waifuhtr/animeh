@@ -476,7 +476,7 @@ fun AdminLogsScreen(onBack: () -> Unit, viewModel: AdminLogsViewModel = hiltView
     // The server's table only knows what reached the server; a response this
     // app could not parse is only ever visible here.
     val deviceEntries by ClientLog.entries.collectAsStateWithLifecycle()
-    var showingDevice by rememberSaveable { mutableStateOf(false) }
+    var showingDevice by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
 
     AdminScaffold(

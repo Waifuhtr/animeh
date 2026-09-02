@@ -135,7 +135,7 @@ class AdminRepository @Inject constructor(
         val size = fileSize(uri)
             ?: return@withContext AppResult.Failure(AppError.Storage("dosya boyutu okunamadı"))
 
-        val begin = ApiErrorMapper.call<UploadBeginDto> {
+        val begin = ApiErrorMapper.call({ it.upload }) {
             api.beginUpload(
                 UploadBeginRequest(
                     animeTitle = animeTitle,
@@ -152,6 +152,16 @@ class AdminRepository @Inject constructor(
         val plan = when (begin) {
             is AppResult.Success -> begin.data
             is AppResult.Failure -> return@withContext begin
+        }
+
+        // A plan with nothing to upload is not something to proceed with: the
+        // parts would never be sent and the server would be asked to complete
+        // an upload of nothing. Said plainly here rather than as a confusing
+        // refusal from the completion call.
+        if (plan.parts.isEmpty() || plan.uploadId.isBlank() || plan.key.isBlank()) {
+            return@withContext AppResult.Failure(
+                AppError.Storage("sunucu geçerli bir yükleme planı vermedi")
+            )
         }
 
         val etags = mutableListOf<UploadedPartDto>()
@@ -201,7 +211,7 @@ class AdminRepository @Inject constructor(
             )
         }
 
-        val completed = ApiErrorMapper.call<UploadCompleteDto> {
+        val completed = ApiErrorMapper.call({ it.upload }) {
             api.completeUpload(UploadCompleteRequest(plan.key, plan.uploadId, etags))
         }
 

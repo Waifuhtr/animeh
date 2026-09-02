@@ -241,6 +241,25 @@ data class UploadCompleteDto(
     val url: String = "",
 )
 
+/**
+ * The upload endpoints answer inside an envelope, like the rest of the
+ * plugin's REST surface.
+ *
+ * Reading the body straight into the payload looked like it worked:
+ * `ignoreUnknownKeys` dropped the wrapper it did not recognise and every
+ * field fell back to its default, so the plan arrived with an empty part
+ * list and no upload id. Nothing threw — the upload simply sent no bytes
+ * and asked the server to complete an upload of nothing.
+ */
+@Serializable
+data class UploadBeginEnvelopeDto(val upload: UploadBeginDto = UploadBeginDto())
+
+@Serializable
+data class UploadCompleteEnvelopeDto(val upload: UploadCompleteDto = UploadCompleteDto())
+
+@Serializable
+data class UploadAbortedDto(val aborted: Boolean = false)
+
 @Serializable
 data class StorageTestDto(val result: StorageTestResultDto = StorageTestResultDto())
 

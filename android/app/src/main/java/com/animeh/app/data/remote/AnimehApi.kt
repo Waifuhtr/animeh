@@ -226,11 +226,11 @@ interface AdminApi {
     suspend fun testStorage(): Response<StorageTestDto>
 
     @POST("storage/uploads")
-    suspend fun beginUpload(@Body body: UploadBeginRequest): Response<UploadBeginDto>
+    suspend fun beginUpload(@Body body: UploadBeginRequest): Response<UploadBeginEnvelopeDto>
 
     @POST("storage/uploads/complete")
-    suspend fun completeUpload(@Body body: UploadCompleteRequest): Response<UploadCompleteDto>
+    suspend fun completeUpload(@Body body: UploadCompleteRequest): Response<UploadCompleteEnvelopeDto>
 
     @POST("storage/uploads/abort")
-    suspend fun abortUpload(@Body body: Map<String, String>): Response<OkDto>
+    suspend fun abortUpload(@Body body: Map<String, String>): Response<UploadAbortedDto>
 }

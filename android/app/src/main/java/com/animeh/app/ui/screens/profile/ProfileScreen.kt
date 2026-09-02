@@ -23,6 +23,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.data.prefs.AuthState
+import com.animeh.app.data.prefs.user
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.theme.SurfaceCard
 import com.animeh.app.ui.theme.TextMuted

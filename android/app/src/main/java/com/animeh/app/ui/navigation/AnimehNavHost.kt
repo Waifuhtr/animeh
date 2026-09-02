@@ -20,6 +20,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.animeh.app.data.prefs.AuthState
+import com.animeh.app.data.prefs.isAdmin
 import com.animeh.app.player.ui.PlayerActivity
 import com.animeh.app.ui.screens.admin.*
 import com.animeh.app.ui.screens.auth.*

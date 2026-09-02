@@ -7,6 +7,8 @@ import com.animeh.app.data.local.AnimehDatabase
 import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.SessionStore
 import com.animeh.app.data.prefs.SettingsStore
+import com.animeh.app.data.prefs.isAdmin
+import com.animeh.app.data.prefs.user
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.UserApi

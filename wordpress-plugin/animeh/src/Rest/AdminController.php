@@ -455,7 +455,10 @@ final class AdminController {
 		return new WP_REST_Response(
 			array(
 				'episode' => CatalogController::episode_payload( $episode ),
-				'sources' => $repo->sources( (int) $episode['id'] ),
+				'sources' => array_map(
+					array( self::class, 'admin_source_payload' ),
+					$repo->sources( (int) $episode['id'] )
+				),
 			)
 		);
 	}
@@ -526,7 +529,9 @@ final class AdminController {
 	public function sources( WP_REST_Request $request ): WP_REST_Response {
 		$sources = ( new CatalogRepository() )->sources( (int) $request->get_param( 'episode_id' ) );
 
-		return new WP_REST_Response( array( 'items' => $sources ) );
+		return new WP_REST_Response(
+			array( 'items' => array_map( array( self::class, 'admin_source_payload' ), $sources ) )
+		);
 	}
 
 	/**
@@ -593,7 +598,41 @@ final class AdminController {
 			return $saved;
 		}
 
-		return new WP_REST_Response( array( 'source' => $repo->source( $saved ) ), 0 === $id ? 201 : 200 );
+		$stored = $repo->source( $saved );
+
+		return new WP_REST_Response(
+			array( 'source' => null === $stored ? null : self::admin_source_payload( $stored ) ),
+			0 === $id ? 201 : 200
+		);
+	}
+
+	/**
+	 * A stored source, typed.
+	 *
+	 * `$wpdb` hands every column back as a string, so a row goes out with
+	 * `"is_default": "1"` and `"size_bytes": "0"` unless it is cast here. A
+	 * client that expects a boolean cannot parse `"1"`, and one wrong column
+	 * fails the whole response rather than that single field.
+	 *
+	 * @param array<string, mixed> $source Raw row.
+	 * @return array<string, mixed>
+	 */
+	public static function admin_source_payload( array $source ): array {
+		return array(
+			'id'           => (int) $source['id'],
+			'episode_id'   => (int) $source['episode_id'],
+			'work_id'      => (int) $source['work_id'],
+			'kind'         => (string) $source['kind'],
+			'label'        => (string) $source['label'],
+			'language'     => (string) $source['language'],
+			'storage_key'  => (string) $source['storage_key'],
+			'external_url' => (string) $source['external_url'],
+			'mime'         => (string) $source['mime'],
+			'height'       => (int) $source['height'],
+			'size_bytes'   => (int) $source['size_bytes'],
+			'is_default'   => (bool) $source['is_default'],
+			'sort_order'   => (int) $source['sort_order'],
+		);
 	}
 
 	/**

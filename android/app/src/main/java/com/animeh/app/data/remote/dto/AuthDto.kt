@@ -27,7 +27,7 @@ data class UserDto(
      * §8: the server re-checks the capability on every admin endpoint, so a
      * client that forges this reaches the same 403 as anyone else.
      */
-    @SerialName("is_admin") val isAdmin: Boolean = false,
+    @SerialName("is_admin") @Serializable(with = LenientBoolean::class) val isAdmin: Boolean = false,
     val registered: String = "",
     val stats: UserStatsDto? = null,
 )
@@ -54,12 +54,12 @@ data class AppSettingsDto(
     val language: String = "tr",
     @SerialName("default_quality") val defaultQuality: String = "auto",
     @SerialName("subtitle_language") val subtitleLanguage: String = "tr",
-    @SerialName("subtitles_enabled") val subtitlesEnabled: Boolean = true,
-    @SerialName("autoplay_next") val autoplayNext: Boolean = true,
-    @SerialName("skip_intro") val skipIntro: Boolean = true,
-    @SerialName("wifi_only_download") val wifiOnlyDownload: Boolean = true,
-    val notifications: Boolean = true,
-    @SerialName("data_saver") val dataSaver: Boolean = false,
+    @SerialName("subtitles_enabled") @Serializable(with = LenientBoolean::class) val subtitlesEnabled: Boolean = true,
+    @SerialName("autoplay_next") @Serializable(with = LenientBoolean::class) val autoplayNext: Boolean = true,
+    @SerialName("skip_intro") @Serializable(with = LenientBoolean::class) val skipIntro: Boolean = true,
+    @SerialName("wifi_only_download") @Serializable(with = LenientBoolean::class) val wifiOnlyDownload: Boolean = true,
+    @Serializable(with = LenientBoolean::class) val notifications: Boolean = true,
+    @SerialName("data_saver") @Serializable(with = LenientBoolean::class) val dataSaver: Boolean = false,
 )
 
 @Serializable

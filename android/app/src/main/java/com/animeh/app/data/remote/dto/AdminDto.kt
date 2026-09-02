@@ -27,17 +27,17 @@ data class ErrorSummaryDto(val code: String = "", val count: Int = 0)
 
 @Serializable
 data class StorageStatusDto(
-    val configured: Boolean = false,
+    @Serializable(with = LenientBoolean::class) val configured: Boolean = false,
     val bucket: String = "",
-    @SerialName("public_bucket") val publicBucket: Boolean = false,
+    @SerialName("public_bucket") @Serializable(with = LenientBoolean::class) val publicBucket: Boolean = false,
 )
 
 @Serializable
 data class TenraiSettingsDto(
     val base: String = "",
-    @SerialName("has_key") val hasKey: Boolean = false,
+    @SerialName("has_key") @Serializable(with = LenientBoolean::class) val hasKey: Boolean = false,
     @SerialName("key_masked") val keyMasked: String = "",
-    val enabled: Boolean = true,
+    @Serializable(with = LenientBoolean::class) val enabled: Boolean = true,
 )
 
 @Serializable
@@ -74,7 +74,7 @@ data class TenraiImportRequest(
 data class TenraiImportResultDto(
     val work: WorkDto? = null,
     @SerialName("imported_episodes") val importedEpisodes: Int = 0,
-    val updated: Boolean = false,
+    @Serializable(with = LenientBoolean::class) val updated: Boolean = false,
 )
 
 @Serializable
@@ -135,7 +135,7 @@ data class AdminSourceDto(
     val mime: String = "",
     val height: Int = 0,
     @SerialName("size_bytes") val sizeBytes: Long = 0,
-    @SerialName("is_default") val isDefault: Boolean = false,
+    @SerialName("is_default") @Serializable(with = LenientBoolean::class) val isDefault: Boolean = false,
     @SerialName("sort_order") val sortOrder: Int = 0,
 )
 
@@ -174,7 +174,7 @@ data class AdminAnnouncementDto(
     val body: String = "",
     val link: String = "",
     val audience: String = "all",
-    val published: Boolean = true,
+    @Serializable(with = LenientBoolean::class) val published: Boolean = true,
     @SerialName("starts_at") val startsAt: String = "",
     @SerialName("ends_at") val endsAt: String? = null,
 )
@@ -258,7 +258,7 @@ data class UploadBeginEnvelopeDto(val upload: UploadBeginDto = UploadBeginDto())
 data class UploadCompleteEnvelopeDto(val upload: UploadCompleteDto = UploadCompleteDto())
 
 @Serializable
-data class UploadAbortedDto(val aborted: Boolean = false)
+data class UploadAbortedDto(@Serializable(with = LenientBoolean::class) val aborted: Boolean = false)
 
 @Serializable
 data class StorageTestDto(val result: StorageTestResultDto = StorageTestResultDto())

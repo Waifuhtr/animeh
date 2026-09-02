@@ -2,6 +2,7 @@ package com.animeh.app.data.remote
 
 import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
+import com.animeh.app.core.ClientLog
 import com.animeh.app.data.remote.dto.ApiErrorDto
 import kotlinx.serialization.json.Json
 import retrofit2.Response
@@ -73,6 +74,13 @@ object ApiErrorMapper {
         val message = parsed?.message.orEmpty()
         val code = parsed?.code.orEmpty()
 
+        // The body is kept whole here even though the screen shows a sentence:
+        // when the server's message is not the useful part, the raw response is.
+        ClientLog.record(
+            "HTTP $status · ${response.raw().request.method} ${response.raw().request.url.encodedPath}",
+            raw.ifBlank { "(gövde yok)" },
+        )
+
         return when {
             status == 401 -> AppError.Unauthorized(message.ifBlank { "401" })
             status == 403 -> AppError.Forbidden(message.ifBlank { "403" })
@@ -91,7 +99,15 @@ object ApiErrorMapper {
     }
 
     /** Classify a transport failure. */
-    fun fromException(error: Exception): AppError = when (error) {
+    fun fromException(error: Exception): AppError {
+        // A response the app could not parse arrives here, and its message
+        // names the offending field and offset — the one thing worth copying.
+        ClientLog.record(error::class.java.simpleName, error.message ?: "(mesaj yok)")
+
+        return classify(error)
+    }
+
+    private fun classify(error: Exception): AppError = when (error) {
         is SocketTimeoutException -> AppError.Timeout(error.message)
         // No DNS: almost always no connectivity rather than a dead server.
         is UnknownHostException -> AppError.Network(error.message)

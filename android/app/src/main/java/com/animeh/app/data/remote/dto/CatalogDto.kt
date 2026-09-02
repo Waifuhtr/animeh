@@ -34,12 +34,12 @@ data class WorkDto(
     val synonyms: List<String> = emptyList(),
     @SerialName("total_episodes") val totalEpisodes: Int = 0,
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
-    val published: Boolean = true,
+    @Serializable(with = LenientBoolean::class) val published: Boolean = true,
     @SerialName("updated_at") val updatedAt: String = "",
     // Present only on the detail endpoint.
     val seasons: List<SeasonDto> = emptyList(),
-    @SerialName("is_favorite") val isFavorite: Boolean = false,
-    @SerialName("in_watchlist") val inWatchlist: Boolean = false,
+    @SerialName("is_favorite") @Serializable(with = LenientBoolean::class) val isFavorite: Boolean = false,
+    @SerialName("in_watchlist") @Serializable(with = LenientBoolean::class) val inWatchlist: Boolean = false,
 )
 
 @Serializable
@@ -59,8 +59,8 @@ data class EpisodeDto(
     val synopsis: String = "",
     @SerialName("thumbnail_url") val thumbnailUrl: String = "",
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
-    val filler: Boolean = false,
-    val published: Boolean = true,
+    @Serializable(with = LenientBoolean::class) val filler: Boolean = false,
+    @Serializable(with = LenientBoolean::class) val published: Boolean = true,
     @SerialName("published_at") val publishedAt: String = "",
     val progress: ProgressDto? = null,
     // Present on the "new episodes" rail, where the work is joined in.
@@ -80,7 +80,7 @@ data class SourceCountsDto(
 data class ProgressDto(
     @SerialName("position_seconds") val positionSeconds: Int = 0,
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
-    val completed: Boolean = false,
+    @Serializable(with = LenientBoolean::class) val completed: Boolean = false,
 )
 
 @Serializable
@@ -119,7 +119,7 @@ data class HistoryDto(
     @SerialName("thumbnail_url") val thumbnailUrl: String = "",
     @SerialName("position_seconds") val positionSeconds: Int = 0,
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
-    val completed: Boolean = false,
+    @Serializable(with = LenientBoolean::class) val completed: Boolean = false,
     @SerialName("updated_at") val updatedAt: String = "",
 )
 
@@ -163,7 +163,7 @@ data class MediaSourceDto(
     val mime: String = "",
     val height: Int = 0,
     @SerialName("size_bytes") val sizeBytes: Long = 0,
-    @SerialName("is_default") val isDefault: Boolean = false,
+    @SerialName("is_default") @Serializable(with = LenientBoolean::class) val isDefault: Boolean = false,
     val url: String = "",
     /** Tried in order when [url] refuses to serve — the friendly-to-S3 failover. */
     @SerialName("fallback_urls") val fallbackUrls: List<String> = emptyList(),
@@ -198,4 +198,4 @@ data class AnnouncementDto(
 data class AnnouncementListDto(val announcements: List<AnnouncementDto> = emptyList())
 
 @Serializable
-data class OkDto(val ok: Boolean = true)
+data class OkDto(@Serializable(with = LenientBoolean::class) val ok: Boolean = true)

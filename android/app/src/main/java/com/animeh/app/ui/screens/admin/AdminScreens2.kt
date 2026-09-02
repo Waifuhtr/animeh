@@ -9,6 +9,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -19,7 +20,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -27,6 +30,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.animeh.app.R
+import com.animeh.app.core.ClientLog
 import com.animeh.app.core.UiState
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.components.ErrorState
@@ -469,14 +473,47 @@ fun AdminLogsScreen(onBack: () -> Unit, viewModel: AdminLogsViewModel = hiltView
     val state by viewModel.state.collectAsStateWithLifecycle()
     val level by viewModel.level.collectAsStateWithLifecycle()
 
+    // The server's table only knows what reached the server; a response this
+    // app could not parse is only ever visible here.
+    val deviceEntries by ClientLog.entries.collectAsStateWithLifecycle()
+    var showingDevice by rememberSaveable { mutableStateOf(false) }
+    val clipboard = LocalClipboardManager.current
+
     AdminScaffold(
         stringResource(R.string.admin_logs),
         onBack,
         actions = {
-            IconButton(onClick = viewModel::clear) { Icon(Icons.Filled.DeleteSweep, null) }
+            if (showingDevice) {
+                IconButton(
+                    onClick = { clipboard.setText(AnnotatedString(ClientLog.asText())) },
+                    enabled = deviceEntries.isNotEmpty(),
+                ) { Icon(Icons.Filled.ContentCopy, "Tümünü kopyala") }
+
+                IconButton(onClick = ClientLog::clear) { Icon(Icons.Filled.DeleteSweep, null) }
+            } else {
+                IconButton(onClick = viewModel::clear) { Icon(Icons.Filled.DeleteSweep, null) }
+            }
         },
     ) { padding ->
         Column(Modifier.padding(padding)) {
+            TabRow(selectedTabIndex = if (showingDevice) 1 else 0) {
+                Tab(
+                    selected = !showingDevice,
+                    onClick = { showingDevice = false },
+                    text = { Text("Sunucu") },
+                )
+                Tab(
+                    selected = showingDevice,
+                    onClick = { showingDevice = true },
+                    text = { Text("Bu cihaz (${deviceEntries.size})") },
+                )
+            }
+
+            if (showingDevice) {
+                DeviceLogList(deviceEntries, clipboard)
+                return@Column
+            }
+
             LazyRow(
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -520,6 +557,57 @@ fun AdminLogsScreen(onBack: () -> Unit, viewModel: AdminLogsViewModel = hiltView
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * The failures this device saw, in full.
+ *
+ * Selectable and individually copyable: an error worth reporting is one worth
+ * pasting somewhere, and reading a parser's offset off a screenshot is how a
+ * useful message gets lost.
+ */
+@Composable
+private fun DeviceLogList(
+    entries: List<ClientLog.Entry>,
+    clipboard: androidx.compose.ui.platform.ClipboardManager,
+) {
+    if (entries.isEmpty()) {
+        EmptyState("Bu cihazda kayıtlı hata yok.", Icons.Filled.Article)
+        return
+    }
+
+    LazyColumn(contentPadding = PaddingValues(bottom = 24.dp)) {
+        items(entries, key = { it.at.toString() + it.label }) { entry ->
+            ListItem(
+                overlineContent = {
+                    Text(
+                        "${entry.time} · ${entry.label}",
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                },
+                headlineContent = {
+                    SelectionContainer {
+                        Text(
+                            entry.detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontFamily = FontFamily.Monospace,
+                        )
+                    }
+                },
+                trailingContent = {
+                    IconButton(
+                        onClick = {
+                            clipboard.setText(
+                                AnnotatedString("[${entry.time}] ${entry.label}\n${entry.detail}")
+                            )
+                        }
+                    ) { Icon(Icons.Filled.ContentCopy, "Kopyala") }
+                },
+            )
+            HorizontalDivider()
         }
     }
 }

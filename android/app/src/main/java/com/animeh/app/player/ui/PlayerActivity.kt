@@ -99,7 +99,7 @@ fun PlayerScreen(
     val playerState by viewModel.playerState.collectAsStateWithLifecycle()
     val cues by viewModel.cues.collectAsStateWithLifecycle()
     val typefaces by viewModel.typefaces.collectAsStateWithLifecycle()
-    val primaryFont by viewModel.primaryFont.collectAsStateWithLifecycle()
+    val fontIndex by viewModel.fontIndex.collectAsStateWithLifecycle()
 
     var settingsOpen by remember { mutableStateOf(false) }
 
@@ -145,7 +145,7 @@ fun PlayerScreen(
         }
 
         if (playerState.subtitlesEnabled) {
-            SubtitleLayer(cues = cues, typefaces = typefaces, primaryFamily = primaryFont)
+            SubtitleLayer(cues = cues, typefaces = typefaces, fonts = fontIndex)
         }
 
         PlayerControls(

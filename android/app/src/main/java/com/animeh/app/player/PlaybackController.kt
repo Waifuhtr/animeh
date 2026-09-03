@@ -21,6 +21,7 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.animeh.app.core.AppError
 import com.animeh.app.domain.MediaSource
 import com.animeh.app.domain.Playback
+import com.animeh.app.player.ass.AssFontIndex
 import com.animeh.app.player.ass.AssParser
 import com.animeh.app.player.ass.FontResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -78,13 +79,15 @@ class PlaybackController @Inject constructor(
     val typefaces: StateFlow<Map<String, Typeface>> = _typefaces.asStateFlow()
 
     /**
-     * The family the current script sets its dialogue in.
+     * Which font each line of the current script is set in.
      *
-     * Held beside the typefaces because the renderer needs to know which of
-     * them is the one sentences are written in — see [AssParser.primaryFont].
+     * Held beside the typefaces because a Cue does not carry its style, so
+     * without this the renderer has no way to know that the sign at the top of
+     * the frame and the dialogue at the bottom are meant to be two different
+     * fonts — see [AssParser.fontIndex].
      */
-    private val _primaryFont = MutableStateFlow<String?>(null)
-    val primaryFont: StateFlow<String?> = _primaryFont.asStateFlow()
+    private val _fontIndex = MutableStateFlow<AssFontIndex?>(null)
+    val fontIndex: StateFlow<AssFontIndex?> = _fontIndex.asStateFlow()
 
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
@@ -94,6 +97,10 @@ class PlaybackController @Inject constructor(
     private var progressJob: Job? = null
     private var retryJob: Job? = null
     private var controlsJob: Job? = null
+    private var subtitleJob: Job? = null
+
+    /** Whether any cue has arrived since the current item was opened. */
+    private var sawCue = false
 
     private var playback: Playback? = null
     private var videoAddresses: List<String> = emptyList()
@@ -133,10 +140,34 @@ class PlaybackController @Inject constructor(
 
     val player: Player? get() = exoPlayer
 
-    /** Build the engine. Idempotent. */
-    fun attach(coroutineScope: CoroutineScope) {
+    /**
+     * Who this engine currently belongs to.
+     *
+     * A player screen is a new ViewModel every time it opens, and this
+     * controller is one object shared between them. Android creates the
+     * incoming activity *before* it destroys the outgoing one, so without an
+     * owner the departing screen's `release()` arrives after the new screen
+     * has already taken over and tears down the session it is watching —
+     * which looks like "it works the first time and not the second".
+     */
+    private var owner: Any? = null
+
+    /**
+     * Build the engine, or take over the one that is already built.
+     *
+     * @param owner the screen claiming the engine; hand the same object to
+     *   [release] so a screen can only ever release its own session.
+     */
+    fun attach(coroutineScope: CoroutineScope, owner: Any) {
+        this.owner = owner
         scope = coroutineScope
-        if (exoPlayer != null) return
+
+        if (exoPlayer != null) {
+            // The previous screen's scope took the progress loop with it when
+            // it was cancelled, so a reused player needs it started again.
+            startProgressLoop()
+            return
+        }
 
         val connection = networkMonitor.current()
         val profile = QualityPolicy.bufferProfile(connection)
@@ -172,11 +203,25 @@ class PlaybackController @Inject constructor(
             OkHttpDataSource.Factory(httpClient).setUserAgent(USER_AGENT),
         )
 
+        // Subtitles parsed while the file is read, not decoded as one blob.
+        //
+        // Without this, a side-loaded subtitle becomes a `SingleSampleMediaSource`:
+        // the whole script is one sample sitting at time zero. Start an episode
+        // at the beginning and it is read; resume one at 12 minutes and the
+        // renderer is enabled past the only sample there is, and no cue ever
+        // arrives. That is why subtitles showed on a first open and vanished
+        // on the second — the second open was a resume.
+        //
+        // Parsing during extraction turns the script into time-indexed cues,
+        // so where playback starts stops mattering.
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+            .experimentalParseSubtitlesDuringExtraction(true)
+
         exoPlayer = ExoPlayer.Builder(context)
             .setTrackSelector(selector)
             .setLoadControl(loadControl)
             .setBandwidthMeter(meter)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(mediaSourceFactory)
             .setSeekBackIncrementMs(SEEK_STEP_MS)
             .setSeekForwardIncrementMs(SEEK_STEP_MS)
             .build()
@@ -249,7 +294,43 @@ class PlaybackController @Inject constructor(
 
         openAddress(0, startPositionSeconds * 1000L, subtitle, subtitlesEnabled)
         resolveFonts(source, subtitle)
+        watchForSilentSubtitles(subtitle != null && subtitlesEnabled, startPositionSeconds)
         scheduleControlsHide()
+    }
+
+    /**
+     * Belt and braces for a text track that never speaks.
+     *
+     * Parsing subtitles during extraction should make this unnecessary — see
+     * the media source factory in [attach] — but the failure it guards against
+     * is silent and total: an episode plays with no subtitles at all and
+     * nothing anywhere says why. A seek to where the playhead already is
+     * re-enables the renderer and costs nothing from a buffer that is already
+     * full, so the trade is a hiccup nobody notices against subtitles nobody
+     * gets.
+     *
+     * Armed only when resuming, because starting at the beginning is the case
+     * that always worked, and fired at most once per episode.
+     *
+     * @param hasSubtitle Whether a track was actually selected.
+     * @param startPositionSeconds Where playback began.
+     */
+    private fun watchForSilentSubtitles(hasSubtitle: Boolean, startPositionSeconds: Int) {
+        subtitleJob?.cancel()
+        sawCue = false
+
+        if (!hasSubtitle || startPositionSeconds <= 0) return
+
+        subtitleJob = scope?.launch {
+            delay(SUBTITLE_SILENCE_MS)
+
+            if (sawCue || !_state.value.subtitlesEnabled) return@launch
+
+            val player = exoPlayer ?: return@launch
+            if (!_state.value.phase.isPlaying) return@launch
+
+            player.seekTo(player.currentPosition)
+        }
     }
 
     /** Open one of the addresses for the current source. */
@@ -412,11 +493,21 @@ class PlaybackController @Inject constructor(
         openAddress(0, _state.value.positionMs, currentSubtitle(), _state.value.subtitlesEnabled)
     }
 
-    fun release() {
+    /**
+     * Tear the engine down, if this screen is still the one holding it.
+     *
+     * @param owner the object that was handed to [attach].
+     */
+    fun release(owner: Any) {
+        if (this.owner !== owner) return
+
+        this.owner = null
+
         persistProgress()
         progressJob?.cancel()
         retryJob?.cancel()
         controlsJob?.cancel()
+        subtitleJob?.cancel()
         exoPlayer?.removeListener(listener)
         exoPlayer?.release()
         exoPlayer = null
@@ -472,6 +563,8 @@ class PlaybackController @Inject constructor(
         }
 
         override fun onCues(cueGroup: androidx.media3.common.text.CueGroup) {
+            if (cueGroup.cues.isNotEmpty()) sawCue = true
+
             _cues.value = if (_state.value.subtitlesEnabled) cueGroup.cues else emptyList()
         }
 
@@ -667,7 +760,7 @@ class PlaybackController @Inject constructor(
         // resolves: a track switched mid-episode would otherwise keep drawing
         // in the last script's font until the download finished.
         _typefaces.value = emptyMap()
-        _primaryFont.value = null
+        _fontIndex.value = null
 
         scope?.launch {
             if (subtitle == null) return@launch
@@ -675,7 +768,7 @@ class PlaybackController @Inject constructor(
             val script = downloadSubtitle(subtitle) ?: return@launch
             val required = AssParser.requiredFonts(script)
 
-            _primaryFont.value = AssParser.primaryFont(script)
+            _fontIndex.value = AssParser.fontIndex(script)
 
             if (required.isEmpty()) return@launch
 
@@ -736,6 +829,13 @@ class PlaybackController @Inject constructor(
         const val TICK_MS = 500L
         const val SAVE_INTERVAL_MS = 10_000L
         const val CONTROLS_TIMEOUT_MS = 3_500L
+
+        /**
+         * How long a resumed episode may go without a cue before the text
+         * renderer is nudged. Long enough to be a real silence rather than a
+         * gap between two lines of dialogue.
+         */
+        const val SUBTITLE_SILENCE_MS = 6_000L
         const val SEEK_STEP_MS = 10_000L
         const val UP_NEXT_LEAD_MS = 25_000L
         const val USER_AGENT = "Animeh/0.1 (Android)"

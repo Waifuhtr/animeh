@@ -46,13 +46,13 @@ class PlayerViewModel @Inject constructor(
     val playerState = controller.state
     val cues = controller.cues
     val typefaces = controller.typefaces
-    val primaryFont = controller.primaryFont
+    val fontIndex = controller.fontIndex
 
     private var currentEpisodeId: Long = savedStateHandle["episodeId"] ?: 0L
     private var currentWorkId: Long = 0L
 
     init {
-        controller.attach(viewModelScope)
+        controller.attach(viewModelScope, this)
 
         controller.onProgress = { position, duration, watched ->
             viewModelScope.launch {
@@ -320,7 +320,7 @@ class PlayerViewModel @Inject constructor(
     }
 
     override fun onCleared() {
-        controller.release()
+        controller.release(this)
         super.onCleared()
     }
 

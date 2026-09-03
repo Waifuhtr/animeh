@@ -62,9 +62,6 @@ class FirebaseGate @Inject constructor(
             return
         }
 
-        // A second app rather than the default one, named: the default
-        // instance is what an accidental `FirebaseApp.getInstance()` elsewhere
-        // would pick up, and this app has no default to pick up.
         val options = FirebaseOptions.Builder()
             .setApplicationId(config.appId)
             .setApiKey(config.apiKey)
@@ -73,11 +70,17 @@ class FirebaseGate @Inject constructor(
             .setGcmSenderId(config.senderId)
             .build()
 
+        // The default app, not a named one. Messaging is only wired up for the
+        // default instance — `FirebaseMessaging.getInstance(app)` is not even
+        // public — and `FirebaseMessagingService` delivers for that instance
+        // alone, so a named app would give a working database and a token that
+        // never arrives. Nothing else creates a default here: without a
+        // google-services.json there is no auto-initialisation to collide with.
         app = try {
-            // Re-initialising under the same name throws, so an existing one
-            // is deleted first — this only happens when the project changed.
-            runCatching { FirebaseApp.getInstance(APP_NAME).delete() }
-            FirebaseApp.initializeApp(context, options, APP_NAME)
+            // Re-initialising throws, so an existing one is torn down first.
+            // Only happens when the server names a different project.
+            runCatching { FirebaseApp.getInstance().delete() }
+            FirebaseApp.initializeApp(context, options)
         } catch (error: IllegalStateException) {
             ClientLog.record("Firebase başlatılamadı", error.message ?: "(mesaj yok)")
             null
@@ -97,10 +100,8 @@ class FirebaseGate @Inject constructor(
      */
     fun database(): FirebaseDatabase? = app?.let(FirebaseDatabase::getInstance)
 
-    /** Messaging, for the push token. */
-    fun messaging(): FirebaseMessaging? = app?.let(FirebaseMessaging::getInstance)
+    /** Messaging, for the push token. Null until Firebase is configured. */
+    fun messaging(): FirebaseMessaging? =
+        if (app == null) null else FirebaseMessaging.getInstance()
 
-    private companion object {
-        const val APP_NAME = "animeh"
-    }
 }

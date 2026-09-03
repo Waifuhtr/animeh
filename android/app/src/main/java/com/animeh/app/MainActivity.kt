@@ -1,18 +1,29 @@
 package com.animeh.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.animeh.app.core.AccountGate
+import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.SessionStore
 import com.animeh.app.data.repository.AuthRepository
 import com.animeh.app.ui.navigation.AnimehApp
@@ -66,6 +77,16 @@ class MainActivity : ComponentActivity() {
                     onDispose { onNewRoomCode = null }
                 }
 
+                // Android 13 turned notifications into a runtime
+                // permission, and a permission that is never asked for is a
+                // permission that is never granted: every invitation was being
+                // built, handed to the notification manager and dropped. Asked
+                // once somebody is signed in, because that is the first moment
+                // there is anything to notify them about — asking on the very
+                // first launch, before there are any friends, is the request
+                // people refuse.
+                NotificationPermission(signedIn = authState is AuthState.SignedIn)
+
                 val current = ban
                 if (current != null) {
                     BannedScreen(
@@ -100,12 +121,62 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    /** The room code in `animeh://oda/{code}`, if this intent carries one. */
+    /**
+     * The room code this intent carries, in either of the two shapes.
+     *
+     * `animeh://oda/{code}` is what the handover page and a notification tap
+     * use; `https://site/oda/{code}` is what a verified App Link delivers,
+     * which is the same address a friend actually pasted into a chat. Both
+     * arrive here, so both are read — the second one used to fall through and
+     * open the app on the home screen with the invitation lost.
+     */
     private fun roomCodeFrom(intent: Intent?): String? {
         val data = intent?.data ?: return null
 
-        if (data.scheme != "animeh" || data.host != "oda") return null
+        val segments = data.pathSegments.orEmpty()
 
-        return data.pathSegments.firstOrNull()?.takeIf { it.isNotBlank() }
+        val code = when {
+            data.scheme == "animeh" && data.host == "oda" -> segments.firstOrNull()
+
+            (data.scheme == "https" || data.scheme == "http") &&
+                segments.firstOrNull() == "oda" -> segments.getOrNull(1)
+
+            else -> null
+        }
+
+        return code?.takeIf { it.isNotBlank() }
+    }
+}
+
+/**
+ * Ask for the notification permission, once, after sign-in.
+ *
+ * There is no way to ask again from here if it is refused — Android stops
+ * showing the dialog after the second refusal — and that is the right
+ * behaviour: the app keeps working, invitations just arrive when it is next
+ * opened instead of in the tray.
+ */
+@Composable
+private fun NotificationPermission(signedIn: Boolean) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+
+    val context = LocalContext.current
+    var asked by rememberSaveable { mutableStateOf(false) }
+
+    val launcher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* Granted or not, there is nothing more to do here. */ }
+
+    LaunchedEffect(signedIn, asked) {
+        if (!signedIn || asked) return@LaunchedEffect
+
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.POST_NOTIFICATIONS,
+        ) == PackageManager.PERMISSION_GRANTED
+
+        asked = true
+
+        if (!granted) launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 }

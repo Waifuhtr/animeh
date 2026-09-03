@@ -205,6 +205,9 @@ interface UserApi {
     @DELETE("me/friends/{id}")
     suspend fun removeFriend(@Path("id") userId: Long): Response<OkDto>
 
+    @GET("rooms")
+    suspend fun rooms(): Response<RoomsDto>
+
     @POST("rooms")
     suspend fun createRoom(@Body body: CreateRoomRequest): Response<RoomDto>
 

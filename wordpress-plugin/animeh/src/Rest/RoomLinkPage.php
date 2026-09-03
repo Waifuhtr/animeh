@@ -8,12 +8,21 @@
  * real page on this site, and the page's job is to get out of the way — it
  * hands the phone straight to the app.
  *
- * The handover uses an `intent://` URL rather than App Links verification.
- * Verified links are nicer — no chooser — but they need this site's
- * assetlinks.json to carry the release certificate's SHA-256 fingerprint,
- * which is a step an operator has to do by hand after signing. The intent URL
- * works with no setup at all, and `S.browser_fallback_url` sends anyone
- * without the app to the same page with a download link instead of a dead end.
+ * There are three ways in, in the order they are tried, because no single one
+ * of them is reliable:
+ *
+ * 1. **A verified App Link.** When the operator has published this app's
+ *    signing fingerprint (Animeh → Entegrasyonlar), Android hands the URL
+ *    straight to the app and this page is never drawn at all. See
+ *    {@see AppLinks}.
+ * 2. **An `intent://` handover from this page.** Attempted by script rather
+ *    than a `<meta http-equiv="refresh">`: Chrome refuses to launch an
+ *    external protocol from a redirect that no gesture started, which is
+ *    exactly why the meta tag left people sitting in the browser.
+ * 3. **The button and the code.** A tap is a gesture, so the button works
+ *    where the automatic attempt was refused — and the room code is printed
+ *    so it can be typed into "Odaya katıl" when even that fails, which is
+ *    what happens inside in-app browsers that block custom schemes outright.
  *
  * @package Animeh
  */
@@ -105,6 +114,12 @@ final class RoomLinkPage {
 			. ';S.browser_fallback_url=' . rawurlencode( home_url( '/oda/' . rawurlencode( $code ) . '?app=0' ) )
 			. ';end';
 
+		// The plain scheme as a second attempt. Firefox and most in-app
+		// browsers do not understand `intent://` at all but will follow this,
+		// and on the phones that understand both the first attempt has already
+		// left the page by the time it is tried.
+		$scheme_link = 'animeh://oda/' . rawurlencode( $code );
+
 		// `?app=0` is what the fallback comes back as: without it the page
 		// would bounce anyone who has no app back to itself for ever.
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
@@ -113,20 +128,21 @@ final class RoomLinkPage {
 		status_header( null === $room ? 404 : 200 );
 		nocache_headers();
 
-		self::render( $code, $title, $deep_link, $redirect, null !== $room );
+		self::render( $code, $title, $deep_link, $scheme_link, $redirect, null !== $room );
 		exit;
 	}
 
 	/**
 	 * The page itself.
 	 *
-	 * @param string $code      Room code.
-	 * @param string $title     Anime title, when the room is still open.
-	 * @param string $deep_link The intent URL.
-	 * @param bool   $redirect  Whether to attempt the handover.
-	 * @param bool   $open      Whether the room is still open.
+	 * @param string $code        Room code.
+	 * @param string $title       Anime title, when the room is still open.
+	 * @param string $deep_link   The intent URL.
+	 * @param string $scheme_link The plain `animeh://` URL.
+	 * @param bool   $redirect    Whether to attempt the handover.
+	 * @param bool   $open        Whether the room is still open.
 	 */
-	private static function render( string $code, string $title, string $deep_link, bool $redirect, bool $open ): void {
+	private static function render( string $code, string $title, string $deep_link, string $scheme_link, bool $redirect, bool $open ): void {
 		?>
 <!DOCTYPE html>
 <html lang="tr">
@@ -145,32 +161,106 @@ final class RoomLinkPage {
 		.card { max-width: 26rem; }
 		h1 { font-size: 1.4rem; margin: 0 0 .5rem; }
 		p { color: #a1a1aa; margin: .5rem 0; }
-		a.button {
+		a.button, button.button {
 			display: inline-block; margin-top: 1.5rem; padding: .8rem 1.6rem;
-			background: #7c5cff; color: #fff; border-radius: 12px;
-			text-decoration: none; font-weight: 600;
+			background: #7c5cff; color: #fff; border: 0; border-radius: 12px;
+			text-decoration: none; font: inherit; font-weight: 600;
+			cursor: pointer;
 		}
-		code { color: #d4d4d8; }
+		button.ghost {
+			margin-top: .75rem; background: transparent; color: #a1a1aa;
+			border: 1px solid #3f3f46;
+		}
+		code {
+			color: #f4f4f5; font-size: 1.25rem; letter-spacing: .12em;
+			background: #18181b; padding: .3rem .6rem; border-radius: 8px;
+		}
 	</style>
-	<?php if ( $redirect && $open ) : ?>
-		<meta http-equiv="refresh" content="0;url=<?php echo esc_attr( $deep_link ); ?>">
-	<?php endif; ?>
 </head>
 <body>
 	<div class="card">
 		<?php if ( $open ) : ?>
 			<h1><?php echo esc_html( '' === $title ? __( 'Birlikte izleme odası', 'animeh' ) : $title ); ?></h1>
-			<p><?php esc_html_e( 'Uygulama açılıyor…', 'animeh' ); ?></p>
-			<p><?php esc_html_e( 'Açılmadıysa aşağıdaki düğmeye dokun.', 'animeh' ); ?></p>
-			<p><?php esc_html_e( 'Oda kodu:', 'animeh' ); ?> <code><?php echo esc_html( $code ); ?></code></p>
-			<a class="button" href="<?php echo esc_attr( $deep_link ); ?>">
+			<p id="animeh-status"><?php esc_html_e( 'Uygulama açılıyor…', 'animeh' ); ?></p>
+			<p><?php esc_html_e( 'Oda kodu:', 'animeh' ); ?><br>
+				<code id="animeh-code"><?php echo esc_html( $code ); ?></code>
+			</p>
+			<p><?php esc_html_e( 'Uygulama kendiliğinden açılmazsa düğmeye dokun. O da olmazsa uygulamadaki Odalar → Odaya katıl kısmına bu kodu yaz.', 'animeh' ); ?></p>
+			<a class="button" id="animeh-open" href="<?php echo esc_attr( $deep_link ); ?>">
 				<?php esc_html_e( 'Uygulamada aç', 'animeh' ); ?>
 			</a>
+			<br>
+			<button class="button ghost" type="button" id="animeh-copy">
+				<?php esc_html_e( 'Kodu kopyala', 'animeh' ); ?>
+			</button>
 		<?php else : ?>
 			<h1><?php esc_html_e( 'Bu oda kapanmış', 'animeh' ); ?></h1>
 			<p><?php esc_html_e( 'Odalar içindeki herkes ayrılınca kendini siler. Davet eden kişiden yeni bir bağlantı isteyebilirsin.', 'animeh' ); ?></p>
 		<?php endif; ?>
 	</div>
+
+	<?php if ( $open ) : ?>
+	<script>
+	(function () {
+		var code = <?php echo wp_json_encode( $code, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); ?>;
+		var copy = document.getElementById( 'animeh-copy' );
+		var copied = <?php echo wp_json_encode( __( 'Kopyalandı', 'animeh' ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); ?>;
+
+		if ( copy ) {
+			copy.addEventListener( 'click', function () {
+				if ( navigator.clipboard ) {
+					navigator.clipboard.writeText( code ).then( function () {
+						copy.textContent = copied;
+					} );
+				}
+			} );
+		}
+
+		<?php if ( $redirect ) : ?>
+		var intentUrl = <?php echo wp_json_encode( $deep_link, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); ?>;
+		var schemeUrl = <?php echo wp_json_encode( $scheme_link, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); ?>;
+		var stuck = <?php echo wp_json_encode( __( 'Uygulama açılamadı. Aşağıdaki düğmeye dokun.', 'animeh' ), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT ); ?>;
+
+		// A synthetic click rather than assigning location: some Android
+		// browsers treat a scripted navigation to an external protocol as a
+		// redirect and refuse it, but follow a click on a real anchor.
+		function attempt( url ) {
+			var link = document.createElement( 'a' );
+			link.href = url;
+			link.rel = 'noopener';
+			document.body.appendChild( link );
+			link.click();
+			document.body.removeChild( link );
+		}
+
+		attempt( intentUrl );
+
+		// Only reached when the first attempt did nothing: a phone that took
+		// the handover is no longer running this page. `hidden` is the check
+		// rather than a flag, because leaving for another app is exactly what
+		// makes the document hidden.
+		window.setTimeout( function () {
+			if ( document.hidden ) {
+				return;
+			}
+
+			attempt( schemeUrl );
+
+			window.setTimeout( function () {
+				if ( document.hidden ) {
+					return;
+				}
+
+				var status = document.getElementById( 'animeh-status' );
+				if ( status ) {
+					status.textContent = stuck;
+				}
+			}, 1200 );
+		}, 900 );
+		<?php endif; ?>
+	})();
+	</script>
+	<?php endif; ?>
 </body>
 </html>
 		<?php

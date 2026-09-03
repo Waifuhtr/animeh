@@ -18,6 +18,7 @@ object Routes {
     const val HOME = "home"
     const val DISCOVER = "discover"
     const val LIBRARY = "library"
+    const val ROOMS = "rooms"
     const val PROFILE = "profile"
 
     const val SETTINGS = "settings"
@@ -86,6 +87,7 @@ enum class TopLevelDestination(
     HOME(Routes.HOME, R.string.nav_home, Icons.Filled.Home, Icons.Outlined.Home),
     DISCOVER(Routes.DISCOVER, R.string.nav_discover, Icons.Filled.Search, Icons.Outlined.Search),
     LIBRARY(Routes.LIBRARY, R.string.nav_library, Icons.Filled.VideoLibrary, Icons.Outlined.VideoLibrary),
+    ROOMS(Routes.ROOMS, R.string.nav_rooms, Icons.Filled.Groups, Icons.Outlined.Groups),
     PROFILE(Routes.PROFILE, R.string.nav_profile, Icons.Filled.Person, Icons.Outlined.Person),
     ADMIN(Routes.ADMIN, R.string.nav_admin, Icons.Filled.AdminPanelSettings, Icons.Outlined.AdminPanelSettings, adminOnly = true),
     ;

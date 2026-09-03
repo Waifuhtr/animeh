@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Share
@@ -79,7 +80,20 @@ fun RoomScreen(
             onDismiss = { inviting = false },
             onInvite = { ids ->
                 inviting = false
-                viewModel.invite(ids) { count -> context.getString(R.string.room_invited, count) }
+                viewModel.invite(ids) { invited, notified ->
+                    when {
+                        // Everyone reached: the ordinary case, said plainly.
+                        notified >= invited -> context.getString(R.string.room_invited, invited)
+
+                        // Nobody reached. Almost always a server with no
+                        // Firebase service account, which is worth naming —
+                        // "davet gönderildi" while nothing arrives is the
+                        // worst of the three things this could say.
+                        notified == 0 -> context.getString(R.string.room_invited_silent, invited)
+
+                        else -> context.getString(R.string.room_invited_partial, invited, notified)
+                    }
+                }
             },
         )
     }
@@ -109,6 +123,21 @@ fun RoomScreen(
                     ) {
                         Icon(Icons.Filled.Share, stringResource(R.string.room_invite_link))
                     }
+
+                    // Leaving is now the only way out of a room: backing out
+                    // of this screen keeps you in it, because a watch party
+                    // outlives the screen you opened it from.
+                    IconButton(
+                        onClick = {
+                            viewModel.leave()
+                            onBack()
+                        }
+                    ) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ExitToApp,
+                            stringResource(R.string.room_leave),
+                        )
+                    }
                 },
             )
         },
@@ -117,8 +146,12 @@ fun RoomScreen(
             // Who is here, and a way back into the video.
             Surface(color = SurfaceCard) {
                 Column(Modifier.fillMaxWidth().padding(12.dp)) {
+                    // The code as well as the count: it is what somebody
+                    // types into "Odaya katıl" when a link did not survive
+                    // being pasted into a chat app.
                     Text(
-                        stringResource(R.string.room_members, state.members.size),
+                        stringResource(R.string.room_members, state.members.size) +
+                            "  ·  " + stringResource(R.string.rooms_code, room.code),
                         style = MaterialTheme.typography.labelMedium,
                         color = TextMuted,
                     )

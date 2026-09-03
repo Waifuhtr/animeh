@@ -16,6 +16,7 @@ declare( strict_types = 1 );
 
 namespace Animeh\Admin;
 
+use Animeh\Rest\AppLinks;
 use Animeh\Rest\AuthController;
 use Animeh\Rest\Permissions;
 use Animeh\Storage\FirebaseClient;
@@ -237,6 +238,38 @@ final class IntegrationsPage {
 					</tr>
 				</table>
 
+				<h2><?php esc_html_e( 'Uygulama bağlantıları', 'animeh' ); ?></h2>
+				<p class="description">
+					<?php esc_html_e( 'Oda davet bağlantısının tarayıcı yerine doğrudan uygulamada açılması için. Android 12 ve sonrasında bir bağlantının uygulamaya ait olduğu kanıtlanmadıkça sistem onu sessizce tarayıcıya gönderir; kanıt da APK\'yı imzalayan sertifikanın SHA-256 parmak izidir.', 'animeh' ); ?>
+				</p>
+				<p class="description">
+					<?php esc_html_e( 'Parmak izini şu komutla alırsın:', 'animeh' ); ?>
+					<code>keytool -printcert -jarfile animeh.apk</code>
+					<?php esc_html_e( '— çıktıdaki SHA-256 satırını olduğu gibi aşağıya yapıştır. Birden fazla imza kullanıyorsan her birini ayrı satıra yaz.', 'animeh' ); ?>
+				</p>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="animeh-fingerprints"><?php esc_html_e( 'İmza parmak izi', 'animeh' ); ?></label></th>
+						<td>
+							<textarea id="animeh-fingerprints" name="app_fingerprints" class="large-text code" rows="3"
+								placeholder="AB:CD:EF:…"><?php echo esc_textarea( implode( "\n", AppLinks::fingerprints() ) ); ?></textarea>
+							<p class="description">
+								<?php
+								if ( array() === AppLinks::fingerprints() ) {
+									esc_html_e( 'Boş. Davet bağlantısı önce bir web sayfası açar, oradaki düğme uygulamaya geçirir.', 'animeh' );
+								} else {
+									printf(
+										/* translators: %s: the assetlinks.json address. */
+										esc_html__( 'Yayınlanıyor: %s — Android bu dosyayı okuyup bağlantıyı doğrudan uygulamaya verir. Uygulamayı yeniden kurduğunda doğrulama tekrar yapılır.', 'animeh' ),
+										'<code>' . esc_html( home_url( '/.well-known/assetlinks.json' ) ) . '</code>'
+									);
+								}
+								?>
+							</p>
+						</td>
+					</tr>
+				</table>
+
 				<?php submit_button( __( 'Kaydet', 'animeh' ) ); ?>
 			</form>
 		</div>
@@ -299,6 +332,19 @@ final class IntegrationsPage {
 		}
 
 		update_option( AuthController::REGISTRATION_OPTION, isset( $_POST['registration_open'] ) ? 1 : 0, true );
+
+		$fingerprints = AppLinks::save(
+			isset( $_POST['app_fingerprints'] ) ? (string) wp_unslash( $_POST['app_fingerprints'] ) : ''
+		);
+
+		// Said out loud, because a fingerprint that quietly failed to parse
+		// looks exactly like one that was saved and did not work.
+		if ( isset( $_POST['app_fingerprints'] ) && '' !== trim( (string) wp_unslash( $_POST['app_fingerprints'] ) ) && array() === $fingerprints ) {
+			$notices[] = array(
+				'type' => 'error',
+				'text' => __( 'Parmak izi okunamadı. SHA-256 parmak izi 64 onaltılık karakterdir — SHA-1 satırını yapıştırmış olabilirsin.', 'animeh' ),
+			);
+		}
 
 		$base   = isset( $_POST['api_base'] ) ? trim( (string) wp_unslash( $_POST['api_base'] ) ) : '';
 		$stored = AuthController::set_public_base( $base );

@@ -36,21 +36,41 @@
             </intent-filter>
 
             <!--
-                Watch-party invite links.
+                Watch-party invite links, as the site hands them over.
 
-                The custom scheme is what the site's /oda/{code} page hands the
-                phone, and what a notification tap carries. A verified https
-                App Link would be nicer — no chooser — but it needs this app's
-                release signing fingerprint published in the site's
-                assetlinks.json, which is a step only the operator can take
-                after signing. The scheme works with no setup, and the web page
-                in front of it is what makes the link tappable in a chat app.
+                The custom scheme is what the /oda/{code} page's button opens,
+                and what a notification tap carries. It needs no setup at all,
+                which is why it is here — but a chat app will not make it
+                tappable, so it is never what somebody actually receives.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="animeh" android:host="oda" />
+            </intent-filter>
+
+            <!--
+                The same link as an https address, which is what is shared.
+
+                Android 12 stopped offering a chooser for a web link an app
+                cannot prove is its own: it goes to the browser, silently. That
+                is why an invite used to land on a web page instead of here.
+                autoVerify is the claim; the proof is the assetlinks.json the
+                plugin serves once this build's signing fingerprint has been
+                pasted into Animeh → Entegrasyonlar. Without that the filter is
+                inert rather than harmful — the browser page still has its
+                button — and with it the link never reaches a browser at all.
+
+                The host is a build-time placeholder because a filter cannot
+                name a host that is chosen at runtime; see app/build.gradle.kts.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="${roomLinkHost}" android:pathPrefix="/oda/" />
+                <data android:scheme="http" android:host="${roomLinkHost}" android:pathPrefix="/oda/" />
             </intent-filter>
         </activity>
 

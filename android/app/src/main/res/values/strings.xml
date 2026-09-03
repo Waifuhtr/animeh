@@ -6,6 +6,7 @@
     <string name="nav_home">Ana Sayfa</string>
     <string name="nav_discover">Keşfet</string>
     <string name="nav_library">Kitaplık</string>
+    <string name="nav_rooms">Odalar</string>
     <string name="nav_profile">Profil</string>
     <string name="nav_admin">Yönetim</string>
 
@@ -311,6 +312,20 @@
     <string name="room_unavailable">Birlikte izleme bu sunucuda açık değil.</string>
     <string name="room_banner">%1$s ile birlikte izliyorsun</string>
     <string name="room_link_copied">Bağlantı kopyalandı.</string>
+    <string name="rooms_title">Odalar</string>
+    <string name="rooms_open">Açık odalar</string>
+    <string name="rooms_none">Şu an açık oda yok. Bir animenin sayfasından kendi odanı açabilirsin.</string>
+    <string name="rooms_signed_out">Odaları görmek için giriş yapmalısın.</string>
+    <string name="rooms_host">%1$s açtı</string>
+    <string name="rooms_people">%1$d kişi</string>
+    <string name="rooms_mine">Senin odan</string>
+    <string name="rooms_join">Odaya katıl</string>
+    <string name="rooms_join_hint">Oda kodu</string>
+    <string name="rooms_join_explainer">Odayı açan kişinin verdiği kodu yaz. Kod, davet bağlantısının sonundaki kısımdır.</string>
+    <string name="rooms_refresh">Yenile</string>
+    <string name="rooms_code">Kod: %1$s</string>
+    <string name="room_invited_partial">%1$d kişiye davet gönderildi, %2$d kişiye bildirim ulaştı.</string>
+    <string name="room_invited_silent">%1$d kişi davet edildi ama bildirim gönderilemedi. Sunucuda Firebase servis hesabı ayarlı mı?</string>
 
     <!-- Friends -->
     <string name="friends_title">Arkadaşlar</string>

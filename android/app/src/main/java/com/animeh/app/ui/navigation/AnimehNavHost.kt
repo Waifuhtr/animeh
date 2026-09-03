@@ -149,6 +149,14 @@ fun AnimehApp(
                 )
             }
 
+            composable(Routes.ROOMS) {
+                RoomsScreen(
+                    signedIn = authState is AuthState.SignedIn,
+                    onSignIn = { navController.navigate(Routes.LOGIN) },
+                    onOpenRoom = { navController.navigate(Routes.ROOM) },
+                )
+            }
+
             composable(Routes.PROFILE) {
                 ProfileScreen(
                     authState = authState,

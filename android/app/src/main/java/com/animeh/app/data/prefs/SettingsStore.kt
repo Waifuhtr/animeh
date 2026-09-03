@@ -88,6 +88,23 @@ class SettingsStore @Inject constructor(
         }
     }
 
+    /** Series this viewer has already accepted the adult warning for. */
+    val acknowledgedAdult: Flow<Set<Long>> = context.dataStore.data.map { prefs ->
+        prefs[KEY_ADULT_OK].orEmpty().mapNotNull { it.toLongOrNull() }.toSet()
+    }
+
+    /**
+     * Remember that this series was accepted.
+     *
+     * Stored as a string set because DataStore Preferences has no long-set
+     * type; the ids are round-tripped through their decimal form.
+     */
+    suspend fun acknowledgeAdult(workId: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[KEY_ADULT_OK] = prefs[KEY_ADULT_OK].orEmpty() + workId.toString()
+        }
+    }
+
     suspend fun setQuality(value: String) = edit { it[KEY_QUALITY] = value }
     suspend fun setSubtitleLanguage(value: String) = edit { it[KEY_SUBTITLE_LANG] = value }
     suspend fun setSubtitlesEnabled(value: Boolean) = edit { it[KEY_SUBTITLES_ON] = value }
@@ -144,6 +161,15 @@ class SettingsStore @Inject constructor(
         val KEY_DATA_SAVER = booleanPreferencesKey("data_saver")
         val KEY_WIFI_ONLY = booleanPreferencesKey("wifi_only_download")
         val KEY_NOTIFICATIONS = booleanPreferencesKey("notifications")
+
+        /**
+         * Which flagged series this viewer has already said yes to.
+         *
+         * Persisted rather than per-session: the ask is meant to be once per
+         * anime, and a warning that comes back every time the app restarts is
+         * a warning people learn to tap through without reading.
+         */
+        val KEY_ADULT_OK = stringSetPreferencesKey("adult_acknowledged")
         val KEY_SPEED = floatPreferencesKey("playback_speed")
     }
 }

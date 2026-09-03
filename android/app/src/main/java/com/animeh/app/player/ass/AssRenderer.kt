@@ -96,13 +96,46 @@ fun SubtitleLayer(
             val lines = text.split('\n')
             val lineHeight = paint.fontSpacing
 
-            // DIMEN_UNSET means the parser placed nothing, and the default is
-            // where a subtitle belongs: bottom centre, clear of the controls.
-            val firstBaseline = if (cue.line != Cue.DIMEN_UNSET && cue.lineType == Cue.LINE_TYPE_FRACTION) {
-                heightPx * cue.line + lineHeight
+            // Measured rather than assumed: the block's height decides where
+            // its top has to be for its bottom to land where the cue asked,
+            // and a baseline is not the bottom of a glyph — descenders hang
+            // below it, which is exactly what was being cut off.
+            val metrics = paint.fontMetrics
+            val ascent = -metrics.ascent
+            val descent = metrics.descent
+            val blockHeight = (lines.size - 1) * lineHeight + ascent + descent
+
+            // `line` is a position, and `lineAnchor` says which edge of the
+            // text that position marks. Ignoring the anchor was the bug: a
+            // decoder that reports "the bottom of this block sits at 95% of
+            // the frame" was being read as "the top does", which pushed a
+            // whole line and a half off the bottom of the screen.
+            val anchored = cue.line != Cue.DIMEN_UNSET && cue.lineType == Cue.LINE_TYPE_FRACTION
+
+            val rawTop = if (anchored) {
+                val anchorY = heightPx * cue.line
+
+                when (cue.lineAnchor) {
+                    Cue.ANCHOR_TYPE_END -> anchorY - blockHeight
+                    Cue.ANCHOR_TYPE_MIDDLE -> anchorY - blockHeight / 2f
+                    // ANCHOR_TYPE_START and unset: the position is the top.
+                    else -> anchorY
+                }
             } else {
-                heightPx - bottomMargin - (lines.size - 1) * lineHeight
+                // Nothing placed it, and the default is where a subtitle
+                // belongs: bottom centre, clear of the controls.
+                heightPx - bottomMargin - blockHeight
             }
+
+            // Whatever the decoder said, the text stays on screen. A cue that
+            // would fall outside is clamped rather than clipped, because half
+            // a sentence is worse than a sentence in slightly the wrong place.
+            val top = rawTop.coerceIn(
+                0f,
+                (heightPx - blockHeight).coerceAtLeast(0f),
+            )
+
+            val firstBaseline = top + ascent
 
             val x = when {
                 cue.position != Cue.DIMEN_UNSET -> widthPx * cue.position

@@ -1607,3 +1607,40 @@ describe( 'ServiceAccountJwt', static function (): void {
 		same( null, \Animeh\Support\ServiceAccountJwt::parse( '{"project_id":"x"}' ) );
 	} );
 } );
+
+describe( 'AppLinks', static function (): void {
+	it( 'accepts a fingerprint in either of the forms tools print it', static function (): void {
+		$colons = 'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89';
+
+		// keytool prints the colon form in upper case; apksigner prints the
+		// same bytes as plain lower-case hex. Both are the same certificate,
+		// and being told one of them is invalid is an hour nobody gets back.
+		same( $colons, \Animeh\Rest\AppLinks::normalise( $colons ) );
+		same( $colons, \Animeh\Rest\AppLinks::normalise( strtolower( str_replace( ':', '', $colons ) ) ) );
+		same( $colons, \Animeh\Rest\AppLinks::normalise( '  ' . strtolower( $colons ) . "\n" ) );
+	} );
+
+	it( 'refuses anything that is not a SHA-256 fingerprint', static function (): void {
+		// A SHA-1 line pasted from the same keytool output. Android would
+		// fetch the file, parse it and reject it, which looks exactly like
+		// the setting having done nothing.
+		same( '', \Animeh\Rest\AppLinks::normalise( 'AB:CD:EF:01:23:45:67:89:AB:CD:EF:01:23:45:67:89:AB:CD:EF:01' ) );
+		same( '', \Animeh\Rest\AppLinks::normalise( '' ) );
+		same( '', \Animeh\Rest\AppLinks::normalise( 'SHA-256:' ) );
+	} );
+
+	it( 'builds the statement list Android verifies against', static function (): void {
+		$statements = \Animeh\Rest\AppLinks::statements( array( 'AA:BB' ) );
+
+		same( 1, count( $statements ) );
+		same( 'delegate_permission/common.handle_all_urls', $statements[0]['relation'][0] );
+		same( 'android_app', $statements[0]['target']['namespace'] );
+		same( 'com.animeh.app', $statements[0]['target']['package_name'] );
+		same( array( 'AA:BB' ), $statements[0]['target']['sha256_cert_fingerprints'] );
+
+		// A list, not an object: json_encode turns a gapped array into the
+		// latter, and Android's verifier refuses the file outright.
+		$encoded = json_encode( $statements );
+		ok( str_starts_with( (string) $encoded, '[' ) );
+	} );
+} );

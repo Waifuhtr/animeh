@@ -88,7 +88,7 @@ class PlayerViewModel @Inject constructor(
     private val _adultGate = MutableStateFlow<Work?>(null)
     val adultGate: StateFlow<Work?> = _adultGate.asStateFlow()
 
-    /** Answered once per work rather than once per episode. */
+    /** Series accepted in this player, on top of what was accepted before. */
     private var acknowledgedWorkId: Long = 0
 
     /** The room this device is in, for the screen to draw. */
@@ -147,7 +147,15 @@ class PlayerViewModel @Inject constructor(
     }
 
     fun confirmAdult() {
-        acknowledgedWorkId = _adultGate.value?.id ?: 0
+        val workId = _adultGate.value?.id ?: 0
+        acknowledgedWorkId = workId
+
+        // Remembered where the anime page reads it too, so accepting here does
+        // not leave the page asking again next time.
+        if (workId > 0) {
+            viewModelScope.launch { settingsStore.acknowledgeAdult(workId) }
+        }
+
         _adultGate.value = null
         pendingStart?.invoke()
         pendingStart = null
@@ -205,7 +213,14 @@ class PlayerViewModel @Inject constructor(
 
                     // Nothing is loaded until the question is answered: asking
                     // over a video that is already playing is not a warning.
-                    if (playback.work.adult && acknowledgedWorkId != playback.work.id) {
+                    // The anime page asks first and remembers the answer;
+                    // this is the backstop for every other route into
+                    // playback — a home rail, the library, a resumed episode,
+                    // autoplay into the next one, a room invitation.
+                    val accepted = acknowledgedWorkId == playback.work.id ||
+                        playback.work.id in settingsStore.acknowledgedAdult.first()
+
+                    if (playback.work.adult && !accepted) {
                         pendingStart = start
                         _adultGate.value = playback.work
                     } else {

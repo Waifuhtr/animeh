@@ -5,6 +5,8 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
+import com.animeh.app.data.prefs.AuthState
+import com.animeh.app.data.prefs.SessionStore
 import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.repository.LibraryRepository
 import com.animeh.app.data.repository.ServerConfigRepository
@@ -28,6 +30,7 @@ class AnimehApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var libraryRepository: LibraryRepository
     @Inject lateinit var serverConfig: ServerConfigRepository
     @Inject lateinit var pushRegistrar: PushRegistrar
+    @Inject lateinit var sessionStore: SessionStore
 
     @Inject @Named("base_client") lateinit var okHttpClient: OkHttpClient
 
@@ -48,10 +51,15 @@ class AnimehApplication : Application(), ImageLoaderFactory {
         scope.launch {
             serverConfig.refresh()
 
-            // The push token is registered after Firebase is configured and
-            // only while somebody is signed in: a token with no account behind
-            // it has nothing to be addressed to.
-            pushRegistrar.register()
+            // Registered after Firebase is configured, and again on every
+            // sign-in. A token belongs to an install but a notification is
+            // addressed to an account, so the pairing has to be restated
+            // whenever either side changes — registering only at launch left
+            // anyone who signed in afterwards with no token on the server,
+            // which is an invitation that never arrives.
+            sessionStore.state.collect { state ->
+                if (state is AuthState.SignedIn) pushRegistrar.register()
+            }
         }
 
         // Positions recorded while offline are pushed as soon as there is a

@@ -3,6 +3,7 @@ package com.animeh.app.ui.screens.social
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
 import com.animeh.app.data.remote.dto.ChatMessageUi
@@ -233,17 +234,28 @@ class RoomViewModel @Inject constructor(
         _draft.value = ""
     }
 
-    fun invite(userIds: List<Long>, sentMessage: (Int) -> String) {
+    /**
+     * Invite friends, and say honestly what happened.
+     *
+     * The server reports how many were invited and how many actually had a
+     * device told about it, and those differ whenever Firebase is not set up.
+     * Reporting only the first number is how "davet gönderildi" ended up on
+     * screen while nothing arrived on anybody's phone.
+     */
+    fun invite(userIds: List<Long>, message: (invited: Int, notified: Int) -> String) {
         viewModelScope.launch {
             when (val result = party.invite(userIds)) {
-                is AppResult.Success -> _state.update { it.copy(message = sentMessage(result.data)) }
+                is AppResult.Success -> _state.update {
+                    it.copy(message = message(result.data.invited, result.data.notified))
+                }
+
                 is AppResult.Failure -> _state.update { it.copy(message = result.error.technical) }
             }
         }
     }
 
     fun leave() {
-        viewModelScope.launch { party.leave(viewModelScope) }
+        viewModelScope.launch { party.leave() }
     }
 
     private fun observe() {
@@ -302,4 +314,112 @@ class RoomJoinViewModel @Inject constructor(
      * @return true when the room was still open and was entered.
      */
     suspend fun join(code: String): Boolean = party.join(code) is AppResult.Success
+}
+
+/** What the rooms tab draws. */
+data class RoomsUiState(
+    val rooms: List<RoomDto> = emptyList(),
+    val loading: Boolean = true,
+    val error: AppError? = null,
+    val message: String? = null,
+    val joining: Boolean = false,
+)
+
+/**
+ * The open rooms, and a way into one by its code.
+ *
+ * A room is reachable three ways and this screen is the one that does not
+ * depend on anything arriving: a link can be swallowed by a chat app and a
+ * notification can be refused, but a list of what your friends have open is
+ * always there to be looked at.
+ */
+@HiltViewModel
+class RoomsViewModel @Inject constructor(
+    private val party: WatchPartySession,
+    private val social: SocialRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(RoomsUiState())
+    val state: StateFlow<RoomsUiState> = _state.asStateFlow()
+
+    private val _code = MutableStateFlow("")
+    val code: StateFlow<String> = _code.asStateFlow()
+
+    /** Whether this install can offer watch parties at all. */
+    val available = party.available
+
+    init {
+        load()
+    }
+
+    /**
+     * A code as typed, or as pasted.
+     *
+     * Half of what lands in this field will be a whole invite link rather than
+     * a code, because that is what somebody was sent — so the last path
+     * segment is taken and the rest thrown away. Case and stray whitespace go
+     * the same way: the alphabet codes are drawn from is lower case, and
+     * refusing a pasted capital would be a puzzle rather than a correction.
+     */
+    fun setCode(value: String) {
+        val tail = value.trim().substringAfterLast('/').substringBefore('?')
+
+        _code.value = tail.lowercase().filter { it.isLetterOrDigit() }.take(CODE_LIMIT)
+    }
+
+    fun dismissMessage() {
+        _state.update { it.copy(message = null) }
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true, error = null) }
+
+            when (val result = social.rooms()) {
+                is AppResult.Success -> _state.update {
+                    it.copy(rooms = result.data, loading = false, error = null)
+                }
+
+                is AppResult.Failure -> _state.update {
+                    it.copy(loading = false, error = result.error)
+                }
+            }
+        }
+    }
+
+    /**
+     * Enter a room by code.
+     *
+     * @param code    The code, from the field or from a card that was tapped.
+     * @param onEntered Called when the room was open and has been entered.
+     */
+    fun join(code: String, gone: String, onEntered: () -> Unit) {
+        val trimmed = code.trim()
+        if (trimmed.isEmpty() || _state.value.joining) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(joining = true) }
+
+            when (party.join(trimmed)) {
+                is AppResult.Success -> {
+                    _code.value = ""
+                    _state.update { it.copy(joining = false) }
+                    onEntered()
+                }
+
+                is AppResult.Failure -> {
+                    // A code that names no open room is the ordinary failure —
+                    // rooms delete themselves — so it is said in those terms
+                    // rather than as a status code.
+                    _state.update { it.copy(joining = false, message = gone) }
+                    load()
+                }
+            }
+        }
+    }
+
+    private companion object {
+        /** The length the server generates. */
+        const val CODE_LIMIT = 10
+    }
 }

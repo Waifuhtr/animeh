@@ -177,11 +177,18 @@ final class SocialController {
 			$namespace,
 			'/rooms',
 			array(
-				'methods'             => WP_REST_Server::CREATABLE,
-				'callback'            => array( $this, 'create_room' ),
-				'permission_callback' => $signed_in,
-				'args'                => array(
-					'episode_id' => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'rooms' ),
+					'permission_callback' => $signed_in,
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'create_room' ),
+					'permission_callback' => $signed_in,
+					'args'                => array(
+						'episode_id' => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+					),
 				),
 			)
 		);
@@ -546,6 +553,42 @@ final class SocialController {
 	/* ── Rooms ───────────────────────────────────────────────────────── */
 
 	/**
+	 * The rooms open among your friends, and your own.
+	 *
+	 * This is the list the "Odalar" tab draws, and it exists because a push
+	 * notification is not a reliable delivery mechanism: it needs Firebase
+	 * configured, the notification permission granted and the phone reachable.
+	 * A room somebody opened should still be findable when none of that is
+	 * true, and a friend list is the right boundary for who may see it.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response
+	 */
+	public function rooms( WP_REST_Request $request ) {
+		unset( $request );
+
+		$me   = get_current_user_id();
+		$repo = new SocialRepository();
+
+		$hosts = array( $me );
+		foreach ( $repo->friends( $me ) as $row ) {
+			$hosts[] = (int) $row['friend_id'];
+		}
+
+		$rooms = array();
+
+		foreach ( $repo->open_rooms( $hosts ) as $room ) {
+			$payload            = $this->room_payload( $room );
+			$payload['members'] = $repo->room_member_count( (int) $room['id'] );
+			$payload['mine']    = (int) $room['host_id'] === $me;
+
+			$rooms[] = $payload;
+		}
+
+		return new WP_REST_Response( array( 'rooms' => $rooms ) );
+	}
+
+	/**
 	 * Open a room on an episode.
 	 *
 	 * @param WP_REST_Request $request Request.
@@ -690,7 +733,7 @@ final class SocialController {
 		$work  = ( new CatalogRepository() )->work( (int) $room['work_id'] );
 		$title = null === $work ? '' : (string) $work['title'];
 
-		$this->notify(
+		$notified = $this->notify(
 			$invited,
 			__( 'Birlikte izleme daveti', 'animeh' ),
 			'' === $title
@@ -713,7 +756,16 @@ final class SocialController {
 			)
 		);
 
-		return new WP_REST_Response( array( 'invited' => count( $invited ) ) );
+		// Both numbers, because they answer different questions: `invited` is
+		// who is now expected in the room, `notified` is how many of them
+		// actually had a phone told about it. They differ whenever Firebase is
+		// not set up, which is worth the app being able to say out loud.
+		return new WP_REST_Response(
+			array(
+				'invited'  => count( $invited ),
+				'notified' => $notified,
+			)
+		);
 	}
 
 	/* ── Shared ──────────────────────────────────────────────────────── */
@@ -836,26 +888,48 @@ final class SocialController {
 	 * @param string                $title    Notification title.
 	 * @param string                $body     Notification body.
 	 * @param array<string, string> $data     What the app reads on the tap.
+	 * @return int How many devices accepted it.
 	 */
-	private function notify( array $user_ids, string $title, string $body, array $data ): void {
+	private function notify( array $user_ids, string $title, string $body, array $data ): int {
+		$type = (string) ( $data['type'] ?? '' );
+		$log  = new LogRepository();
+
+		// Both of the silent cases below used to return without a word, which
+		// made "no notification arrived" impossible to tell apart from "the
+		// notification was sent and the phone dropped it". They are the two
+		// most likely reasons on a fresh install, so they say so.
 		if ( ! FirebaseClient::can_send() ) {
-			return;
+			$log->error(
+				'FCM_ERROR',
+				'Bildirim gönderilemedi: Firebase servis hesabı ayarlı değil',
+				array( 'type' => $type )
+			);
+
+			return 0;
 		}
 
 		$tokens = ( new SocialRepository() )->tokens_for( $user_ids );
 
 		if ( array() === $tokens ) {
-			return;
+			$log->error(
+				'FCM_ERROR',
+				'Bildirim gönderilemedi: alıcının kayıtlı cihazı yok',
+				array( 'type' => $type, 'users' => count( $user_ids ) )
+			);
+
+			return 0;
 		}
 
 		$sent = ( new FirebaseClient() )->send( $tokens, $title, $body, $data );
 
 		if ( 0 === $sent ) {
-			( new LogRepository() )->error(
+			$log->error(
 				'FCM_ERROR',
 				'Bildirim gönderilemedi',
-				array( 'type' => (string) ( $data['type'] ?? '' ), 'devices' => count( $tokens ) )
+				array( 'type' => $type, 'devices' => count( $tokens ) )
 			);
 		}
+
+		return $sent;
 	}
 }

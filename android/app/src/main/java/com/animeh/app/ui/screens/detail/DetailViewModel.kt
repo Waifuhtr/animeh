@@ -8,6 +8,7 @@ import com.animeh.app.R
 import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
+import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.remote.dto.ReviewDto
 import com.animeh.app.data.repository.CatalogRepository
 import com.animeh.app.data.repository.CommunityRepository
@@ -19,6 +20,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -45,18 +47,15 @@ data class DetailUiState(
     @StringRes val messageRes: Int? = null,
     val messageText: String? = null,
     /**
-     * The episode waiting behind the adult-content warning, if one is.
+     * Whether the adult-content warning is on screen.
      *
-     * Held here rather than in a `remember` on the screen. Composable-local
-     * state is scoped to the composition, and anything that drops the screen
-     * out of it — a configuration change, a navigation animation, the state
-     * object the key was keyed on being replaced — takes the pending episode
-     * with it and the dialog never appears. The gate is a decision about this
-     * work, so it belongs with the rest of what the screen knows about it.
+     * Raised when the page opens rather than when something is tapped: the
+     * point is to say what this series is before somebody reads the synopsis
+     * and looks at the artwork, not to interrupt them on the way to the video.
+     * Answered once per series and remembered, so it is a statement about the
+     * series rather than a toll on every visit.
      */
-    val pendingAdultEpisode: Long? = null,
-    /** Answered once per visit rather than once per tap. */
-    val adultAcknowledged: Boolean = false,
+    val adultWarning: Boolean = false,
 )
 
 @HiltViewModel
@@ -65,6 +64,7 @@ class DetailViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val community: CommunityRepository,
     private val party: WatchPartySession,
+    private val settingsStore: SettingsStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -150,35 +150,32 @@ class DetailViewModel @Inject constructor(
         _state.update { it.copy(messageRes = null, messageText = null) }
     }
 
-    /**
-     * Decide what tapping play should do.
-     *
-     * @return the episode to open, or null when the warning has been raised
-     *         instead and the answer decides.
-     */
-    fun requestPlayback(episodeId: Long): Long? {
-        val work = (_state.value.work as? UiState.Success)?.data
+    /** "Devam et": remember this series was accepted, and get on with it. */
+    fun acknowledgeAdult() {
+        _state.update { it.copy(adultWarning = false) }
 
-        if (work?.adult != true || _state.value.adultAcknowledged) {
-            return episodeId
-        }
-
-        _state.update { it.copy(pendingAdultEpisode = episodeId) }
-
-        return null
+        viewModelScope.launch { settingsStore.acknowledgeAdult(workId) }
     }
 
-    /** "Devam et": remember the answer for this visit and play. */
-    fun acknowledgeAdult(): Long? {
-        val episodeId = _state.value.pendingAdultEpisode
-
-        _state.update { it.copy(pendingAdultEpisode = null, adultAcknowledged = true) }
-
-        return episodeId
-    }
-
+    /** "Vazgeç": the screen leaves. Nothing is remembered. */
     fun dismissAdult() {
-        _state.update { it.copy(pendingAdultEpisode = null) }
+        _state.update { it.copy(adultWarning = false) }
+    }
+
+    /**
+     * Raise the warning if this series is flagged and has not been accepted.
+     *
+     * Called once the work has loaded, because until then there is nothing to
+     * warn about.
+     */
+    private fun maybeWarn(work: Work) {
+        if (!work.adult) return
+
+        viewModelScope.launch {
+            if (workId !in settingsStore.acknowledgedAdult.first()) {
+                _state.update { it.copy(adultWarning = true) }
+            }
+        }
     }
 
     /**
@@ -242,6 +239,7 @@ class DetailViewModel @Inject constructor(
                             selectedSeason = work.seasons.firstOrNull()?.number ?: 1,
                         )
                     }
+                    maybeWarn(work)
                     loadEpisodes(work.seasons.firstOrNull()?.number ?: 0)
                 }
                 is AppResult.Failure -> _state.update { it.copy(work = UiState.Error(result.error)) }

@@ -123,7 +123,20 @@ data class RoomDto(
     @SerialName("created_at") val createdAt: String = "",
     /** The address an invite is shared as. */
     val link: String = "",
+    /**
+     * How many people have been in the room.
+     *
+     * Only sent by the listing — everywhere else the live count comes from
+     * Firebase, which is the only place that knows who is present *now*.
+     */
+    val members: Int = 0,
+    /** Whether the room is one you opened yourself. */
+    @Serializable(with = LenientBoolean::class) val mine: Boolean = false,
 )
+
+/** The rooms open among your friends. */
+@Serializable
+data class RoomsDto(val rooms: List<RoomDto> = emptyList())
 
 @Serializable
 data class CreateRoomRequest(@SerialName("episode_id") val episodeId: Long)
@@ -131,8 +144,19 @@ data class CreateRoomRequest(@SerialName("episode_id") val episodeId: Long)
 @Serializable
 data class InviteRequest(@SerialName("user_ids") val userIds: List<Long>)
 
+/**
+ * What came of an invitation.
+ *
+ * Two numbers because they answer different questions: [invited] is who is now
+ * expected in the room, [notified] is how many of them had a phone told about
+ * it. They differ when the server has no Firebase service account, which is
+ * worth saying out loud rather than reporting a silent success.
+ */
 @Serializable
-data class InviteResultDto(val invited: Int = 0)
+data class InviteResultDto(
+    val invited: Int = 0,
+    val notified: Int = 0,
+)
 
 /**
  * A chat line as the screen wants it.

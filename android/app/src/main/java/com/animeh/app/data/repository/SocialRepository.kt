@@ -10,6 +10,7 @@ import com.animeh.app.data.remote.dto.FavoriteWorkRequest
 import com.animeh.app.data.remote.dto.FriendRequestBody
 import com.animeh.app.data.remote.dto.FriendsDto
 import com.animeh.app.data.remote.dto.InviteRequest
+import com.animeh.app.data.remote.dto.InviteResultDto
 import com.animeh.app.data.remote.dto.PublicProfileDto
 import com.animeh.app.data.remote.dto.ProfileWorkDto
 import com.animeh.app.data.remote.dto.RoomDto
@@ -77,6 +78,17 @@ class SocialRepository @Inject constructor(
 
     // -- Rooms --------------------------------------------------------------
 
+    /**
+     * The rooms open among your friends, and your own.
+     *
+     * The list the Odalar tab draws. It exists because a push notification is
+     * not a delivery guarantee — it needs Firebase configured, the notification
+     * permission granted and a reachable phone — and a room somebody opened
+     * should still be findable when none of that held.
+     */
+    suspend fun rooms(): AppResult<List<RoomDto>> =
+        ApiErrorMapper.call({ it.rooms }) { userApi.rooms() }
+
     suspend fun createRoom(episodeId: Long): AppResult<RoomDto> =
         ApiErrorMapper.call { userApi.createRoom(CreateRoomRequest(episodeId)) }
 
@@ -90,6 +102,6 @@ class SocialRepository @Inject constructor(
     suspend fun closeRoom(code: String): AppResult<Unit> =
         ApiErrorMapper.call({ Unit }) { userApi.closeRoom(code) }
 
-    suspend fun invite(code: String, userIds: List<Long>): AppResult<Int> =
-        ApiErrorMapper.call({ it.invited }) { userApi.invite(code, InviteRequest(userIds)) }
+    suspend fun invite(code: String, userIds: List<Long>): AppResult<InviteResultDto> =
+        ApiErrorMapper.call { userApi.invite(code, InviteRequest(userIds)) }
 }

@@ -36,6 +36,10 @@ require_once __DIR__ . '/../src/Support/TmdbMapper.php';
 require_once __DIR__ . '/../src/Support/GenreTally.php';
 require_once __DIR__ . '/../src/Support/ServiceAccountJwt.php';
 
+// Not Support/, but the two methods exercised below are pure: normalising a
+// fingerprint and shaping a statement list touch nothing WordPress owns.
+require_once __DIR__ . '/../src/Rest/AppLinks.php';
+
 /**
  * Collected results.
  */

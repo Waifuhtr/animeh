@@ -428,6 +428,66 @@ final class SocialRepository {
 	}
 
 	/**
+	 * The rooms these people currently have open.
+	 *
+	 * What the "Odalar" list is built from. Restricted to friends by the
+	 * caller rather than here — a listing of every open room on the site
+	 * would be a list of strangers to walk in on, and the room code is the
+	 * only thing standing between a link and a living room.
+	 *
+	 * Rooms past their idle window are left out rather than swept here: a read
+	 * that deletes rows is a surprise, and the sweep runs on its own schedule.
+	 *
+	 * @param int[] $host_ids Whose rooms to list.
+	 * @param int   $limit    Most rooms to return.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function open_rooms( array $host_ids, int $limit = 50 ): array {
+		global $wpdb;
+
+		$hosts = array_values( array_unique( array_filter( array_map( 'intval', $host_ids ) ) ) );
+
+		if ( array() === $hosts ) {
+			return array();
+		}
+
+		$cutoff       = gmdate( 'Y-m-d H:i:s', time() - self::ROOM_IDLE_SECONDS );
+		$placeholders = implode( ', ', array_fill( 0, count( $hosts ), '%d' ) );
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				'SELECT * FROM ' . CatalogSchema::rooms() .
+				" WHERE closed_at IS NULL AND host_id IN ({$placeholders}) AND last_seen_at >= %s" .
+				' ORDER BY last_seen_at DESC LIMIT %d',
+				array_merge( $hosts, array( $cutoff, max( 1, min( 100, $limit ) ) ) )
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
+	 * How many people have been in a room.
+	 *
+	 * The durable count, not the live one — Firebase holds who is present this
+	 * second. It is what a listing needs: "3 kişi" on a card that is about to
+	 * be tapped, not a presence indicator.
+	 *
+	 * @param int $room_id Room.
+	 */
+	public function room_member_count( int $room_id ): int {
+		global $wpdb;
+
+		return (int) $wpdb->get_var( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				'SELECT COUNT(*) FROM ' . CatalogSchema::room_members() . ' WHERE room_id = %d',
+				$room_id
+			)
+		);
+	}
+
+	/**
 	 * A code no open room is already using.
 	 */
 	private function unique_code(): string {

@@ -167,19 +167,67 @@ demektir.
 
 ## 5. Davet bağlantıları
 
-Oda bağlantısı `https://siten.com/oda/kodu` şeklinde. Bu adres eklentinin
-sunduğu küçük bir sayfa ve tek işi telefonu uygulamaya devretmek.
+Oda bağlantısı `https://siten.com/oda/kodu` şeklinde.
 
 Kalıcı bağlantı ayarların "Düz" ise WordPress'in **Ayarlar → Kalıcı
 bağlantılar** sayfasına bir kez girip kaydet; rewrite kuralının işlemesi için
 gerekiyor.
 
-Bağlantıya dokunulduğunda Android bir "hangi uygulamayla açılsın" seçimi
-gösterebilir. Bunu kaldırmak (doğrulanmış App Links) mümkün ama uygulamanın
-**yayın imzasının SHA-256 parmak izini** sitenin `.well-known/assetlinks.json`
-dosyasına koymayı gerektiriyor — imzalamayı sen yaptığın için o parmak izi
-bende yok. İmzalı bir APK üretmeye karar verirsen parmak izini gönder, dosyayı
-ve manifest tarafını ayarlarım.
+Bir odaya üç ayrı yoldan girilebiliyor, çünkü hiçbiri tek başına güvenilir
+değil:
+
+1. **Doğrudan uygulama** — bağlantı tarayıcıya hiç uğramadan uygulamada
+   açılır. Bunun için aşağıdaki parmak izi adımı gerekiyor.
+2. **Devir sayfası** — parmak izi girilmemişse bağlantı eklentinin küçük bir
+   sayfasını açar; sayfa uygulamayı kendiliğinden çağırmayı dener, olmazsa
+   **Uygulamada aç** düğmesini gösterir.
+3. **Oda kodu** — uygulamadaki **Odalar → Odaya katıl** kutusuna kod yazılır.
+   Kod hem devir sayfasında hem de odanın kendi ekranında yazıyor. Bu yol her
+   koşulda çalışır.
+
+### Bağlantının doğrudan uygulamada açılması
+
+Android 12'den beri, bir bağlantının o uygulamaya ait olduğu **kanıtlanmadıkça**
+sistem onu sessizce tarayıcıya gönderiyor — eskisi gibi "hangi uygulamayla
+açılsın" diye sormuyor. Bu yüzden davet bağlantısı tarayıcıda açılıyordu.
+
+Kanıt, APK'yı imzalayan sertifikanın SHA-256 parmak izi. Şöyle alınır:
+
+```
+keytool -printcert -jarfile animeh.apk
+```
+
+Çıktıdaki **SHA-256** satırını olduğu gibi kopyala ve WordPress →
+**Animeh** → **Entegrasyonlar** → *Uygulama bağlantıları* kutusuna yapıştır.
+Eklenti bunu `https://siten.com/.well-known/assetlinks.json` adresinden
+yayınlar; Android uygulama kurulduğunda o dosyayı okuyup bağlantıyı doğrudan
+uygulamaya verir.
+
+Notlar:
+
+- Parmak izi gizli bir şey değil — bir **açık** sertifikanın özeti, ve Google
+  zaten herkese açık bir adreste yayınlamanı istiyor.
+- İki nokta üst üsteli (`AB:CD:…`) ya da düz (`abcd…`) yazılmış olması fark
+  etmiyor, ikisi de kabul ediliyor. Yanlışlıkla **SHA-1** satırını
+  yapıştırırsan eklenti bunu söyler.
+- APK'yı her yeniden imzaladığında parmak izi değişmez — aynı anahtar deposunu
+  kullandığın sürece bir kez girmen yeterli.
+- Doğrulama, uygulama **kurulduğunda** yapılıyor. Parmak izini APK'yı
+  kurduktan sonra girdiysen uygulamayı bir kez kaldırıp yeniden kur.
+
+---
+
+## 5b. Telefonda bildirim izni
+
+Android 13 ve sonrasında bildirim ayrı bir izin. Uygulama bunu giriş
+yaptıktan sonra bir kez soruyor; **İzin ver** demezsen davetler gönderilir ama
+bildirim çubuğunda görünmez. Yanlışlıkla reddettiysen: telefonun
+**Ayarlar → Uygulamalar → Animeh → Bildirimler** ekranından açabilirsin.
+
+Bir davetin ulaşıp ulaşmadığı artık uygulamada da yazıyor: davet ettiğin kişi
+sayısının yanında kaç kişiye bildirim gittiğini söylüyor. Hiç gitmediyse
+sunucuda servis hesabı yok demektir (Adım 3). Sunucu tarafında da
+**Animeh → Günlükler** ekranında `FCM_ERROR` satırı sebebini yazıyor.
 
 ---
 

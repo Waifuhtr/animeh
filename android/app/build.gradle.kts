@@ -42,6 +42,25 @@ android {
             "DEFAULT_API_BASE",
             "\"${setting("ANIMEH_API_BASE", "https://oyunceviri.riaslink.fun/wp-json/animeh/v1/")}\"",
         )
+
+        // The site whose /oda/ links this build claims as its own.
+        //
+        // An App Link has to name a host at build time — there is no way to
+        // declare "whatever server this install is pointed at" — so it is
+        // derived from the API address, which is the same site in every
+        // ordinary setup. ANIMEH_LINK_HOST overrides it for an install whose
+        // links live somewhere else.
+        //
+        // Claiming it is only half of the handshake: Android verifies the
+        // claim against /.well-known/assetlinks.json, which the plugin serves
+        // once an operator has pasted this build's signing fingerprint. Until
+        // then the link opens the web page, and its button opens the app.
+        manifestPlaceholders["roomLinkHost"] = setting(
+            "ANIMEH_LINK_HOST",
+            runCatching {
+                java.net.URI(setting("ANIMEH_API_BASE", "https://oyunceviri.riaslink.fun/wp-json/animeh/v1/")).host
+            }.getOrNull() ?: "oyunceviri.riaslink.fun",
+        )
     }
 
     signingConfigs {

@@ -61,22 +61,22 @@ fun DetailScreen(
         }
     }
 
-    // Every route into the player from this screen goes through here, so the
-    // warning cannot be walked around by tapping an episode instead of İzle.
-    // The decision itself is the view model's — see DetailUiState for why it
-    // is not composable-local state.
     val play: (Long) -> Unit = { episodeId ->
-        if (!signedIn) {
-            onSignIn()
-        } else {
-            viewModel.requestPlayback(episodeId)?.let(onPlayEpisode)
-        }
+        if (signedIn) onPlayEpisode(episodeId) else onSignIn()
     }
 
-    state.pendingAdultEpisode?.let {
+    // Raised by the view model when the page opens on a flagged series, not
+    // by tapping anything: the warning is about the series, so it comes before
+    // the artwork and the synopsis rather than on the way to the video.
+    // Declining leaves the page, because the only thing left to do here is
+    // read about something you just said you did not want to see.
+    if (state.adultWarning) {
         AdultWarningDialog(
-            onDismiss = viewModel::dismissAdult,
-            onContinue = { viewModel.acknowledgeAdult()?.let(onPlayEpisode) },
+            onDismiss = {
+                viewModel.dismissAdult()
+                onBack()
+            },
+            onContinue = viewModel::acknowledgeAdult,
         )
     }
 

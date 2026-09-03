@@ -63,6 +63,14 @@ data class ChatMessage(
  * even when an app is killed: `onDisconnect` is registered on the server the
  * moment a member joins, so the removal happens whether or not the app is
  * alive to do it.
+ *
+ * That guarantee cuts both ways, and [connected] is the other half of it.
+ * Firebase drops its socket when a phone sleeps, changes network or has the
+ * app backgrounded long enough — and the server, keeping its promise, deletes
+ * the presence row. Announcing yourself once on the way in therefore means
+ * disappearing from the room the first time the screen goes off. Presence has
+ * to be re-announced on every reconnection, which is what `.info/connected`
+ * exists to tell you.
  */
 @Singleton
 class WatchPartyClient @Inject constructor(
@@ -97,6 +105,40 @@ class WatchPartyClient @Inject constructor(
         )
 
         return true
+    }
+
+    /**
+     * Whether Firebase currently has a connection.
+     *
+     * `.info/connected` is a local view of the socket, not a value on the
+     * server: it goes false the moment the connection drops and true again
+     * once it is back, which is precisely when presence has to be rewritten.
+     */
+    fun connected(): Flow<Boolean> = callbackFlow {
+        val reference = firebase.database()?.getReference(".info/connected")
+
+        if (reference == null) {
+            close()
+            return@callbackFlow
+        }
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                trySend(snapshot.getValue(Boolean::class.java) ?: false)
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                // `.info` is readable regardless of rules, so this should not
+                // happen; a room that silently stopped re-announcing itself
+                // would be very hard to explain later.
+                ClientLog.record("Bağlantı durumu izlenemedi", error.message)
+                close(error.toException())
+            }
+        }
+
+        reference.addValueEventListener(listener)
+
+        awaitClose { reference.removeEventListener(listener) }
     }
 
     /** Leave deliberately, which is the ordinary case. */

@@ -16,6 +16,7 @@ use Animeh\Admin\Assets;
 use Animeh\Admin\MenuPage;
 use Animeh\Media\ProxyHandler;
 use Animeh\Rest\AdminController;
+use Animeh\Rest\AppLinks;
 use Animeh\Rest\Auth;
 use Animeh\Rest\AuthController;
 use Animeh\Rest\CatalogController;
@@ -112,6 +113,10 @@ final class Plugin {
 		// app, so it has to be a web address that opens the app rather than a
 		// custom scheme that most chat apps refuse to make tappable.
 		RoomLinkPage::register();
+
+		// And the file that lets Android skip that page entirely, once an
+		// operator has published the app's signing fingerprint.
+		AppLinks::register();
 
 		// Rooms are swept far more often than the daily cleanup: the promise
 		// is that a room does not outlive the people in it, and a day is not

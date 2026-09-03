@@ -25,6 +25,7 @@ import re
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -51,6 +52,26 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Enough scrollback to cover a whole Gradle build without the browser holding
 # an unbounded string.
+# Where the sources come from.
+#
+# The Space holds a copy of `android/`, baked into the image, and that copy is
+# what a build used to compile — which meant shipping a change was uploading
+# every changed file into this repository by hand. The project is public, so
+# the build can simply fetch the branch instead, and the copy in the image
+# becomes the fallback for when GitHub cannot be reached.
+#
+# A failed fetch fails the build rather than quietly compiling the older copy.
+# Shipping an APK that silently does not contain the change it was built for is
+# the worst outcome available here — far worse than a build that stops and says
+# why. Setting ANIMEH_GIT_REPO to an empty string in the Space settings turns
+# the fetch off and goes back to compiling the bundled copy.
+#
+# The commit that was compiled is printed at the top of every log, so "did my
+# change get in" is a question the log answers.
+GIT_REPO = os.environ.get("ANIMEH_GIT_REPO", "https://github.com/Waifuhtr/animeh")
+GIT_BRANCH = os.environ.get("ANIMEH_GIT_BRANCH", "claude/player-mkv-support-jim4um")
+GIT_TIMEOUT_SECONDS = 240
+
 MAX_LOG_LINES = 4000
 
 # A build that has produced no output for this long is stuck rather than slow;
@@ -164,6 +185,12 @@ class BuildRequest(BaseModel):
     clean: bool = False
 
 
+# What the automatic build produces. Debug rather than release because there is
+# no keystore in this image: a release build would need one and fail, and an
+# unsigned APK cannot be installed.
+AUTOBUILD_VARIANT = "debug"
+
+
 def write_local_properties(api_base: str) -> None:
     """
     Point Gradle at the SDK, and at the backend when one was given.
@@ -196,6 +223,72 @@ def find_apk(variant: str) -> Optional[Path]:
     return candidates[0] if candidates else None
 
 
+def refresh_sources() -> str:
+    """
+    Replace `android/` with the newest copy from GitHub.
+
+    Returns a one-line description for the log: the branch and commit on
+    success, or a string starting with "HATA" on failure. The caller stops the
+    build on the second — see the note by GIT_REPO for why.
+    """
+    if not GIT_REPO:
+        return "kapalı"
+
+    workspace = Path(tempfile.mkdtemp(prefix="animeh-src-"))
+
+    try:
+        subprocess.run(
+            ["git", "clone", "--depth", "1", "--branch", GIT_BRANCH, GIT_REPO, str(workspace)],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+
+        source = workspace / "android"
+        if not source.is_dir():
+            return f"HATA: {GIT_BRANCH} dalında android/ klasörü yok"
+
+        described = subprocess.run(
+            ["git", "-C", str(workspace), "rev-parse", "--short", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        ).stdout.strip()
+
+        # `local.properties` names this image's SDK path and is not in the
+        # repository, so it has to survive being overwritten.
+        local_properties = ANDROID_DIR / "local.properties"
+        saved = local_properties.read_text(encoding="utf-8") if local_properties.is_file() else ""
+
+        ANDROID_DIR.mkdir(parents=True, exist_ok=True)
+
+        for entry in source.iterdir():
+            target = ANDROID_DIR / entry.name
+
+            if entry.is_dir():
+                shutil.rmtree(target, ignore_errors=True)
+                shutil.copytree(entry, target)
+            else:
+                shutil.copy2(entry, target)
+
+        if saved:
+            local_properties.write_text(saved, encoding="utf-8")
+
+        wrapper = ANDROID_DIR / "gradlew"
+        if wrapper.is_file():
+            wrapper.chmod(0o755)
+
+        return f"{GIT_BRANCH} @ {described or 'HEAD'}"
+
+    except subprocess.CalledProcessError as error:
+        return f"HATA: git clone başarısız ({(error.stderr or '').strip()[:200]})"
+    except Exception as error:  # noqa: BLE001
+        return f"HATA: kaynaklar güncellenemedi ({error})"
+    finally:
+        shutil.rmtree(workspace, ignore_errors=True)
+
+
 async def run_build(variant: str, api_base: str, clean: bool) -> None:
     """Run Gradle, streaming its output into the log."""
     global PROCESS
@@ -216,10 +309,28 @@ async def run_build(variant: str, api_base: str, clean: bool) -> None:
     except OSError:
         pass
 
+    # Off the event loop: a shallow clone is a few seconds of network and file
+    # copying, and blocking here would freeze the log stream everyone is
+    # watching.
+    sources = await asyncio.get_running_loop().run_in_executor(None, refresh_sources)
+
     env = environment_report()
 
     log("═══ Animeh APK Builder ═══")
     log(f"Varyant       : {variant}")
+    log(f"Kaynak        : {sources}")
+
+    if sources.startswith("HATA"):
+        STATE.status = "failed"
+        STATE.finished_at = time.time()
+        STATE.message = (
+            sources + " — GitHub'a ulaşılamadıysa Space ayarlarında "
+            "ANIMEH_GIT_REPO değişkenini boş bırakıp image'daki kopyayla derleyebilirsin."
+        )
+        log("")
+        log("HATA: " + STATE.message)
+        return
+
     log(f"Java          : {env['java']}")
     log(f"Gradle        : {env['gradle']}")
     log(f"SDK           : {env['sdk_root']}")
@@ -384,6 +495,46 @@ def terminate_process() -> None:
             os.killpg(os.getpgid(PROCESS.pid), signal.SIGKILL)
         except (ProcessLookupError, PermissionError, OSError):
             PROCESS.kill()
+
+
+@app.on_event("startup")
+async def start_first_build() -> None:
+    """
+    Build once, as soon as the container is up.
+
+    The sources arrive here as a commit to this Space, which rebuilds the image
+    and restarts this process — so a container that has just started is almost
+    always a container holding sources nobody has compiled yet. Waiting to be
+    asked wastes the several minutes somebody would otherwise be sitting
+    through after pressing a button.
+
+    Once per container, never on top of a running build, and never when the
+    APK is already there: a Space waking from sleep still restarts, and
+    rebuilding an unchanged tree on every wake would burn the CPU quota this
+    runs on for nothing.
+
+    ANIMEH_AUTOBUILD=0 turns it off.
+    """
+    if os.environ.get("ANIMEH_AUTOBUILD", "1") == "0":
+        return
+
+    if find_apk(AUTOBUILD_VARIANT) is not None:
+        log("Hazır APK bulundu, otomatik derleme atlandı.")
+        return
+
+    log("Konteyner başladı: otomatik derleme kuyruğa alındı.")
+
+    async def guarded() -> None:
+        async with BUILD_LOCK:
+            try:
+                await run_build(AUTOBUILD_VARIANT, os.environ.get("ANIMEH_API_BASE", ""), False)
+            except Exception as error:  # noqa: BLE001
+                STATE.status = "failed"
+                STATE.finished_at = time.time()
+                STATE.message = f"Sunucu hatası: {error}"
+                log("HATA: " + STATE.message)
+
+    asyncio.create_task(guarded())
 
 
 @app.get("/", response_class=HTMLResponse)

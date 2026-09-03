@@ -24,6 +24,8 @@ use Animeh\Rest\FontsController;
 use Animeh\Rest\MeController;
 use Animeh\Rest\MigrationController;
 use Animeh\Rest\Permissions;
+use Animeh\Rest\RoomLinkPage;
+use Animeh\Rest\SocialController;
 use Animeh\Rest\StorageController;
 use Animeh\Rest\TestController;
 use Animeh\Storage\CatalogSchema;
@@ -31,6 +33,7 @@ use Animeh\Storage\FontRepository;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\Schema;
 use Animeh\Storage\SnapshotStore;
+use Animeh\Storage\SocialRepository;
 use Animeh\Storage\TokenRepository;
 use Animeh\Storage\UserDataRepository;
 
@@ -43,6 +46,11 @@ final class Plugin {
 	 * Daily housekeeping event.
 	 */
 	public const CLEANUP_HOOK = 'animeh_cleanup_event';
+
+	/**
+	 * Sweeps rooms nobody is in any more.
+	 */
+	public const ROOM_SWEEP_HOOK = 'animeh_room_sweep_event';
 
 	/**
 	 * Register everything.
@@ -70,6 +78,7 @@ final class Plugin {
 				( new CatalogController() )->register_routes();
 				( new MeController() )->register_routes();
 				( new CommunityController() )->register_routes();
+				( new SocialController() )->register_routes();
 				( new AdminController() )->register_routes();
 			}
 		);
@@ -98,6 +107,19 @@ final class Plugin {
 		// A deleted user leaves history, favourites and live tokens behind
 		// otherwise — the tokens being the part that matters.
 		add_action( 'deleted_user', array( self::class, 'forget_user' ) );
+
+		// The page an invite link lands on. A room link is shared into a chat
+		// app, so it has to be a web address that opens the app rather than a
+		// custom scheme that most chat apps refuse to make tappable.
+		RoomLinkPage::register();
+
+		// Rooms are swept far more often than the daily cleanup: the promise
+		// is that a room does not outlive the people in it, and a day is not
+		// "does not outlive".
+		add_action( self::ROOM_SWEEP_HOOK, array( self::class, 'sweep_rooms' ) );
+		if ( false === wp_next_scheduled( self::ROOM_SWEEP_HOOK ) ) {
+			wp_schedule_event( time() + 300, 'hourly', self::ROOM_SWEEP_HOOK );
+		}
 	}
 
 	/**
@@ -116,6 +138,18 @@ final class Plugin {
 	public static function cleanup(): void {
 		( new TokenRepository() )->prune();
 		( new LogRepository() )->prune();
+	}
+
+	/**
+	 * Delete rooms nobody has reported themselves in.
+	 *
+	 * The app closes its own room when the last person leaves. This covers the
+	 * app that was killed, lost its connection or ran out of battery and never
+	 * got to say so — without it, "the room deletes itself" is only true when
+	 * everyone exits politely.
+	 */
+	public static function sweep_rooms(): void {
+		( new SocialRepository() )->sweep_idle_rooms();
 	}
 
 	/**

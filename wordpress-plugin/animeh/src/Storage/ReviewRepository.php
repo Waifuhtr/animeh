@@ -111,6 +111,39 @@ final class ReviewRepository {
 	}
 
 	/**
+	 * Somebody's reviews, newest first, joined to what they are about.
+	 *
+	 * Shown on their profile and readable by anyone: a review is a public act,
+	 * and the whole point of the section is that other people read it.
+	 *
+	 * @param int $user_id Whose.
+	 * @param int $limit   How many.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function by_user( int $user_id, int $limit = 20 ): array {
+		global $wpdb;
+
+		$reviews = CatalogSchema::reviews();
+		$works   = CatalogSchema::works();
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				"SELECT r.*, w.title AS work_title, w.slug AS work_slug, w.poster_url AS work_poster
+				 FROM {$reviews} r
+				 INNER JOIN {$works} w ON w.id = r.work_id
+				 WHERE r.user_id = %d AND w.published = 1
+				 ORDER BY r.updated_at DESC
+				 LIMIT %d",
+				$user_id,
+				max( 1, min( $limit, 100 ) )
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
 	 * Create or replace this user's review of a work.
 	 *
 	 * @param int    $work_id Work.

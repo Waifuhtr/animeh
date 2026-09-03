@@ -34,7 +34,38 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+                Watch-party invite links.
+
+                The custom scheme is what the site's /oda/{code} page hands the
+                phone, and what a notification tap carries. A verified https
+                App Link would be nicer — no chooser — but it needs this app's
+                release signing fingerprint published in the site's
+                assetlinks.json, which is a step only the operator can take
+                after signing. The scheme works with no setup, and the web page
+                in front of it is what makes the link tappable in a chat app.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="animeh" android:host="oda" />
+            </intent-filter>
         </activity>
+
+        <!--
+            Invitations arriving while the app is closed. Firebase's own
+            manifest declares the rest of what messaging needs; this is the
+            one piece that has to name a class in this app.
+        -->
+        <service
+            android:name=".social.AnimehMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <!-- Its own activity so rotation, immersive mode and the back stack
              are the player's business and not the whole app's. -->

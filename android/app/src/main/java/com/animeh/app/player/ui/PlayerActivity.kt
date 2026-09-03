@@ -24,6 +24,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.animeh.app.core.UiState
+import com.animeh.app.ui.components.AdultWarningDialog
 import com.animeh.app.player.ass.SubtitleLayer
 import com.animeh.app.ui.theme.AnimehTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -105,6 +106,20 @@ fun PlayerScreen(
         if (episodeId > 0 && loadState is UiState.Loading) viewModel.open(episodeId)
     }
 
+    // The last gate before the media loads. Declining leaves nothing playing,
+    // so the only sensible thing left is to leave.
+    val adultGate by viewModel.adultGate.collectAsStateWithLifecycle()
+
+    if (adultGate != null) {
+        AdultWarningDialog(
+            onDismiss = {
+                viewModel.declineAdult()
+                onBack()
+            },
+            onContinue = viewModel::confirmAdult,
+        )
+    }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         val player = viewModel.controller.player
 
@@ -134,9 +149,22 @@ fun PlayerScreen(
 
         PlayerControls(
             state = playerState,
-            onPlayPause = viewModel.controller::togglePlayPause,
-            onSeek = viewModel.controller::seekTo,
-            onSeekBy = viewModel.controller::seekBy,
+            // Every local control reports itself to the room afterwards. The
+            // view model ignores the report when it is the one that just
+            // applied a remote change, which is what stops two devices
+            // pausing each other in a loop.
+            onPlayPause = {
+                viewModel.controller.togglePlayPause()
+                viewModel.broadcast()
+            },
+            onSeek = { position ->
+                viewModel.controller.seekTo(position)
+                viewModel.broadcast()
+            },
+            onSeekBy = { delta ->
+                viewModel.controller.seekBy(delta)
+                viewModel.broadcast()
+            },
             onToggleControls = viewModel.controller::toggleControls,
             onNext = viewModel::playNext,
             onPrevious = viewModel::playPrevious,

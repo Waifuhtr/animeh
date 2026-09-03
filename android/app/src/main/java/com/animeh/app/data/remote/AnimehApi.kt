@@ -87,6 +87,10 @@ interface PublicApi {
      */
     @GET("config")
     suspend fun clientConfig(): Response<ClientConfigDto>
+
+    /** Readable signed out, so a profile link shared outside the app works. */
+    @GET("users/{id}")
+    suspend fun profile(@Path("id") userId: Long): Response<PublicProfileDto>
 }
 
 interface UserApi {
@@ -176,6 +180,48 @@ interface UserApi {
      */
     @POST("me/avatar")
     suspend fun uploadAvatar(@Body body: RequestBody): Response<AvatarDto>
+
+    @POST("me/favorite-work")
+    suspend fun setFavoriteWork(@Body body: FavoriteWorkRequest): Response<FavoriteWorkResponse>
+
+    @POST("me/profile-visibility")
+    suspend fun setProfileVisibility(@Body body: VisibilityRequest): Response<VisibilityRequest>
+
+    @POST("me/devices")
+    suspend fun registerDevice(@Body body: DeviceRequest): Response<OkDto>
+
+    @HTTP(method = "DELETE", path = "me/devices", hasBody = true)
+    suspend fun forgetDevice(@Body body: DeviceRequest): Response<OkDto>
+
+    @GET("me/friends")
+    suspend fun friends(): Response<FriendsDto>
+
+    @POST("me/friends/requests")
+    suspend fun requestFriend(@Body body: FriendRequestBody): Response<OkDto>
+
+    @POST("me/friends/{id}")
+    suspend fun acceptFriend(@Path("id") userId: Long): Response<OkDto>
+
+    @DELETE("me/friends/{id}")
+    suspend fun removeFriend(@Path("id") userId: Long): Response<OkDto>
+
+    @POST("rooms")
+    suspend fun createRoom(@Body body: CreateRoomRequest): Response<RoomDto>
+
+    @GET("rooms/{code}")
+    suspend fun room(@Path("code") code: String): Response<RoomDto>
+
+    @POST("rooms/{code}/join")
+    suspend fun joinRoom(@Path("code") code: String): Response<RoomDto>
+
+    @DELETE("rooms/{code}")
+    suspend fun closeRoom(@Path("code") code: String): Response<OkDto>
+
+    @POST("rooms/{code}/invite")
+    suspend fun invite(
+        @Path("code") code: String,
+        @Body body: InviteRequest,
+    ): Response<InviteResultDto>
 }
 
 interface AdminApi {

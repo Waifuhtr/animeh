@@ -292,4 +292,51 @@
     <string name="admin_server_save">Adresi yayınla</string>
     <string name="admin_server_registration">Uygulamadan kayıt açık</string>
     <string name="admin_server_saved">Kaydedildi.</string>
+
+    <!-- Watch party -->
+    <string name="notify_channel_social">Davetler ve arkadaşlar</string>
+    <string name="room_create">Birlikte izle</string>
+    <string name="room_title">Birlikte izleme</string>
+    <string name="room_creating">Oda açılıyor…</string>
+    <string name="room_invite_link">Bağlantıyı paylaş</string>
+    <string name="room_invite_friends">Arkadaş davet et</string>
+    <string name="room_invited">%1$d kişiye davet gönderildi.</string>
+    <string name="room_members">Odadakiler (%1$d)</string>
+    <string name="room_leave">Odadan çık</string>
+    <string name="room_close">Odayı kapat</string>
+    <string name="room_chat_hint">Mesaj yaz…</string>
+    <string name="room_send">Gönder</string>
+    <string name="room_joined">Odaya katıldın.</string>
+    <string name="room_gone">Bu oda kapanmış.</string>
+    <string name="room_unavailable">Birlikte izleme bu sunucuda açık değil.</string>
+    <string name="room_banner">%1$s ile birlikte izliyorsun</string>
+    <string name="room_link_copied">Bağlantı kopyalandı.</string>
+
+    <!-- Friends -->
+    <string name="friends_title">Arkadaşlar</string>
+    <string name="friends_add">Arkadaş ekle</string>
+    <string name="friends_add_hint">Kullanıcı adı ya da e-posta</string>
+    <string name="friends_none">Henüz arkadaşın yok.</string>
+    <string name="friends_incoming">Sana gelen istekler</string>
+    <string name="friends_outgoing">Bekleyen isteklerin</string>
+    <string name="friends_accept">Kabul et</string>
+    <string name="friends_decline">Reddet</string>
+    <string name="friends_remove">Çıkar</string>
+    <string name="friends_requested">İstek gönderildi.</string>
+
+    <!-- Public profile -->
+    <string name="profile_public_view">Herkese açık profilim</string>
+    <string name="profile_favorite">Favori animesi</string>
+    <string name="profile_favorite_set">Favori olarak seç</string>
+    <string name="profile_favorite_clear">Favoriden çıkar</string>
+    <string name="profile_genres">İzlediği Türler</string>
+    <string name="profile_recent">Son izledikleri</string>
+    <string name="profile_reviews">Eleştirileri</string>
+    <string name="profile_no_reviews">Henüz eleştiri yazmamış.</string>
+    <string name="profile_private">Bu profil gizli.</string>
+    <string name="profile_visibility">Profilim herkese açık</string>
+    <string name="profile_visibility_hint">Kapatırsan izlediklerini ve eleştirilerini başkaları göremez.</string>
+    <string name="profile_add_friend">Arkadaş ekle</string>
+    <string name="profile_friend_pending">İstek bekliyor</string>
+    <string name="profile_friends_already">Arkadaşsınız</string>
 </resources>

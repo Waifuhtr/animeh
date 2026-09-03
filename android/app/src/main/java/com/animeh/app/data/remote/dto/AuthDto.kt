@@ -165,4 +165,6 @@ data class ClientConfigDto(
     @SerialName("registration_open") @Serializable(with = LenientBoolean::class)
     val registrationOpen: Boolean = true,
     @SerialName("site_name") val siteName: String = "",
+    /** Empty when the operator has not set Firebase up. */
+    val firebase: FirebaseConfigDto = FirebaseConfigDto(),
 )

@@ -14,6 +14,7 @@ import com.animeh.app.data.repository.CommunityRepository
 import com.animeh.app.data.repository.LibraryRepository
 import com.animeh.app.domain.Episode
 import com.animeh.app.domain.Work
+import com.animeh.app.social.WatchPartySession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -43,6 +44,19 @@ data class DetailUiState(
      */
     @StringRes val messageRes: Int? = null,
     val messageText: String? = null,
+    /**
+     * The episode waiting behind the adult-content warning, if one is.
+     *
+     * Held here rather than in a `remember` on the screen. Composable-local
+     * state is scoped to the composition, and anything that drops the screen
+     * out of it — a configuration change, a navigation animation, the state
+     * object the key was keyed on being replaced — takes the pending episode
+     * with it and the dialog never appears. The gate is a decision about this
+     * work, so it belongs with the rest of what the screen knows about it.
+     */
+    val pendingAdultEpisode: Long? = null,
+    /** Answered once per visit rather than once per tap. */
+    val adultAcknowledged: Boolean = false,
 )
 
 @HiltViewModel
@@ -50,6 +64,7 @@ class DetailViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val libraryRepository: LibraryRepository,
     private val community: CommunityRepository,
+    private val party: WatchPartySession,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -134,6 +149,67 @@ class DetailViewModel @Inject constructor(
     fun dismissMessage() {
         _state.update { it.copy(messageRes = null, messageText = null) }
     }
+
+    /**
+     * Decide what tapping play should do.
+     *
+     * @return the episode to open, or null when the warning has been raised
+     *         instead and the answer decides.
+     */
+    fun requestPlayback(episodeId: Long): Long? {
+        val work = (_state.value.work as? UiState.Success)?.data
+
+        if (work?.adult != true || _state.value.adultAcknowledged) {
+            return episodeId
+        }
+
+        _state.update { it.copy(pendingAdultEpisode = episodeId) }
+
+        return null
+    }
+
+    /** "Devam et": remember the answer for this visit and play. */
+    fun acknowledgeAdult(): Long? {
+        val episodeId = _state.value.pendingAdultEpisode
+
+        _state.update { it.copy(pendingAdultEpisode = null, adultAcknowledged = true) }
+
+        return episodeId
+    }
+
+    fun dismissAdult() {
+        _state.update { it.copy(pendingAdultEpisode = null) }
+    }
+
+    /**
+     * Open a watch party on whatever would be played next.
+     *
+     * The room is opened on a concrete episode rather than on the series: the
+     * whole point is that two people are at the same moment of the same video,
+     * and "the same series" is not that.
+     *
+     * @return true when a room was opened and the room screen should show.
+     */
+    suspend fun openRoom(): Boolean {
+        val episode = nextEpisodeToPlay() ?: return false
+
+        return when (val result = party.open(episode.id)) {
+            is AppResult.Success -> true
+
+            is AppResult.Failure -> {
+                _state.update {
+                    it.copy(
+                        messageRes = if (result.error is AppError.Message) null else result.error.messageRes,
+                        messageText = (result.error as? AppError.Message)?.text,
+                    )
+                }
+                false
+            }
+        }
+    }
+
+    /** Whether this install can offer watch parties at all. */
+    val partyAvailable = party.available
 
     fun vote(review: ReviewDto, vote: Int) {
         viewModelScope.launch {

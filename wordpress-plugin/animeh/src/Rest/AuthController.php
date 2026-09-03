@@ -560,6 +560,13 @@ final class AuthController {
 				'api_base'          => self::public_base(),
 				'registration_open' => self::registration_is_open(),
 				'site_name'         => (string) get_bloginfo( 'name' ),
+				// Not a secret: these are the values every Android app ships
+				// inside its google-services.json, and what protects the data
+				// is Firebase's security rules. Serving them is what lets the
+				// app be pointed at a project without a new build. Empty when
+				// the operator has not set Firebase up, which is how the app
+				// knows not to offer watch parties.
+				'firebase'          => \Animeh\Storage\FirebaseClient::client_config(),
 			)
 		);
 	}

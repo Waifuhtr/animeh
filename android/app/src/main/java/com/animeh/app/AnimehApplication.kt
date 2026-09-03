@@ -9,6 +9,7 @@ import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.repository.LibraryRepository
 import com.animeh.app.data.repository.ServerConfigRepository
 import com.animeh.app.player.NetworkMonitor
+import com.animeh.app.social.PushRegistrar
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,6 +27,7 @@ class AnimehApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var networkMonitor: NetworkMonitor
     @Inject lateinit var libraryRepository: LibraryRepository
     @Inject lateinit var serverConfig: ServerConfigRepository
+    @Inject lateinit var pushRegistrar: PushRegistrar
 
     @Inject @Named("base_client") lateinit var okHttpClient: OkHttpClient
 
@@ -39,10 +41,18 @@ class AnimehApplication : Application(), ImageLoaderFactory {
         // first emission.
         scope.launch { settingsStore.primeApiBase() }
 
-        // Then ask that server where clients should be connecting. When the
-        // backend has moved, this is the moment every phone finds out — see
-        // ServerConfigRepository for why it has to be asked rather than told.
-        scope.launch { serverConfig.refresh() }
+        // Then ask that server where clients should be connecting, and which
+        // Firebase project to use. When the backend has moved, this is the
+        // moment every phone finds out — see ServerConfigRepository for why it
+        // has to be asked rather than told.
+        scope.launch {
+            serverConfig.refresh()
+
+            // The push token is registered after Firebase is configured and
+            // only while somebody is signed in: a token with no account behind
+            // it has nothing to be addressed to.
+            pushRegistrar.register()
+        }
 
         // Positions recorded while offline are pushed as soon as there is a
         // connection again, rather than waiting for the next episode.

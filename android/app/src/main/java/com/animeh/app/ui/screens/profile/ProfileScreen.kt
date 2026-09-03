@@ -37,6 +37,8 @@ fun ProfileScreen(
     onSignIn: () -> Unit,
     onSettings: () -> Unit,
     onChangePassword: () -> Unit,
+    onFriends: () -> Unit = {},
+    onPublicProfile: (Long) -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val user = authState.user
@@ -145,6 +147,21 @@ fun ProfileScreen(
         }
 
         Spacer(Modifier.height(20.dp))
+
+        // The public half of the profile is a separate screen because it is
+        // the one other people see: editing what is on it and reading it are
+        // the same view, so what you set is exactly what they get.
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.profile_public_view)) },
+            leadingContent = { Icon(Icons.Filled.Person, null) },
+            modifier = Modifier.clickable { onPublicProfile(user.id) },
+        )
+
+        ListItem(
+            headlineContent = { Text(stringResource(R.string.friends_title)) },
+            leadingContent = { Icon(Icons.Filled.People, null) },
+            modifier = Modifier.clickable(onClick = onFriends),
+        )
 
         ListItem(
             headlineContent = { Text(stringResource(R.string.profile_settings)) },

@@ -138,6 +138,15 @@ dependencies {
     ksp(libs.androidx.room.compiler)
 
     implementation(libs.androidx.datastore.preferences)
+
+    // No google-services plugin and no google-services.json. Firebase is
+    // configured at runtime from what the server reports, for the same reason
+    // the server address is: pointing the app at a different project should
+    // not need a new build, and an APK that refuses to compile without a file
+    // only the site owner has is an APK nobody else can build.
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.database)
+    implementation(libs.firebase.messaging)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.paging.runtime)
     implementation(libs.androidx.paging.compose)

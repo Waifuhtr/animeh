@@ -33,6 +33,8 @@ require_once __DIR__ . '/../src/Support/RateLimit.php';
 require_once __DIR__ . '/../src/Support/TenraiMapper.php';
 require_once __DIR__ . '/../src/Support/WatchProgress.php';
 require_once __DIR__ . '/../src/Support/TmdbMapper.php';
+require_once __DIR__ . '/../src/Support/GenreTally.php';
+require_once __DIR__ . '/../src/Support/ServiceAccountJwt.php';
 
 /**
  * Collected results.

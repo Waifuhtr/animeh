@@ -18,6 +18,7 @@ namespace Animeh\Admin;
 
 use Animeh\Rest\AuthController;
 use Animeh\Rest\Permissions;
+use Animeh\Storage\FirebaseClient;
 use Animeh\Storage\TenraiClient;
 use Animeh\Storage\TmdbClient;
 use WP_Error;
@@ -40,9 +41,10 @@ final class IntegrationsPage {
 			wp_die( esc_html__( 'Bu sayfaya erişim yetkin yok.', 'animeh' ) );
 		}
 
-		$notices = self::maybe_save();
-		$tenrai  = TenraiClient::public_settings();
-		$tmdb    = TmdbClient::public_settings();
+		$notices  = self::maybe_save();
+		$tenrai   = TenraiClient::public_settings();
+		$tmdb     = TmdbClient::public_settings();
+		$firebase = FirebaseClient::public_settings();
 		$base    = (string) get_option( AuthController::PUBLIC_BASE_OPTION, '' );
 		$default = trailingslashit( rest_url( \Animeh\Rest\FontsController::NAMESPACE ) );
 		?>
@@ -132,6 +134,76 @@ final class IntegrationsPage {
 					</tr>
 				</table>
 
+				<h2><?php esc_html_e( 'Firebase (birlikte izleme ve bildirimler)', 'animeh' ); ?></h2>
+				<p class="description">
+					<?php esc_html_e( 'Birlikte izleme odalarının anlık verisi ve bildirimler Firebase üzerinden geçer. Alttaki beş alanı Firebase konsolundaki Android uygulamanın ayarlarından alırsın; servis hesabı JSON dosyası ise Proje ayarları → Servis hesapları bölümünden indirilir ve yalnızca bildirim göndermek için kullanılır, hiçbir zaman uygulamaya gönderilmez.', 'animeh' ); ?>
+				</p>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><label for="animeh-fb-database"><?php esc_html_e( 'Realtime Database adresi', 'animeh' ); ?></label></th>
+						<td>
+							<input type="url" id="animeh-fb-database" name="firebase_database_url" class="large-text"
+								value="<?php echo esc_attr( (string) $firebase['database_url'] ); ?>"
+								placeholder="https://proje-adi-default-rtdb.europe-west1.firebasedatabase.app">
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-fb-project"><?php esc_html_e( 'Proje kimliği', 'animeh' ); ?></label></th>
+						<td>
+							<input type="text" id="animeh-fb-project" name="firebase_project_id" class="regular-text"
+								value="<?php echo esc_attr( (string) $firebase['project_id'] ); ?>">
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-fb-api"><?php esc_html_e( 'Web API anahtarı', 'animeh' ); ?></label></th>
+						<td>
+							<input type="text" id="animeh-fb-api" name="firebase_api_key" class="regular-text"
+								value="<?php echo esc_attr( (string) $firebase['api_key'] ); ?>">
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-fb-app"><?php esc_html_e( 'Uygulama kimliği', 'animeh' ); ?></label></th>
+						<td>
+							<input type="text" id="animeh-fb-app" name="firebase_app_id" class="regular-text"
+								value="<?php echo esc_attr( (string) $firebase['app_id'] ); ?>"
+								placeholder="1:123456789:android:abc123">
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-fb-sender"><?php esc_html_e( 'Gönderen kimliği', 'animeh' ); ?></label></th>
+						<td>
+							<input type="text" id="animeh-fb-sender" name="firebase_sender_id" class="regular-text"
+								value="<?php echo esc_attr( (string) $firebase['sender_id'] ); ?>">
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-fb-account"><?php esc_html_e( 'Servis hesabı JSON', 'animeh' ); ?></label></th>
+						<td>
+							<textarea id="animeh-fb-account" name="firebase_service_account" class="large-text code" rows="4"
+								placeholder="<?php echo esc_attr( $firebase['has_account'] ? (string) $firebase['account_email'] : '{ &quot;type&quot;: &quot;service_account&quot;, … }' ); ?>"></textarea>
+							<p class="description">
+								<?php echo $firebase['has_account']
+									? esc_html__( 'Kayıtlı. Değiştirmek için yeni dosyanın tamamını yapıştır, dokunmamak için boş bırak.', 'animeh' )
+									: esc_html__( 'Bildirim göndermek için gerekli. Boş bırakırsan odalar çalışır ama davet bildirimi gitmez.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Durum', 'animeh' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="firebase_enabled" value="1" <?php checked( (bool) $firebase['enabled'] ); ?>>
+								<?php esc_html_e( 'Birlikte izleme açık', 'animeh' ); ?>
+							</label>
+							<p class="description">
+								<?php echo $firebase['ready']
+									? esc_html__( 'Bildirimler gönderilebilir durumda.', 'animeh' )
+									: esc_html__( 'Bildirimler için servis hesabı gerekiyor.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+				</table>
+
 				<h2><?php esc_html_e( 'Uygulama sunucusu', 'animeh' ); ?></h2>
 				<p class="description">
 					<?php esc_html_e( 'Uygulamanın bağlanacağı adres. Boş bırakırsan bu sitenin kendi adresi kullanılır. Siteyi taşırken buraya yeni adresi yazarsan, uygulamalar bir sonraki açılışta kendiliğinden oraya geçer — bu yüzden yeni adresi eski site hâlâ ayaktayken yazman gerekir.', 'animeh' ); ?>
@@ -206,6 +278,25 @@ final class IntegrationsPage {
 				'enabled' => isset( $_POST['tenrai_enabled'] ),
 			)
 		);
+
+		$firebase = FirebaseClient::save_settings(
+			array(
+				'database_url'    => isset( $_POST['firebase_database_url'] ) ? esc_url_raw( wp_unslash( $_POST['firebase_database_url'] ) ) : '',
+				'project_id'      => isset( $_POST['firebase_project_id'] ) ? sanitize_text_field( wp_unslash( $_POST['firebase_project_id'] ) ) : '',
+				'api_key'         => isset( $_POST['firebase_api_key'] ) ? sanitize_text_field( wp_unslash( $_POST['firebase_api_key'] ) ) : '',
+				'app_id'          => isset( $_POST['firebase_app_id'] ) ? sanitize_text_field( wp_unslash( $_POST['firebase_app_id'] ) ) : '',
+				'sender_id'       => isset( $_POST['firebase_sender_id'] ) ? sanitize_text_field( wp_unslash( $_POST['firebase_sender_id'] ) ) : '',
+				// Deliberately not sanitised: it is a JSON document with a PEM
+				// in it, and every sanitiser WordPress has would corrupt one.
+				// It is validated by being parsed, and stored encrypted.
+				'service_account' => isset( $_POST['firebase_service_account'] ) ? trim( (string) wp_unslash( $_POST['firebase_service_account'] ) ) : '',
+				'enabled'         => isset( $_POST['firebase_enabled'] ),
+			)
+		);
+
+		if ( $firebase instanceof WP_Error ) {
+			$notices[] = array( 'type' => 'error', 'text' => $firebase->get_error_message() );
+		}
 
 		update_option( AuthController::REGISTRATION_OPTION, isset( $_POST['registration_open'] ) ? 1 : 0, true );
 

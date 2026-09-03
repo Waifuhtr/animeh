@@ -250,6 +250,41 @@ final class UserDataRepository {
 	}
 
 	/**
+	 * The works someone has watched, newest first, one row each.
+	 *
+	 * Feeds both halves of a profile: the "son izledikleri" rail draws the
+	 * first few, and the genre wheel is counted across the whole list.
+	 *
+	 * @param int $user_id Whose.
+	 * @param int $limit   How many works.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function watched_works( int $user_id, int $limit = 60 ): array {
+		global $wpdb;
+
+		$history = CatalogSchema::history();
+		$works   = CatalogSchema::works();
+
+		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				"SELECT w.id, w.slug, w.title, w.title_english, w.poster_url, w.genres, w.adult,
+					MAX(h.updated_at) AS last_watched
+				 FROM {$history} h
+				 INNER JOIN {$works} w ON w.id = h.work_id
+				 WHERE h.user_id = %d AND w.published = 1
+				 GROUP BY w.id
+				 ORDER BY last_watched DESC
+				 LIMIT %d",
+				$user_id,
+				max( 1, min( $limit, 200 ) )
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
 	 * Forget one history row.
 	 *
 	 * @param int $user_id    User.
@@ -454,5 +489,17 @@ final class UserDataRepository {
 		$wpdb->delete( CatalogSchema::history(), array( 'user_id' => $user_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$wpdb->delete( CatalogSchema::library(), array( 'user_id' => $user_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$wpdb->delete( CatalogSchema::tokens(), array( 'user_id' => $user_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->delete( CatalogSchema::devices(), array( 'user_id' => $user_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$wpdb->delete( CatalogSchema::room_members(), array( 'user_id' => $user_id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+
+		// Both directions of every friendship, not just the rows they own:
+		// leaving the other half behind puts a ghost in someone's friend list.
+		$friends = CatalogSchema::friends();
+		$wpdb->query( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare( "DELETE FROM {$friends} WHERE user_id = %d OR friend_id = %d", $user_id, $user_id )
+		);
+
+		// And the rooms they were hosting, which nobody else can close.
+		( new SocialRepository() )->close_rooms_hosted_by( $user_id );
 	}
 }

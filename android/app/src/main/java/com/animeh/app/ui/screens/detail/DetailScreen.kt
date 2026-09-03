@@ -31,6 +31,7 @@ import com.animeh.app.core.UiState
 import com.animeh.app.domain.Work
 import com.animeh.app.ui.components.*
 import com.animeh.app.ui.theme.*
+import kotlinx.coroutines.launch
 
 @Composable
 fun DetailScreen(
@@ -39,6 +40,7 @@ fun DetailScreen(
     onBack: () -> Unit,
     onPlayEpisode: (Long) -> Unit,
     onSignIn: () -> Unit,
+    onOpenRoom: () -> Unit = {},
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -47,6 +49,8 @@ fun DetailScreen(
     // own to show for it: the list looks identical either way, so it has to
     // be said out loud.
     val snackbar = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val partyAvailable by viewModel.partyAvailable.collectAsStateWithLifecycle()
     val messageText = state.messageText
         ?: state.messageRes?.let { stringResource(it) }
 
@@ -59,29 +63,20 @@ fun DetailScreen(
 
     // Every route into the player from this screen goes through here, so the
     // warning cannot be walked around by tapping an episode instead of İzle.
-    // Answered once per visit rather than once per tap: a viewer who has just
-    // said yes does not need asking again three minutes later.
-    var acknowledgedAdult by remember(state.work) { mutableStateOf(false) }
-    var pendingEpisode by remember { mutableStateOf<Long?>(null) }
-
+    // The decision itself is the view model's — see DetailUiState for why it
+    // is not composable-local state.
     val play: (Long) -> Unit = { episodeId ->
-        val work = (state.work as? UiState.Success)?.data
-
-        when {
-            !signedIn -> onSignIn()
-            work?.adult == true && !acknowledgedAdult -> pendingEpisode = episodeId
-            else -> onPlayEpisode(episodeId)
+        if (!signedIn) {
+            onSignIn()
+        } else {
+            viewModel.requestPlayback(episodeId)?.let(onPlayEpisode)
         }
     }
 
-    pendingEpisode?.let { episodeId ->
+    state.pendingAdultEpisode?.let {
         AdultWarningDialog(
-            onDismiss = { pendingEpisode = null },
-            onContinue = {
-                pendingEpisode = null
-                acknowledgedAdult = true
-                onPlayEpisode(episodeId)
-            },
+            onDismiss = viewModel::dismissAdult,
+            onContinue = { viewModel.acknowledgeAdult()?.let(onPlayEpisode) },
         )
     }
 
@@ -118,6 +113,24 @@ fun DetailScreen(
                                 }
                             },
                         )
+                    }
+
+                    // Below İzle rather than beside it: watching together is
+                    // the occasional choice, and putting it level with the
+                    // ordinary one makes every viewer stop and decide.
+                    if (partyAvailable && signedIn) {
+                        item {
+                            OutlinedButton(
+                                onClick = { scope.launch { if (viewModel.openRoom()) onOpenRoom() } },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                            ) {
+                                Icon(Icons.Filled.Groups, null, Modifier.size(18.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text(stringResource(R.string.room_create))
+                            }
+                        }
                     }
 
                     if (state.fromCache) {
@@ -403,33 +416,3 @@ private fun MetaRow(label: String, value: String) {
     }
 }
 
-/**
- * The question asked before an episode of a flagged series plays.
- *
- * Not dismissible by tapping outside, and "Vazgeç" is the default-looking
- * action: an accidental tap on a poster should not start playing something
- * somebody deliberately marked, and the whole value of the flag is in the
- * pause it creates.
- */
-@Composable
-private fun AdultWarningDialog(
-    onDismiss: () -> Unit,
-    onContinue: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        icon = {
-            Icon(Icons.Filled.Warning, contentDescription = null, tint = StatusWarning)
-        },
-        title = { Text(stringResource(R.string.adult_warning_title)) },
-        text = { Text(stringResource(R.string.adult_warning_body)) },
-        confirmButton = {
-            TextButton(onClick = onContinue) {
-                Text(stringResource(R.string.adult_warning_continue))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
-        },
-    )
-}

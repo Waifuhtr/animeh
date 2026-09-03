@@ -44,6 +44,13 @@ object Routes {
     const val ADMIN_LOGS = "admin/logs"
     const val ADMIN_FONTS = "admin/fonts"
     const val ADMIN_TERMS = "admin/terms"
+    const val FRIENDS = "friends"
+    const val ROOM = "room"
+
+    private const val PROFILE_BASE = "profile/user"
+    const val PUBLIC_PROFILE = "$PROFILE_BASE/{userId}"
+    fun publicProfile(userId: Long) = "$PROFILE_BASE/$userId"
+
     const val ADMIN_TMDB = "admin/tmdb"
     const val ADMIN_REPORTS = "admin/reports"
     const val ADMIN_MODERATORS = "admin/moderators"

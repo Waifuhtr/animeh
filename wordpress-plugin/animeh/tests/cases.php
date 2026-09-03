@@ -1454,3 +1454,156 @@ describe( 'TmdbMapper', static function (): void {
 		same( 0, \Animeh\Support\TmdbMapper::episode( array( 'name' => 'Özel' ) )['number'] );
 	} );
 } );
+
+describe( 'GenreTally', static function (): void {
+	it( 'counts a genre once per work, not once per episode', static function (): void {
+		$top = \Animeh\Support\GenreTally::top(
+			array(
+				array( 'Aksiyon', 'Aksiyon', 'Fantezi' ),
+				array( 'Aksiyon' ),
+			)
+		);
+
+		same( 2, count( $top ) );
+		same( 'Aksiyon', $top[0]['name'] );
+		same( 2, $top[0]['count'] );
+		same( 'Fantezi', $top[1]['name'] );
+		same( 1, $top[1]['count'] );
+	} );
+
+	it( 'breaks ties alphabetically so the wheel does not reshuffle', static function (): void {
+		// Two genres on one each, given in the awkward order. Without a
+		// deterministic tie-break the slices would swap between loads.
+		$a = \Animeh\Support\GenreTally::top( array( array( 'Zombi' ), array( 'Aksiyon' ) ) );
+		$b = \Animeh\Support\GenreTally::top( array( array( 'Aksiyon' ), array( 'Zombi' ) ) );
+
+		same( 'Aksiyon', $a[0]['name'] );
+		same( 'Aksiyon', $b[0]['name'] );
+	} );
+
+	it( 'keeps only the strongest few', static function (): void {
+		$lists = array();
+		foreach ( range( 1, 9 ) as $n ) {
+			// Genre n appears n times, so the order is strictly decreasing.
+			$lists[] = array_fill( 0, 1, 'Tur' . $n );
+			for ( $i = 1; $i < $n; $i++ ) {
+				$lists[] = array( 'Tur' . $n );
+			}
+		}
+
+		$top = \Animeh\Support\GenreTally::top( $lists, 5 );
+
+		same( 5, count( $top ) );
+		same( 'Tur9', $top[0]['name'] );
+		same( 'Tur5', $top[4]['name'] );
+	} );
+
+	it( 'survives someone who has watched nothing', static function (): void {
+		same( array(), \Animeh\Support\GenreTally::top( array() ) );
+		same( array(), \Animeh\Support\GenreTally::top( array( array(), array( '' ), array( '  ' ) ) ) );
+	} );
+} );
+
+describe( 'ServiceAccountJwt', static function (): void {
+	it( 'encodes base64 the way a URL wants it', static function (): void {
+		// The two characters standard base64 uses that a URL cannot carry,
+		// and the padding a JWT never has.
+		same( 'Pz8_Pw', \Animeh\Support\ServiceAccountJwt::base64url( "\x3f\x3f\x3f\x3f" ) );
+		same( '_-8', \Animeh\Support\ServiceAccountJwt::base64url( "\xff\xef" ) );
+		same( '', \Animeh\Support\ServiceAccountJwt::base64url( '' ) );
+	} );
+
+	it( 'builds the claims Google checks', static function (): void {
+		$payload = \Animeh\Support\ServiceAccountJwt::payload( 'robot@animeh.iam.gserviceaccount.com', 1000 );
+		$parts   = explode( '.', $payload );
+
+		same( 2, count( $parts ) );
+
+		$decode = static fn ( string $p ): array => json_decode(
+			base64_decode( strtr( $p, '-_', '+/' ) ),
+			true
+		);
+
+		$header = $decode( $parts[0] );
+		$claims = $decode( $parts[1] );
+
+		same( 'RS256', $header['alg'] );
+		same( 'robot@animeh.iam.gserviceaccount.com', $claims['iss'] );
+		same( \Animeh\Support\ServiceAccountJwt::TOKEN_URL, $claims['aud'] );
+		same( 1000, $claims['iat'] );
+		same( 4600, $claims['exp'] );
+	} );
+
+	it( 'signs with the account key and verifies against its public half', static function (): void {
+		if ( ! function_exists( 'openssl_pkey_new' ) ) {
+			skip( 'openssl yok' );
+		}
+
+		$pair = openssl_pkey_new(
+			array( 'private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA )
+		);
+
+		if ( false === $pair ) {
+			skip( 'anahtar üretilemedi' );
+		}
+
+		openssl_pkey_export( $pair, $private );
+		$public = openssl_pkey_get_details( $pair )['key'];
+
+		$payload   = \Animeh\Support\ServiceAccountJwt::payload( 'robot@example.com', 1000 );
+		$assertion = \Animeh\Support\ServiceAccountJwt::sign( $payload, $private );
+
+		ok( null !== $assertion );
+
+		$parts     = explode( '.', (string) $assertion );
+		same( 3, count( $parts ) );
+
+		$signature = base64_decode( strtr( $parts[2], '-_', '+/' ) . str_repeat( '=', ( 4 - strlen( $parts[2] ) % 4 ) % 4 ) );
+
+		same( 1, openssl_verify( $payload, $signature, $public, OPENSSL_ALGO_SHA256 ) );
+	} );
+
+	it( 'accepts a key whose newlines survived a form field as backslash-n', static function (): void {
+		if ( ! function_exists( 'openssl_pkey_new' ) ) {
+			skip( 'openssl yok' );
+		}
+
+		$pair = openssl_pkey_new( array( 'private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA ) );
+		if ( false === $pair ) {
+			skip( 'anahtar üretilemedi' );
+		}
+
+		openssl_pkey_export( $pair, $private );
+
+		// What a copy-paste through a textarea or a JSON string does to a PEM.
+		$mangled = str_replace( "\n", '\\n', $private );
+
+		ok( null !== \Animeh\Support\ServiceAccountJwt::sign( 'payload', $mangled ) );
+	} );
+
+	it( 'refuses an unusable key rather than signing nonsense', static function (): void {
+		same( null, \Animeh\Support\ServiceAccountJwt::sign( 'payload', 'not a key' ) );
+	} );
+
+	it( 'pulls the three fields that matter out of the key file', static function (): void {
+		$json = json_encode(
+			array(
+				'type'         => 'service_account',
+				'project_id'   => 'animeh-1234',
+				'client_email' => 'robot@animeh.iam.gserviceaccount.com',
+				'private_key'  => '-----BEGIN PRIVATE KEY-----\nabc\n-----END PRIVATE KEY-----\n',
+				'extra'        => 'ignored',
+			)
+		);
+
+		$parsed = \Animeh\Support\ServiceAccountJwt::parse( (string) $json );
+
+		same( 'animeh-1234', $parsed['project_id'] );
+		same( 'robot@animeh.iam.gserviceaccount.com', $parsed['client_email'] );
+
+		// Anything that is not the key file is refused, so a half-pasted
+		// value cannot be saved and then fail silently at send time.
+		same( null, \Animeh\Support\ServiceAccountJwt::parse( 'nope' ) );
+		same( null, \Animeh\Support\ServiceAccountJwt::parse( '{"project_id":"x"}' ) );
+	} );
+} );

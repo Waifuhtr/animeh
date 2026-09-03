@@ -6,6 +6,7 @@ import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.dto.ClientConfigDto
+import com.animeh.app.social.FirebaseGate
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -31,6 +32,7 @@ import javax.inject.Singleton
 class ServerConfigRepository @Inject constructor(
     private val publicApi: PublicApi,
     private val settingsStore: SettingsStore,
+    private val firebase: FirebaseGate,
 ) {
 
     /**
@@ -52,6 +54,10 @@ class ServerConfigRepository @Inject constructor(
             ApiErrorMapper.call { publicApi.clientConfig() }
 
         if (result !is AppResult.Success) return false
+
+        // Firebase first: watch parties should light up on this launch rather
+        // than the one after, and the config is in the same response.
+        firebase.configure(result.data.firebase)
 
         val announced = result.data.apiBase.trim()
         if (!isAcceptable(announced)) return false

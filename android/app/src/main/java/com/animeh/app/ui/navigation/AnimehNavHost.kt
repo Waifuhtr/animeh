@@ -5,10 +5,12 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -30,6 +32,7 @@ import com.animeh.app.ui.screens.home.HomeScreen
 import com.animeh.app.ui.screens.library.LibraryScreen
 import com.animeh.app.ui.screens.profile.ProfileScreen
 import com.animeh.app.ui.screens.settings.SettingsScreen
+import com.animeh.app.ui.screens.social.*
 
 /**
  * The whole navigation graph.
@@ -41,7 +44,11 @@ import com.animeh.app.ui.screens.settings.SettingsScreen
 @Composable
 fun AnimehApp(
     authState: AuthState,
+    /** A room code from an invite link or a notification, if there is one. */
+    roomCode: String? = null,
+    onRoomHandled: () -> Unit = {},
     navController: NavHostController = rememberNavController(),
+    joinViewModel: RoomJoinViewModel = hiltViewModel(),
 ) {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
@@ -61,6 +68,19 @@ fun AnimehApp(
             }
             launchSingleTop = true
             restoreState = true
+        }
+    }
+
+    // An invite link joins the room and then opens it. Joining is what tells
+    // the server the room is still alive, so it has to happen before the
+    // screen rather than as a side effect of drawing one.
+    LaunchedEffect(roomCode) {
+        val code = roomCode ?: return@LaunchedEffect
+
+        onRoomHandled()
+
+        if (joinViewModel.join(code)) {
+            navController.navigate(Routes.ROOM)
         }
     }
 
@@ -135,6 +155,8 @@ fun AnimehApp(
                     onSignIn = { navController.navigate(Routes.LOGIN) },
                     onSettings = { navController.navigate(Routes.SETTINGS) },
                     onChangePassword = { navController.navigate(Routes.CHANGE_PASSWORD) },
+                    onFriends = { navController.navigate(Routes.FRIENDS) },
+                    onPublicProfile = { navController.navigate(Routes.publicProfile(it)) },
                 )
             }
 
@@ -147,12 +169,37 @@ fun AnimehApp(
                     onBack = { navController.popBackStack() },
                     onPlayEpisode = openPlayer,
                     onSignIn = { navController.navigate(Routes.LOGIN) },
+                    onOpenRoom = { navController.navigate(Routes.ROOM) },
                     signedIn = authState is AuthState.SignedIn,
                 )
             }
 
             composable(Routes.SETTINGS) {
                 SettingsScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.FRIENDS) {
+                FriendsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenProfile = { navController.navigate(Routes.publicProfile(it)) },
+                )
+            }
+
+            composable(
+                route = Routes.PUBLIC_PROFILE,
+                arguments = listOf(navArgument("userId") { type = NavType.LongType }),
+            ) {
+                PublicProfileScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenWork = { navController.navigate(Routes.detail(it)) },
+                )
+            }
+
+            composable(Routes.ROOM) {
+                RoomScreen(
+                    onBack = { navController.popBackStack() },
+                    onPlay = openPlayer,
+                )
             }
 
             composable(Routes.LOGIN) {

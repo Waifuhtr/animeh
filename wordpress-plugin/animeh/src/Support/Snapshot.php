@@ -84,7 +84,7 @@ final class Snapshot {
 	 *
 	 * @var string[]
 	 */
-	public const EXCLUDED_OPTIONS = array( 'animeh_storage', 'animeh_migration_handoff', 'animeh_tenrai', 'animeh_tmdb' );
+	public const EXCLUDED_OPTIONS = array( 'animeh_storage', 'animeh_migration_handoff', 'animeh_tenrai', 'animeh_tmdb', 'animeh_firebase' );
 
 	/**
 	 * Assemble an envelope around already-read table rows.

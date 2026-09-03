@@ -27,7 +27,7 @@ final class CatalogSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '6';
+	public const VERSION = '7';
 
 	/**
 	 * Option holding the installed catalog version.
@@ -166,6 +166,45 @@ final class CatalogSchema {
 	}
 
 	/**
+	 * The friend graph: one row per direction, so a request and its acceptance
+	 * are the same two rows in two states rather than two different tables.
+	 */
+	public static function friends(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_friends';
+	}
+
+	/**
+	 * Watch-party rooms.
+	 *
+	 * This table holds only what has to outlive a moment: who opened the room,
+	 * what is being watched, and the code the invite link carries. The playhead,
+	 * the chat and who is currently present live in Firebase, because those
+	 * change several times a second and a WordPress install is the wrong place
+	 * to put that.
+	 */
+	public static function rooms(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_rooms';
+	}
+
+	/**
+	 * Who has been in a room, so an invite can be checked against it.
+	 */
+	public static function room_members(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_room_members';
+	}
+
+	/**
+	 * Push tokens, one row per install.
+	 */
+	public static function devices(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_devices';
+	}
+
+	/**
 	 * Every catalog table, unprefixed — the snapshot reads this list.
 	 *
 	 * @return string[]
@@ -184,6 +223,10 @@ final class CatalogSchema {
 			'animeh_review_reports',
 			'animeh_terms',
 			'animeh_bans',
+			'animeh_friends',
+			// Rooms and devices are deliberately absent: a room is worthless
+			// the moment the people in it have gone, and a push token belongs
+			// to an install rather than to the library being backed up.
 		);
 	}
 
@@ -458,6 +501,65 @@ final class CatalogSchema {
 			KEY expires_at (expires_at)
 		) {$charset};";
 
+		// One row per direction. `status` on the row someone was sent describes
+		// what they did with it, and the pair being two rows is what makes
+		// "who did I add" and "who added me" the same cheap indexed query.
+		$friends = 'CREATE TABLE ' . self::friends() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			friend_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			status varchar(16) NOT NULL DEFAULT 'pending',
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY pair (user_id,friend_id),
+			KEY friend_status (friend_id,status),
+			KEY user_status (user_id,status)
+		) {$charset};";
+
+		// `code` is what the invite link carries, so it is unique and indexed;
+		// it is random rather than the id because a guessable room link is a
+		// stranger in your living room.
+		$rooms = 'CREATE TABLE ' . self::rooms() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			code varchar(32) NOT NULL DEFAULT '',
+			host_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			work_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			episode_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			last_seen_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			closed_at datetime NULL DEFAULT NULL,
+			PRIMARY KEY  (id),
+			UNIQUE KEY code (code),
+			KEY host_closed (host_id,closed_at),
+			KEY last_seen_at (last_seen_at)
+		) {$charset};";
+
+		$room_members = 'CREATE TABLE ' . self::room_members() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			room_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			joined_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY room_user (room_id,user_id),
+			KEY user_id (user_id)
+		) {$charset};";
+
+		// One row per install rather than per user: a person with a phone and a
+		// tablet should be told on both, and a token is what a notification is
+		// addressed to.
+		$devices = 'CREATE TABLE ' . self::devices() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			token varchar(255) NOT NULL DEFAULT '',
+			platform varchar(16) NOT NULL DEFAULT 'android',
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			last_seen_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY token (token),
+			KEY user_id (user_id)
+		) {$charset};";
+
 		$terms = 'CREATE TABLE ' . self::terms() . " (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			kind varchar(16) NOT NULL DEFAULT 'genre',
@@ -483,6 +585,10 @@ final class CatalogSchema {
 			$review_reports,
 			$terms,
 			$bans,
+			$friends,
+			$rooms,
+			$room_members,
+			$devices,
 		);
 
 		foreach ( $tables as $sql ) {

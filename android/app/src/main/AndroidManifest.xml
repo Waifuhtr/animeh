@@ -36,18 +36,20 @@
             </intent-filter>
 
             <!--
-                Watch-party invite links, as the site hands them over.
+                Where a notification tap lands, and what the site's handover
+                page opens.
 
-                The custom scheme is what the /oda/{code} page's button opens,
-                and what a notification tap carries. It needs no setup at all,
-                which is why it is here — but a chat app will not make it
-                tappable, so it is never what somebody actually receives.
+                `oda` is a watch-party room, `anime` a series — the two things
+                a notification can be about. The custom scheme needs no setup
+                at all, which is why it is here; but a chat app will not make
+                it tappable, so it is never what somebody actually receives.
             -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="animeh" android:host="oda" />
+                <data android:scheme="animeh" android:host="anime" />
             </intent-filter>
 
             <!--

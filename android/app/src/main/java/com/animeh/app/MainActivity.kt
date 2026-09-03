@@ -43,14 +43,20 @@ class MainActivity : ComponentActivity() {
     /** The code this activity was opened with, if it was. */
     private var pendingRoomCode: String? = null
 
+    /** The anime a notification tap asked for, if it was one. */
+    private var pendingWorkId: Long? = null
+
     /** Set by the composition, so a later link reaches the same screen. */
     private var onNewRoomCode: ((String) -> Unit)? = null
+
+    private var onNewWorkId: ((Long) -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
         pendingRoomCode = roomCodeFrom(intent)
+        pendingWorkId = workIdFrom(intent)
 
         setContent {
             AnimehTheme {
@@ -72,9 +78,16 @@ class MainActivity : ComponentActivity() {
                 // fresh activity.
                 var roomCode by remember { mutableStateOf(pendingRoomCode) }
 
+                // The anime a "new episode" notification was about.
+                var workId by remember { mutableStateOf(pendingWorkId) }
+
                 DisposableEffect(Unit) {
                     onNewRoomCode = { code -> roomCode = code }
-                    onDispose { onNewRoomCode = null }
+                    onNewWorkId = { id -> workId = id }
+                    onDispose {
+                        onNewRoomCode = null
+                        onNewWorkId = null
+                    }
                 }
 
                 // Android 13 turned notifications into a runtime
@@ -98,6 +111,8 @@ class MainActivity : ComponentActivity() {
                         authState = authState,
                         roomCode = roomCode,
                         onRoomHandled = { roomCode = null },
+                        workId = workId,
+                        onWorkHandled = { workId = null },
                     )
                 }
             }
@@ -118,6 +133,11 @@ class MainActivity : ComponentActivity() {
         roomCodeFrom(intent)?.let { code ->
             pendingRoomCode = code
             onNewRoomCode?.invoke(code)
+        }
+
+        workIdFrom(intent)?.let { id ->
+            pendingWorkId = id
+            onNewWorkId?.invoke(id)
         }
     }
 
@@ -145,6 +165,22 @@ class MainActivity : ComponentActivity() {
         }
 
         return code?.takeIf { it.isNotBlank() }
+    }
+
+    /**
+     * The anime id in `animeh://anime/{id}`, if this intent carries one.
+     *
+     * What a "new episode" notification taps through to. The episode itself
+     * would be the more direct destination, but the series page is where the
+     * episode list is, and somebody who has been away for a week wants the
+     * list rather than one episode.
+     */
+    private fun workIdFrom(intent: Intent?): Long? {
+        val data = intent?.data ?: return null
+
+        if (data.scheme != "animeh" || data.host != "anime") return null
+
+        return data.pathSegments.firstOrNull()?.toLongOrNull()?.takeIf { it > 0 }
     }
 }
 

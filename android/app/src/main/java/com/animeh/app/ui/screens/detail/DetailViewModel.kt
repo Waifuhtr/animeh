@@ -31,6 +31,7 @@ data class DetailUiState(
     val selectedSeason: Int = 1,
     val isFavorite: Boolean = false,
     val inWatchlist: Boolean = false,
+    val following: Boolean = false,
     val fromCache: Boolean = false,
     val reviews: List<ReviewDto> = emptyList(),
     val myReview: ReviewDto? = null,
@@ -236,6 +237,7 @@ class DetailViewModel @Inject constructor(
                             fromCache = result.data.fromCache,
                             isFavorite = work.isFavorite,
                             inWatchlist = work.inWatchlist,
+                            following = work.following,
                             selectedSeason = work.seasons.firstOrNull()?.number ?: 1,
                         )
                     }
@@ -277,6 +279,25 @@ class DetailViewModel @Inject constructor(
         }
     }
 
+    /**
+     * The bell.
+     *
+     * Turning it on is a promise the server keeps: publishing an episode
+     * reads this list and notifies everyone on it. Nothing is scheduled or
+     * polled on the phone — a device that is asleep still gets told.
+     */
+    fun toggleFollow() {
+        val wanted = !_state.value.following
+        _state.update { it.copy(following = wanted) }
+
+        viewModelScope.launch {
+            val result = libraryRepository.toggleFollow(workId, wanted)
+            if (result is AppResult.Failure) {
+                _state.update { it.copy(following = !wanted) }
+            }
+        }
+    }
+
     /** The episode "İzle" should open: the first unfinished one. */
     fun nextEpisodeToPlay(): Episode? {
         val episodes = (_state.value.episodes as? UiState.Success)?.data ?: return null
@@ -311,6 +332,11 @@ class DetailViewModel @Inject constructor(
         viewModelScope.launch {
             libraryRepository.isInWatchlist(workId).collect { value ->
                 _state.update { it.copy(inWatchlist = value) }
+            }
+        }
+        viewModelScope.launch {
+            libraryRepository.isFollowing(workId).collect { value ->
+                _state.update { it.copy(following = value) }
             }
         }
     }

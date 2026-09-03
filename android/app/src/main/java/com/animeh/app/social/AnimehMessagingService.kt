@@ -60,31 +60,51 @@ class AnimehMessagingService : FirebaseMessagingService() {
 
         if (body.isBlank()) return
 
-        // The room code travels in the data half rather than the notification
+        // The destination travels in the data half rather than the notification
         // half: the notification is what the tray draws, and the data is what
         // survives the tap.
         val roomCode = data["room_code"].orEmpty()
+        val workId = data["work_id"].orEmpty()
+
+        // Two kinds of notification, two places to land. An invitation opens
+        // the room; a new episode opens the series it belongs to, which is
+        // where the episode list is.
+        val destination = when {
+            roomCode.isNotBlank() -> "animeh://oda/$roomCode"
+            workId.isNotBlank() -> "animeh://anime/$workId"
+            else -> ""
+        }
+
+        val newEpisode = data["type"] == TYPE_NEW_EPISODE
 
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
 
-            if (roomCode.isNotBlank()) {
+            if (destination.isNotBlank()) {
                 action = Intent.ACTION_VIEW
-                this.data = Uri.parse("animeh://oda/$roomCode")
+                this.data = Uri.parse(destination)
             }
         }
 
+        // Distinct per destination, so two invitations do not replace each
+        // other and a new episode does not replace an invitation.
+        val requestCode = destination.hashCode()
+
         val pending = PendingIntent.getActivity(
             this,
-            roomCode.hashCode(),
+            requestCode,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-        ensureChannel()
+        val channel = if (newEpisode) CHANNEL_EPISODES else CHANNEL_SOCIAL
 
-        val built = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+        ensureChannels()
+
+        val built = NotificationCompat.Builder(this, channel)
+            .setSmallIcon(
+                if (newEpisode) android.R.drawable.stat_notify_sync else android.R.drawable.stat_notify_chat
+            )
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
@@ -95,32 +115,50 @@ class AnimehMessagingService : FirebaseMessagingService() {
 
         // Android 13 can refuse: posting without the runtime permission throws
         // rather than failing quietly, and there is nothing to do about it
-        // here beyond not crashing.
+        // here beyond not crashing. The app asks for it once after sign-in.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ActivityCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
         ) {
-            NotificationManagerCompat.from(this).notify(roomCode.hashCode(), built)
+            NotificationManagerCompat.from(this).notify(requestCode, built)
         } else {
             ClientLog.record("Bildirim gösterilemedi", "POST_NOTIFICATIONS izni yok")
         }
     }
 
-    private fun ensureChannel() {
+    /**
+     * Two channels, because they are two different interruptions.
+     *
+     * An invitation is time-critical — somebody is waiting in a room — and a
+     * new episode is not. Separating them lets one be silenced without the
+     * other, which is what the system settings offer and what people do.
+     */
+    private fun ensureChannels() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 
         val manager = getSystemService(NotificationManager::class.java) ?: return
 
         manager.createNotificationChannel(
             NotificationChannel(
-                CHANNEL_ID,
+                CHANNEL_SOCIAL,
                 getString(R.string.notify_channel_social),
                 NotificationManager.IMPORTANCE_HIGH,
+            )
+        )
+
+        manager.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_EPISODES,
+                getString(R.string.notify_channel_episodes),
+                NotificationManager.IMPORTANCE_DEFAULT,
             )
         )
     }
 
     private companion object {
-        const val CHANNEL_ID = "animeh_social"
+        const val CHANNEL_SOCIAL = "animeh_social"
+        const val CHANNEL_EPISODES = "animeh_episodes"
+
+        const val TYPE_NEW_EPISODE = "new_episode"
     }
 }

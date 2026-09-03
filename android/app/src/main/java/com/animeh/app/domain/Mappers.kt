@@ -38,6 +38,7 @@ fun WorkDto.toDomain(): Work = Work(
     seasons = seasons.map { Season(it.number, it.title, it.episodeCount) },
     isFavorite = isFavorite,
     inWatchlist = inWatchlist,
+    following = following,
 )
 
 fun EpisodeDto.toDomain(): Episode = Episode(

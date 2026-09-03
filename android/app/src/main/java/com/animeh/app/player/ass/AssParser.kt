@@ -74,6 +74,65 @@ object AssParser {
         return families.toList()
     }
 
+    /**
+     * The family the script's dialogue is set in.
+     *
+     * A script names a font per style: one for dialogue, and usually others
+     * for signs, titles and credits. Only the dialogue one has to be able to
+     * draw a sentence — a signs font is often a dozen arrows and no alphabet
+     * at all — so it is the one the renderer should reach for, and picking
+     * "whichever font happened to resolve first" is how a page of dialogue
+     * ends up drawn in a font with no letters in it.
+     *
+     * The style named `Default` wins where there is one, because that is the
+     * convention every ASS tool follows; otherwise the first style declared,
+     * which is where the dialogue style sits in practice.
+     *
+     * @param content the .ass file, decoded as text.
+     * @return the family, or null when the script declares no styles.
+     */
+    fun primaryFont(content: String): String? {
+        var section = ""
+        var styleFormat: List<String> = emptyList()
+
+        var first: String? = null
+        var default: String? = null
+
+        content.lineSequence().forEach { rawLine ->
+            val line = rawLine.trim()
+
+            if (line.startsWith("[") && line.endsWith("]")) {
+                section = line.trim('[', ']').lowercase()
+                styleFormat = emptyList()
+                return@forEach
+            }
+
+            if (!section.contains("styles")) return@forEach
+
+            if (line.startsWith("Format:", ignoreCase = true)) {
+                styleFormat = line.removePrefix("Format:").split(",").map { it.trim().lowercase() }
+                return@forEach
+            }
+
+            if (!line.startsWith("Style:", ignoreCase = true)) return@forEach
+
+            val fields = line.removePrefix("Style:").split(",").map { it.trim() }
+
+            val nameIndex = styleFormat.indexOf("name").takeIf { it >= 0 } ?: 0
+            val fontIndex = styleFormat.indexOf("fontname").takeIf { it >= 0 } ?: 1
+
+            val family = normalise(fields.getOrNull(fontIndex).orEmpty()) ?: return@forEach
+
+            if (first == null) first = family
+
+            if (default == null && fields.getOrNull(nameIndex)?.trim().equals("Default", ignoreCase = true)) {
+                default = family
+            }
+        }
+
+        return default ?: first
+    }
+
     /** Whether the script embeds its own fonts, which need no fetching. */
     fun hasEmbeddedFonts(content: String): Boolean =
         content.contains("[Fonts]", ignoreCase = true)

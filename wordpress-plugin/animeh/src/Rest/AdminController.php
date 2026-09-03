@@ -18,6 +18,7 @@ use Animeh\Storage\CatalogRepository;
 use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\ModerationRepository;
+use Animeh\Storage\Notifier;
 use Animeh\Storage\ReviewRepository;
 use Animeh\Storage\StorageSettings;
 use Animeh\Storage\TenraiClient;
@@ -679,6 +680,10 @@ final class AdminController {
 		$repo = new CatalogRepository();
 		$id   = (int) $request->get_param( 'id' );
 
+		// Declared before the branch: a new episode has nothing existing, and
+		// the publish check below reads this either way.
+		$existing = null;
+
 		if ( $id > 0 ) {
 			$existing = $repo->episode( $id );
 			if ( null === $existing ) {
@@ -703,6 +708,20 @@ final class AdminController {
 			}
 		}
 
+		// What the episode was before this write. An id names it directly; a
+		// create names it by position, because saving "episode 3" when there
+		// already is one updates that row rather than adding a second, and a
+		// published episode must not be announced twice.
+		$before = null !== $existing
+			? $existing
+			: $repo->episode_by_number(
+				$work_id,
+				max( 1, (int) ( $data['season_number'] ?? 1 ) ),
+				(int) ( $data['number'] ?? 0 )
+			);
+
+		$was_published = null !== $before && (bool) $before['published'];
+
 		$saved = $repo->save_episode( $work_id, $data, $id );
 		if ( $saved instanceof WP_Error ) {
 			return $saved;
@@ -710,9 +729,66 @@ final class AdminController {
 
 		$episode = $repo->episode( $saved );
 
+		// The bell rings on the transition, not on the state. Saving a
+		// published episode again — a typo in its title, a new source — must
+		// not notify everybody a second time.
+		$notified = 0;
+		if ( null !== $episode && ! $was_published && (bool) $episode['published'] ) {
+			$notified = $this->announce_episode( $repo, $episode );
+		}
+
 		return new WP_REST_Response(
-			array( 'episode' => null === $episode ? null : CatalogController::episode_payload( $episode ) ),
+			array(
+				'episode'  => null === $episode ? null : CatalogController::episode_payload( $episode ),
+				'notified' => $notified,
+			),
 			0 === $id ? 201 : 200
+		);
+	}
+
+	/**
+	 * Tell everyone following a series that an episode has gone up.
+	 *
+	 * @param CatalogRepository    $repo    Catalog.
+	 * @param array<string, mixed> $episode The episode row, as saved.
+	 * @return int How many devices accepted the notification.
+	 */
+	private function announce_episode( CatalogRepository $repo, array $episode ): int {
+		$work = $repo->work( (int) $episode['work_id'] );
+
+		if ( null === $work ) {
+			return 0;
+		}
+
+		$followers = ( new UserDataRepository() )->followers( (int) $work['id'] );
+
+		if ( array() === $followers ) {
+			return 0;
+		}
+
+		$number = (int) $episode['number'];
+		$title  = (string) $episode['title'];
+
+		return ( new Notifier() )->to_users(
+			$followers,
+			(string) $work['title'],
+			'' === $title
+				? sprintf(
+					/* translators: %d: episode number. */
+					__( '%d. bölüm yayında.', 'animeh' ),
+					$number
+				)
+				: sprintf(
+					/* translators: 1: episode number, 2: episode title. */
+					__( '%1$d. bölüm yayında: %2$s', 'animeh' ),
+					$number,
+					$title
+				),
+			array(
+				'type'       => 'new_episode',
+				'work_id'    => (string) $work['id'],
+				'episode_id' => (string) $episode['id'],
+			)
 		);
 	}
 
@@ -958,10 +1034,16 @@ final class AdminController {
 						continue;
 					}
 
-					// Imported episodes stay unpublished: metadata arriving is
+					// A new episode arrives unpublished: metadata existing is
 					// not the same as a video being attached, and publishing
-					// here would put an unplayable episode in the app.
-					$row['published']        = 0;
+					// here would put an unplayable episode in the app. An
+					// episode that is already here keeps whatever it has —
+					// a metadata refresh must not take a published episode
+					// back off the air.
+					if ( null === $repo->episode_by_number( $saved, (int) ( $row['season_number'] ?? 1 ), (int) $row['number'] ) ) {
+						$row['published'] = 0;
+					}
+
 					$row['duration_seconds'] = (int) $mapped['duration_seconds'];
 
 					$result = $repo->save_episode( $saved, $row );
@@ -1306,8 +1388,13 @@ final class AdminController {
 					'synopsis'         => $episode['synopsis'],
 					'thumbnail_url'    => $episode['thumbnail_url'],
 					'duration_seconds' => $episode['duration_seconds'],
-					'published'        => 0,
 				);
+
+				// Unpublished only when the episode is new; see the Tenrai
+				// import for why a refresh leaves the flag alone.
+				if ( null === $repo->episode_by_number( $work_id, $number, (int) $episode['number'] ) ) {
+					$row['published'] = 0;
+				}
 
 				if ( '' !== $episode['published_at'] ) {
 					$row['published_at'] = $episode['published_at'] . ' 00:00:00';

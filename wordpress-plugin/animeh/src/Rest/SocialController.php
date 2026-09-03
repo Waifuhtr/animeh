@@ -18,7 +18,7 @@ namespace Animeh\Rest;
 
 use Animeh\Storage\CatalogRepository;
 use Animeh\Storage\FirebaseClient;
-use Animeh\Storage\LogRepository;
+use Animeh\Storage\Notifier;
 use Animeh\Storage\ReviewRepository;
 use Animeh\Storage\SocialRepository;
 use Animeh\Storage\UserDataRepository;
@@ -891,45 +891,6 @@ final class SocialController {
 	 * @return int How many devices accepted it.
 	 */
 	private function notify( array $user_ids, string $title, string $body, array $data ): int {
-		$type = (string) ( $data['type'] ?? '' );
-		$log  = new LogRepository();
-
-		// Both of the silent cases below used to return without a word, which
-		// made "no notification arrived" impossible to tell apart from "the
-		// notification was sent and the phone dropped it". They are the two
-		// most likely reasons on a fresh install, so they say so.
-		if ( ! FirebaseClient::can_send() ) {
-			$log->error(
-				'FCM_ERROR',
-				'Bildirim gönderilemedi: Firebase servis hesabı ayarlı değil',
-				array( 'type' => $type )
-			);
-
-			return 0;
-		}
-
-		$tokens = ( new SocialRepository() )->tokens_for( $user_ids );
-
-		if ( array() === $tokens ) {
-			$log->error(
-				'FCM_ERROR',
-				'Bildirim gönderilemedi: alıcının kayıtlı cihazı yok',
-				array( 'type' => $type, 'users' => count( $user_ids ) )
-			);
-
-			return 0;
-		}
-
-		$sent = ( new FirebaseClient() )->send( $tokens, $title, $body, $data );
-
-		if ( 0 === $sent ) {
-			$log->error(
-				'FCM_ERROR',
-				'Bildirim gönderilemedi',
-				array( 'type' => $type, 'devices' => count( $tokens ) )
-			);
-		}
-
-		return $sent;
+		return ( new Notifier() )->to_users( $user_ids, $title, $body, $data );
 	}
 }

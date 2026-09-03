@@ -43,6 +43,8 @@ import androidx.media3.common.text.Cue
 fun SubtitleLayer(
     cues: List<Cue>,
     typefaces: Map<String, Typeface>,
+    /** The family the script sets its dialogue in, from [AssParser.primaryFont]. */
+    primaryFamily: String? = null,
     fontScale: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
@@ -58,11 +60,45 @@ fun SubtitleLayer(
         }
     }
 
-    // The script's primary face. ASS can name a different family per line, but
-    // a Cue carries no family, so the first resolved one — which is the primary
-    // style's — is used, and anything else falls back rather than substituting
-    // a wrong face silently.
-    val face = typefaces.values.firstOrNull() ?: Typeface.DEFAULT_BOLD
+    // The face the dialogue is set in — not simply the first one that
+    // resolved.
+    //
+    // A script names a font per style: one for speech, others for signs,
+    // titles and credits. Only some of them will be on the server, and taking
+    // whichever happened to resolve first meant a signs font — a dozen arrows
+    // and no alphabet — could end up drawing every line of dialogue. From the
+    // outside that looks exactly like subtitles disappearing, and it appeared
+    // the moment the missing fonts were uploaded, because before that the map
+    // was empty and the system face was used.
+    //
+    // A Cue carries no family, so per-line fidelity is still out of reach
+    // without libass; this picks the one family that has to be able to draw a
+    // sentence, and leaves everything else to the fallback.
+    val face = remember(typefaces, primaryFamily) {
+        when (primaryFamily) {
+            null -> typefaces.values.firstOrNull()
+            else -> typefaces[AssParser.key(primaryFamily)]
+        } ?: Typeface.DEFAULT_BOLD
+    }
+
+    // Whether that face can actually draw a given character.
+    //
+    // The last line of defence, and the one that makes "subtitles invisible"
+    // impossible rather than unlikely: a font with no Turkish letters, or no
+    // letters at all, is caught here and the cue is drawn in the system face
+    // instead. Cached per face because `hasGlyph` shapes the character, and a
+    // subtitle is redrawn on every frame.
+    val probe = remember(face) { Paint().apply { typeface = face } }
+    val glyphs = remember(face) { HashMap<Char, Boolean>() }
+
+    val canDraw: (List<String>) -> Boolean = { lines ->
+        lines.all { line ->
+            line.all { character ->
+                !character.isLetterOrDigit() ||
+                    glyphs.getOrPut(character) { probe.hasGlyph(character.toString()) }
+            }
+        }
+    }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val widthPx = size.width
@@ -78,7 +114,9 @@ fun SubtitleLayer(
             val text = cue.text?.toString().orEmpty()
             if (text.isBlank()) return@forEach
 
-            paint.typeface = face
+            val lines = text.split('\n')
+
+            paint.typeface = if (canDraw(lines)) face else Typeface.DEFAULT_BOLD
             paint.textSize = when {
                 // Fractional: the parser expressed the size relative to the
                 // frame, which is what keeps a script legible at any surface size.
@@ -93,7 +131,6 @@ fun SubtitleLayer(
                 else -> Paint.Align.CENTER
             }
 
-            val lines = text.split('\n')
             val lineHeight = paint.fontSpacing
 
             // Measured rather than assumed: the block's height decides where

@@ -103,10 +103,12 @@ fun DetailScreen(
                             work = work,
                             isFavorite = state.isFavorite,
                             inWatchlist = state.inWatchlist,
+                            following = state.following,
                             signedIn = signedIn,
                             onBack = onBack,
                             onFavorite = { if (signedIn) viewModel.toggleFavorite() else onSignIn() },
                             onWatchlist = { if (signedIn) viewModel.toggleWatchlist() else onSignIn() },
+                            onFollow = { if (signedIn) viewModel.toggleFollow() else onSignIn() },
                             onPlay = {
                                 viewModel.nextEpisodeToPlay()?.let { episode ->
                                     play(episode.id)
@@ -221,10 +223,12 @@ private fun DetailHeader(
     work: Work,
     isFavorite: Boolean,
     inWatchlist: Boolean,
+    following: Boolean,
     signedIn: Boolean,
     onBack: () -> Unit,
     onFavorite: () -> Unit,
     onWatchlist: () -> Unit,
+    onFollow: () -> Unit,
     onPlay: () -> Unit,
 ) {
     Box(Modifier.fillMaxWidth().height(340.dp)) {
@@ -360,6 +364,19 @@ private fun DetailHeader(
                     if (inWatchlist) R.string.detail_watchlist_remove else R.string.detail_watchlist_add
                 ),
                 tint = if (inWatchlist) MaterialTheme.colorScheme.primary else LocalContentColor.current,
+            )
+        }
+
+        // The bell. Beside the heart rather than in a menu, because the moment
+        // to ask for it is the moment somebody decides they care about a
+        // series — which is the same moment they reach for the heart.
+        FilledTonalIconButton(onClick = onFollow) {
+            Icon(
+                if (following) Icons.Filled.Notifications else Icons.Outlined.NotificationsNone,
+                contentDescription = stringResource(
+                    if (following) R.string.detail_follow_off else R.string.detail_follow_on
+                ),
+                tint = if (following) MaterialTheme.colorScheme.primary else LocalContentColor.current,
             )
         }
     }

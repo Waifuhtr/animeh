@@ -41,6 +41,8 @@ data class WorkDto(
     val seasons: List<SeasonDto> = emptyList(),
     @SerialName("is_favorite") @Serializable(with = LenientBoolean::class) val isFavorite: Boolean = false,
     @SerialName("in_watchlist") @Serializable(with = LenientBoolean::class) val inWatchlist: Boolean = false,
+    /** The bell: whether this account is told when an episode goes up. */
+    @Serializable(with = LenientBoolean::class) val following: Boolean = false,
 )
 
 @Serializable

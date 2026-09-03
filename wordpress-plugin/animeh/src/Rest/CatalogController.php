@@ -184,10 +184,13 @@ final class CatalogController {
 		$payload['synopsis'] = (string) $work['synopsis'];
 
 		if ( is_user_logged_in() ) {
-			$user_data              = new UserDataRepository();
-			$user_id                = get_current_user_id();
-			$payload['is_favorite'] = $user_data->in_list( $user_id, (int) $work['id'], 'favorite' );
+			$user_data               = new UserDataRepository();
+			$user_id                 = get_current_user_id();
+			$payload['is_favorite']  = $user_data->in_list( $user_id, (int) $work['id'], 'favorite' );
 			$payload['in_watchlist'] = $user_data->in_list( $user_id, (int) $work['id'], 'watchlist' );
+			// The bell. Sent only to the person it belongs to, like the other
+			// two: whether somebody follows a series is theirs to know.
+			$payload['following']    = $user_data->in_list( $user_id, (int) $work['id'], 'follow' );
 		}
 
 		return new WP_REST_Response( $payload );

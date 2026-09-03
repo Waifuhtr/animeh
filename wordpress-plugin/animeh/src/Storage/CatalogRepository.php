@@ -39,33 +39,70 @@ final class CatalogRepository {
 	public function save_work( array $data, int $id = 0 ) {
 		global $wpdb;
 
-		$now  = current_time( 'mysql', true );
-		$data = $this->work_defaults( $data );
-
-		if ( '' === $data['slug'] ) {
-			$data['slug'] = $this->unique_slug( StorageKey::slug( (string) $data['title'], $id ), $id );
-		} else {
-			$data['slug'] = $this->unique_slug( StorageKey::slug( (string) $data['slug'], $id ), $id );
-		}
-
-		$data['updated_at'] = $now;
+		$now = current_time( 'mysql', true );
 
 		if ( $id > 0 ) {
-			$updated = $wpdb->update( CatalogSchema::works(), $data, array( 'id' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			// Only what was actually sent. Filling the rest in from defaults —
+			// which is what an insert needs — turns every partial update into
+			// a wipe of everything the caller did not mention.
+			$row = $this->work_changes( $data );
+
+			$slug = $this->slug_for_update( $row, $id );
+
+			if ( null === $slug ) {
+				unset( $row['slug'] );
+			} else {
+				$row['slug'] = $slug;
+			}
+
+			$row['updated_at'] = $now;
+
+			$updated = $wpdb->update( CatalogSchema::works(), $row, array( 'id' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			if ( false === $updated ) {
 				return $this->db_error( 'animeh_work_update_failed' );
 			}
+
 			return $id;
 		}
 
-		$data['created_at'] = $now;
+		$row = $this->work_defaults( $data );
 
-		$inserted = $wpdb->insert( CatalogSchema::works(), $data ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$seed        = '' === (string) $row['slug'] ? (string) $row['title'] : (string) $row['slug'];
+		$row['slug'] = $this->unique_slug( StorageKey::slug( $seed, $id ), $id );
+
+		$row['updated_at'] = $now;
+		$row['created_at'] = $now;
+
+		$inserted = $wpdb->insert( CatalogSchema::works(), $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		if ( false === $inserted ) {
 			return $this->db_error( 'animeh_work_insert_failed' );
 		}
 
 		return (int) $wpdb->insert_id;
+	}
+
+	/**
+	 * The slug an update should write, or null to leave it alone.
+	 *
+	 * A slug is an address. It is regenerated only when the payload actually
+	 * carries one, or carries an empty one alongside a title to derive it
+	 * from; a partial update that never mentions the slug leaves the work
+	 * where it was, which is what anyone linking to it expects.
+	 *
+	 * @param array<string, mixed> $row Provided columns.
+	 * @param int                  $id  Work id.
+	 */
+	private function slug_for_update( array $row, int $id ): ?string {
+		if ( ! array_key_exists( 'slug', $row ) ) {
+			return null;
+		}
+
+		$seed = (string) $row['slug'];
+		if ( '' === $seed ) {
+			$seed = (string) ( $row['title'] ?? '' );
+		}
+
+		return '' === $seed ? null : $this->unique_slug( StorageKey::slug( $seed, $id ), $id );
 	}
 
 	/**
@@ -268,38 +305,76 @@ final class CatalogRepository {
 	public function save_episode( int $work_id, array $data, int $id = 0 ) {
 		global $wpdb;
 
-		$now  = current_time( 'mysql', true );
-		$data = $this->episode_defaults( $data );
-
-		$data['work_id']    = $work_id;
-		$data['updated_at'] = $now;
+		$now = current_time( 'mysql', true );
 
 		if ( $id > 0 ) {
-			$updated = $wpdb->update( CatalogSchema::episodes(), $data, array( 'id' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+			// Only the columns the caller named. This is what publishing an
+			// episode used to get wrong: the toggle sends four fields, the
+			// rest were filled in from defaults, and the episode lost its
+			// cover, its title, its synopsis and its duration on the way
+			// through — the cover then falling back to the work's poster,
+			// which is what it looked like from the outside.
+			$row = $this->episode_changes( $data );
+
+			$row['work_id']    = $work_id;
+			$row['updated_at'] = $now;
+
+			$updated = $wpdb->update( CatalogSchema::episodes(), $row, array( 'id' => $id ) ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			if ( false === $updated ) {
 				return $this->db_error( 'animeh_episode_update_failed' );
 			}
-			$this->ensure_season( $work_id, (int) $data['season_number'] );
+
+			$this->ensure_season( $work_id, $this->season_of( $row, $id ) );
+
 			return $id;
 		}
 
+		$row = $this->episode_defaults( $data );
+
+		$row['work_id']    = $work_id;
+		$row['updated_at'] = $now;
+
 		// A re-import must not create a second row for the same episode; the
 		// unique key would reject it, so the existing row is updated instead.
-		$existing = $this->episode_by_number( $work_id, (int) $data['season_number'], (int) $data['number'] );
+		// The original payload goes back in rather than the defaulted one, so
+		// the update stays as partial as it was asked to be.
+		$existing = $this->episode_by_number( $work_id, (int) $row['season_number'], (int) $row['number'] );
 		if ( null !== $existing ) {
 			return $this->save_episode( $work_id, $data, (int) $existing['id'] );
 		}
 
-		$data['created_at'] = $now;
+		$row['created_at'] = $now;
 
-		$inserted = $wpdb->insert( CatalogSchema::episodes(), $data ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$inserted = $wpdb->insert( CatalogSchema::episodes(), $row ); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		if ( false === $inserted ) {
 			return $this->db_error( 'animeh_episode_insert_failed' );
 		}
 
-		$this->ensure_season( $work_id, (int) $data['season_number'] );
+		$this->ensure_season( $work_id, (int) $row['season_number'] );
 
 		return (int) $wpdb->insert_id;
+	}
+
+	/**
+	 * Which season a just-updated episode belongs to.
+	 *
+	 * Taken from the update when it named one, and read back otherwise: an
+	 * update that never mentions the season still has to keep the season list
+	 * honest.
+	 *
+	 * @param array<string, mixed> $row Provided columns.
+	 * @param int                  $id  Episode id.
+	 */
+	private function season_of( array $row, int $id ): int {
+		$season = (int) ( $row['season_number'] ?? 0 );
+
+		if ( $season > 0 ) {
+			return $season;
+		}
+
+		$existing = $this->episode( $id );
+
+		return null === $existing ? 1 : max( 1, (int) $existing['season_number'] );
 	}
 
 	/**
@@ -809,13 +884,17 @@ final class CatalogRepository {
 	}
 
 	/**
-	 * Column defaults for a work, so a partial payload is a valid row.
+	 * The columns a work write may touch, and what a new row gets when the
+	 * caller does not name one.
 	 *
-	 * @param array<string, mixed> $data Provided values.
+	 * The defaults belong to inserts alone. An update applies only the columns
+	 * it was given — see [work_changes] — because a payload that says
+	 * "publish this" is not a payload that says "and blank everything else".
+	 *
 	 * @return array<string, mixed>
 	 */
-	private function work_defaults( array $data ): array {
-		$allowed = array(
+	private function work_columns(): array {
+		return array(
 			'kind'             => CatalogSchema::KIND_ANIME,
 			'tenrai_id'        => 0,
 			'mal_id'           => 0,
@@ -844,9 +923,18 @@ final class CatalogRepository {
 			'adult'            => 0,
 			'created_by'       => 0,
 		);
+	}
 
+	/**
+	 * A complete work row, for an insert.
+	 *
+	 * @param array<string, mixed> $data Provided values.
+	 * @return array<string, mixed>
+	 */
+	private function work_defaults( array $data ): array {
 		$row = array();
-		foreach ( $allowed as $column => $default ) {
+
+		foreach ( $this->work_columns() as $column => $default ) {
 			$row[ $column ] = $data[ $column ] ?? $default;
 		}
 
@@ -854,13 +942,31 @@ final class CatalogRepository {
 	}
 
 	/**
-	 * Column defaults for an episode.
+	 * Just the columns a caller asked to change, for an update.
 	 *
 	 * @param array<string, mixed> $data Provided values.
 	 * @return array<string, mixed>
 	 */
-	private function episode_defaults( array $data ): array {
-		$allowed = array(
+	private function work_changes( array $data ): array {
+		$row = array();
+
+		foreach ( array_keys( $this->work_columns() ) as $column ) {
+			if ( array_key_exists( $column, $data ) && null !== $data[ $column ] ) {
+				$row[ $column ] = $data[ $column ];
+			}
+		}
+
+		return $row;
+	}
+
+	/**
+	 * The columns an episode write may touch, and what a new row gets when the
+	 * caller does not name one.
+	 *
+	 * @return array<string, mixed>
+	 */
+	private function episode_columns(): array {
+		return array(
 			'season_number'    => 1,
 			'number'           => 1,
 			'title'            => '',
@@ -874,14 +980,59 @@ final class CatalogRepository {
 			'published'        => 0,
 			'published_at'     => '0000-00-00 00:00:00',
 		);
+	}
 
+	/**
+	 * A complete episode row, for an insert.
+	 *
+	 * @param array<string, mixed> $data Provided values.
+	 * @return array<string, mixed>
+	 */
+	private function episode_defaults( array $data ): array {
 		$row = array();
-		foreach ( $allowed as $column => $default ) {
+
+		foreach ( $this->episode_columns() as $column => $default ) {
 			$row[ $column ] = $data[ $column ] ?? $default;
 		}
 
-		$row['season_number'] = max( 1, (int) $row['season_number'] );
-		$row['number']        = max( 0, (int) $row['number'] );
+		return $this->normalise_episode( $row );
+	}
+
+	/**
+	 * Just the columns a caller asked to change, for an update.
+	 *
+	 * @param array<string, mixed> $data Provided values.
+	 * @return array<string, mixed>
+	 */
+	private function episode_changes( array $data ): array {
+		$row = array();
+
+		foreach ( array_keys( $this->episode_columns() ) as $column ) {
+			if ( array_key_exists( $column, $data ) && null !== $data[ $column ] ) {
+				$row[ $column ] = $data[ $column ];
+			}
+		}
+
+		return $this->normalise_episode( $row );
+	}
+
+	/**
+	 * Keep the two numbers that address an episode inside their range.
+	 *
+	 * Applied to whichever of them is present, so it works for a whole row and
+	 * for a two-column update alike.
+	 *
+	 * @param array<string, mixed> $row Columns about to be written.
+	 * @return array<string, mixed>
+	 */
+	private function normalise_episode( array $row ): array {
+		if ( isset( $row['season_number'] ) ) {
+			$row['season_number'] = max( 1, (int) $row['season_number'] );
+		}
+
+		if ( isset( $row['number'] ) ) {
+			$row['number'] = max( 0, (int) $row['number'] );
+		}
 
 		return $row;
 	}

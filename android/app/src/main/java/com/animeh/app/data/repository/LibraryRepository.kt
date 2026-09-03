@@ -43,6 +43,16 @@ class LibraryRepository @Inject constructor(
         libraryDao.isInList(workId, LIST_WATCHLIST).map { it > 0 }
 
     /**
+     * Whether the bell on this work's page is on.
+     *
+     * The same shape as a favourite and stored the same way, but a different
+     * promise: this is the list the server reads when an episode is published,
+     * to decide whose phone to ring.
+     */
+    fun isFollowing(workId: Long): Flow<Boolean> =
+        libraryDao.isInList(workId, LIST_FOLLOW).map { it > 0 }
+
+    /**
      * A list as the screen should render it, read from the local table.
      *
      * The library screen renders this rather than the last network response,
@@ -111,6 +121,8 @@ class LibraryRepository @Inject constructor(
     suspend fun toggleFavorite(workId: Long, wanted: Boolean) = setInList(workId, LIST_FAVORITE, wanted)
 
     suspend fun toggleWatchlist(workId: Long, wanted: Boolean) = setInList(workId, LIST_WATCHLIST, wanted)
+
+    suspend fun toggleFollow(workId: Long, wanted: Boolean) = setInList(workId, LIST_FOLLOW, wanted)
 
     suspend fun history(page: Int = 1): AppResult<List<ContinueItem>> =
         ApiErrorMapper.call({ dto -> dto.items.map { it.toDomain() } }) { userApi.history(page) }
@@ -220,5 +232,6 @@ class LibraryRepository @Inject constructor(
     companion object {
         const val LIST_FAVORITE = "favorite"
         const val LIST_WATCHLIST = "watchlist"
+        const val LIST_FOLLOW = "follow"
     }
 }

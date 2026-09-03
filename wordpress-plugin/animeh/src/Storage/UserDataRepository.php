@@ -382,6 +382,36 @@ final class UserDataRepository {
 	}
 
 	/**
+	 * Everyone who asked to hear about a work.
+	 *
+	 * The other side of the bell: [in_list] answers "am I following this",
+	 * this answers "who is", which is the question publishing an episode asks.
+	 *
+	 * Capped, because a notification fan-out is a loop of HTTP requests and a
+	 * popular series should not turn one publish into a request that times
+	 * out. A series with more followers than this needs a queue, which is a
+	 * different piece of work and is not pretended at here.
+	 *
+	 * @param int $work_id Work.
+	 * @param int $limit   Most followers to return.
+	 * @return int[] User ids.
+	 */
+	public function followers( int $work_id, int $limit = 500 ): array {
+		global $wpdb;
+
+		$ids = $wpdb->get_col( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+			$wpdb->prepare(
+				'SELECT user_id FROM ' . CatalogSchema::library() .
+				" WHERE work_id = %d AND list = 'follow' ORDER BY created_at ASC LIMIT %d",
+				$work_id,
+				max( 1, $limit )
+			)
+		);
+
+		return is_array( $ids ) ? array_map( 'intval', $ids ) : array();
+	}
+
+	/**
 	 * A user's list, with the works joined in.
 	 *
 	 * @param int    $user_id User.

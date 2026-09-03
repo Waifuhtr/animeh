@@ -81,6 +81,8 @@
     <string name="detail_favorite_add">Favorilere ekle</string>
     <string name="detail_favorite_remove">Favorilerden çıkar</string>
     <string name="detail_watchlist_add">İzleme listeme ekle</string>
+    <string name="detail_follow_on">Yeni bölüm bildirimi al</string>
+    <string name="detail_follow_off">Bildirimleri kapat</string>
     <string name="detail_watchlist_remove">Listemden çıkar</string>
     <string name="detail_play">İzle</string>
     <string name="detail_resume">Devam et</string>
@@ -296,6 +298,7 @@
 
     <!-- Watch party -->
     <string name="notify_channel_social">Davetler ve arkadaşlar</string>
+    <string name="notify_channel_episodes">Yeni bölümler</string>
     <string name="room_create">Birlikte izle</string>
     <string name="room_title">Birlikte izleme</string>
     <string name="room_creating">Oda açılıyor…</string>

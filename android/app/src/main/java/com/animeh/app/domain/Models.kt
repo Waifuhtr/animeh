@@ -36,6 +36,7 @@ data class Work(
     val seasons: List<Season> = emptyList(),
     val isFavorite: Boolean = false,
     val inWatchlist: Boolean = false,
+    val following: Boolean = false,
 ) {
     /** The title to show, preferring English when the site's language is not
      *  the romanised original. */

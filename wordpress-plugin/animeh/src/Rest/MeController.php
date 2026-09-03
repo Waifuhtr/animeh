@@ -104,7 +104,7 @@ final class MeController {
 				'callback'            => array( $this, 'library' ),
 				'permission_callback' => $guard,
 				'args'                => array(
-					'list'     => array( 'type' => 'string', 'default' => 'favorite', 'enum' => array( 'favorite', 'watchlist' ) ),
+					'list'     => array( 'type' => 'string', 'default' => 'favorite', 'enum' => array( 'favorite', 'watchlist', 'follow' ) ),
 					'page'     => array( 'type' => 'integer', 'default' => 1, 'sanitize_callback' => 'absint' ),
 					'per_page' => array( 'type' => 'integer', 'default' => 20, 'sanitize_callback' => 'absint' ),
 				),
@@ -449,7 +449,11 @@ final class MeController {
 	private function list_args(): array {
 		return array(
 			'work_id' => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
-			'list'    => array( 'type' => 'string', 'default' => 'favorite', 'enum' => array( 'favorite', 'watchlist' ) ),
+			// `follow` is the bell on the anime page: the same shape as a
+			// favourite, so it needed no table of its own, but a different
+			// promise — it is the list the server reads when an episode is
+			// published, to decide whose phone to ring.
+			'list'    => array( 'type' => 'string', 'default' => 'favorite', 'enum' => array( 'favorite', 'watchlist', 'follow' ) ),
 		);
 	}
 }

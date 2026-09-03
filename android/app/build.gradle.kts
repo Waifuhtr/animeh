@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
@@ -55,10 +56,15 @@ android {
         // claim against /.well-known/assetlinks.json, which the plugin serves
         // once an operator has pasted this build's signing fingerprint. Until
         // then the link opens the web page, and its button opens the app.
+        //
+        // `URI` is imported rather than written as `java.net.URI`: inside a
+        // Kotlin build script `java` already means Gradle's own java
+        // extension, so the fully qualified name resolves to the wrong thing
+        // and the script does not compile.
         manifestPlaceholders["roomLinkHost"] = setting(
             "ANIMEH_LINK_HOST",
             runCatching {
-                java.net.URI(setting("ANIMEH_API_BASE", "https://oyunceviri.riaslink.fun/wp-json/animeh/v1/")).host
+                URI(setting("ANIMEH_API_BASE", "https://oyunceviri.riaslink.fun/wp-json/animeh/v1/")).host
             }.getOrNull() ?: "oyunceviri.riaslink.fun",
         )
     }

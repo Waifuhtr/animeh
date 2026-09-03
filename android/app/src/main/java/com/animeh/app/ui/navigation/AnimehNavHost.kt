@@ -47,6 +47,9 @@ fun AnimehApp(
     /** A room code from an invite link or a notification, if there is one. */
     roomCode: String? = null,
     onRoomHandled: () -> Unit = {},
+    /** An anime a "new episode" notification was tapped for. */
+    workId: Long? = null,
+    onWorkHandled: () -> Unit = {},
     navController: NavHostController = rememberNavController(),
     joinViewModel: RoomJoinViewModel = hiltViewModel(),
 ) {
@@ -82,6 +85,15 @@ fun AnimehApp(
         if (joinViewModel.join(code)) {
             navController.navigate(Routes.ROOM)
         }
+    }
+
+    // A tapped episode notification opens the series it was about.
+    LaunchedEffect(workId) {
+        val id = workId ?: return@LaunchedEffect
+
+        onWorkHandled()
+
+        navController.navigate(Routes.detail(id))
     }
 
     Scaffold(

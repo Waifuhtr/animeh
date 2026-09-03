@@ -77,6 +77,15 @@ class PlaybackController @Inject constructor(
     private val _typefaces = MutableStateFlow<Map<String, Typeface>>(emptyMap())
     val typefaces: StateFlow<Map<String, Typeface>> = _typefaces.asStateFlow()
 
+    /**
+     * The family the current script sets its dialogue in.
+     *
+     * Held beside the typefaces because the renderer needs to know which of
+     * them is the one sentences are written in — see [AssParser.primaryFont].
+     */
+    private val _primaryFont = MutableStateFlow<String?>(null)
+    val primaryFont: StateFlow<String?> = _primaryFont.asStateFlow()
+
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
     private var bandwidthMeter: DefaultBandwidthMeter? = null
@@ -654,11 +663,19 @@ class PlaybackController @Inject constructor(
     }
 
     private fun resolveFonts(source: Playback, subtitle: MediaSource?) {
+        // Cleared before the new script is fetched rather than after it
+        // resolves: a track switched mid-episode would otherwise keep drawing
+        // in the last script's font until the download finished.
+        _typefaces.value = emptyMap()
+        _primaryFont.value = null
+
         scope?.launch {
             if (subtitle == null) return@launch
 
             val script = downloadSubtitle(subtitle) ?: return@launch
             val required = AssParser.requiredFonts(script)
+
+            _primaryFont.value = AssParser.primaryFont(script)
 
             if (required.isEmpty()) return@launch
 

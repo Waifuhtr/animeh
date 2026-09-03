@@ -50,8 +50,6 @@ LOG_FILE = OUTPUT_DIR / "build.log"
 
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Enough scrollback to cover a whole Gradle build without the browser holding
-# an unbounded string.
 # Where the sources come from.
 #
 # The Space holds a copy of `android/`, baked into the image, and that copy is
@@ -72,6 +70,8 @@ GIT_REPO = os.environ.get("ANIMEH_GIT_REPO", "https://github.com/Waifuhtr/animeh
 GIT_BRANCH = os.environ.get("ANIMEH_GIT_BRANCH", "claude/player-mkv-support-jim4um")
 GIT_TIMEOUT_SECONDS = 240
 
+# Enough scrollback to cover a whole Gradle build without the browser holding
+# an unbounded string.
 MAX_LOG_LINES = 4000
 
 # A build that has produced no output for this long is stuck rather than slow;

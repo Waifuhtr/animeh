@@ -271,10 +271,19 @@
     <string name="admin_tmdb_fetch">TMDB\'den görselleri getir</string>
     <string name="admin_tmdb_search">TMDB\'den içe aktar</string>
     <string name="admin_search_min">En az 3 harf yaz.</string>
+    <string name="admin_tmdb_hint">Ad yazabilir ya da TMDB numarasını / sayfa adresini yapıştırabilirsin. Örnek: 96316 veya themoviedb.org/tv/96316</string>
     <string name="admin_tmdb_overwrite">Mevcut görselleri de değiştir</string>
     <string name="admin_tmdb_no_key">TMDB anahtarı girilmemiş. WordPress yönetim panelindeki Animeh → Entegrasyonlar sayfasından ekleyebilirsin.</string>
     <string name="admin_tmdb_done">Kapak ve %1$d bölüm görseli güncellendi.</string>
     <string name="admin_tmdb_none">Değişecek bir şey bulunamadı.</string>
+
+    <!-- Adult content -->
+    <string name="admin_adult">Yetişkin içerik</string>
+    <string name="admin_adult_hint">İşaretlenirse izlemeden önce uyarı çıkar. Anime listelerden gizlenmez.</string>
+    <string name="adult_warning_title">Yetişkin içerik</string>
+    <string name="adult_warning_body">Bu anime yetişkin içerik barındırıyor. İzlemeye devam etmek istiyor musun?</string>
+    <string name="adult_warning_continue">Devam et</string>
+    <string name="adult_badge">18+</string>
 
     <!-- Admin: where clients connect -->
     <string name="admin_server">Sunucu adresi</string>

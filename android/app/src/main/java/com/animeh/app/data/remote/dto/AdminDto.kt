@@ -97,6 +97,7 @@ data class AdminWorkRequest(
     val genres: List<String>? = null,
     @SerialName("total_episodes") val totalEpisodes: Int? = null,
     val published: Boolean? = null,
+    val adult: Boolean? = null,
 )
 
 @Serializable

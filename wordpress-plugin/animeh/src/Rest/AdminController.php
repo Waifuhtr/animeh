@@ -1047,14 +1047,42 @@ final class AdminController {
 	 * @return WP_REST_Response|WP_Error
 	 */
 	public function tmdb_search( WP_REST_Request $request ) {
-		$response = ( new TmdbClient() )->search_tv(
-			(string) $request->get_param( 'q' ),
-			(int) $request->get_param( 'year' ),
-			(int) $request->get_param( 'page' )
-		);
+		$query  = (string) $request->get_param( 'q' );
+		$client = new TmdbClient();
 
-		if ( $response instanceof WP_Error ) {
-			return $response;
+		// A number or a pasted themoviedb.org address is a request for one
+		// specific show, not a search. Searching by title does not always
+		// reach the one you meant — an anime's Turkish, romanised and English
+		// titles are three different searches — and the id is sitting in the
+		// address bar of the page you are already looking at.
+		$id = TmdbMapper::extract_id( $query );
+
+		if ( $id > 0 ) {
+			$details = $client->tv( $id );
+
+			if ( $details instanceof WP_Error ) {
+				$data = $details->get_error_data();
+
+				// A 404 here means "no such show", which for a search box is
+				// an empty result rather than a failure worth an error screen.
+				if ( is_array( $data ) && 404 === (int) ( $data['status'] ?? 0 ) ) {
+					return new WP_REST_Response( array( 'items' => array() ) );
+				}
+
+				return $details;
+			}
+
+			$response = array( 'results' => array( $this->tmdb_result_shape( $details ) ) );
+		} else {
+			$response = $client->search_tv(
+				$query,
+				(int) $request->get_param( 'year' ),
+				(int) $request->get_param( 'page' )
+			);
+
+			if ( $response instanceof WP_Error ) {
+				return $response;
+			}
 		}
 
 		$base  = TmdbClient::image_base();
@@ -1083,6 +1111,29 @@ final class AdminController {
 		}
 
 		return new WP_REST_Response( array( 'items' => $items ) );
+	}
+
+	/**
+	 * A `tv/{id}` details payload in the shape a search result has.
+	 *
+	 * The two endpoints agree on every field the search listing draws except
+	 * that details carries `first_air_date` and the rest under the same names,
+	 * so this is a filter rather than a translation — it exists so the id path
+	 * and the title path can share one loop below.
+	 *
+	 * @param array<string, mixed> $details TMDB TV details.
+	 * @return array<string, mixed>
+	 */
+	private function tmdb_result_shape( array $details ): array {
+		return array(
+			'id'             => (int) ( $details['id'] ?? 0 ),
+			'name'           => (string) ( $details['name'] ?? '' ),
+			'original_name'  => (string) ( $details['original_name'] ?? '' ),
+			'overview'       => (string) ( $details['overview'] ?? '' ),
+			'first_air_date' => (string) ( $details['first_air_date'] ?? '' ),
+			'vote_average'   => (float) ( $details['vote_average'] ?? 0 ),
+			'poster_path'    => (string) ( $details['poster_path'] ?? '' ),
+		);
 	}
 
 	/**
@@ -1152,8 +1203,14 @@ final class AdminController {
 			$row['format']    = (string) $existing['format'];
 			$row['tenrai_id'] = (int) $existing['tenrai_id'];
 			$row['mal_id']    = (int) $existing['mal_id'];
+
+			// The adult flag can be turned on by an import but never off by
+			// one: TMDB marks pornography and little else, so its `false` is
+			// not evidence against a judgement somebody made here.
+			$row['adult'] = ( $mapped['adult'] || (int) $existing['adult'] ) ? 1 : 0;
 		} else {
 			$row['published']  = $request->get_param( 'publish' ) ? 1 : 0;
+			$row['adult']      = $mapped['adult'] ? 1 : 0;
 			$row['created_by'] = get_current_user_id();
 		}
 
@@ -2027,6 +2084,7 @@ final class AdminController {
 			'duration_seconds' => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 			'tenrai_id'        => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 			'published'        => array( 'type' => 'boolean' ),
+			'adult'            => array( 'type' => 'boolean' ),
 		);
 	}
 

@@ -27,7 +27,7 @@ final class CatalogSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '5';
+	public const VERSION = '6';
 
 	/**
 	 * Option holding the installed catalog version.
@@ -229,6 +229,11 @@ final class CatalogSchema {
 			total_episodes smallint(5) unsigned NOT NULL DEFAULT 0,
 			duration_seconds int(10) unsigned NOT NULL DEFAULT 0,
 			published tinyint(1) NOT NULL DEFAULT 0,
+			-- Not a filter and not a rating: it only decides whether the app
+			-- asks before playing. Off unless somebody says otherwise, because
+			-- a wrong guess in this direction is only an extra tap, and in the
+			-- other direction it is the thing the flag exists to prevent.
+			adult tinyint(1) NOT NULL DEFAULT 0,
 			created_by bigint(20) unsigned NOT NULL DEFAULT 0,
 			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
 			updated_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',

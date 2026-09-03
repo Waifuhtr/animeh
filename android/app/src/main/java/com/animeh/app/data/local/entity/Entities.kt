@@ -38,6 +38,8 @@ data class WorkEntity(
     val genres: String,
     val totalEpisodes: Int,
     val durationSeconds: Int,
+    /** Cached too: the warning has to appear offline as well as online. */
+    val adult: Boolean = false,
     /** Which home rail this row was last seen in, so a rail can be rebuilt offline. */
     val rail: String = "",
     val railOrder: Int = 0,

@@ -35,6 +35,7 @@ data class WorkDto(
     @SerialName("total_episodes") val totalEpisodes: Int = 0,
     @SerialName("duration_seconds") val durationSeconds: Int = 0,
     @Serializable(with = LenientBoolean::class) val published: Boolean = true,
+    @Serializable(with = LenientBoolean::class) val adult: Boolean = false,
     @SerialName("updated_at") val updatedAt: String = "",
     // Present only on the detail endpoint.
     val seasons: List<SeasonDto> = emptyList(),

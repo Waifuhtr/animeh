@@ -522,6 +522,9 @@ final class CatalogController {
 			'total_episodes' => (int) $work['total_episodes'],
 			'duration_seconds' => (int) $work['duration_seconds'],
 			'published'      => (bool) $work['published'],
+			// The app asks before playing when this is set. Sent to everyone,
+			// signed in or not: the warning is the point of the flag.
+			'adult'          => (bool) ( $work['adult'] ?? false ),
 			'updated_at'     => (string) $work['updated_at'],
 			// Zero until a TMDB match has been made. The app ignores it; the
 			// admin panel uses it to show whether artwork can be refreshed

@@ -364,6 +364,22 @@ fun AdminWorkEditScreen(
                 Text(stringResource(R.string.admin_published))
             }
 
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Switch(
+                    checked = form.adult == true,
+                    onCheckedChange = { value -> viewModel.update { it.copy(adult = value) } },
+                )
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text(stringResource(R.string.admin_adult))
+                    Text(
+                        stringResource(R.string.admin_adult_hint),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                    )
+                }
+            }
+
             error?.let {
                 Text(
                     it.technical ?: stringResource(it.messageRes),

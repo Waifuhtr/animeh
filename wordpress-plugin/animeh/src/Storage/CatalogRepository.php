@@ -841,6 +841,7 @@ final class CatalogRepository {
 			'total_episodes'   => 0,
 			'duration_seconds' => 0,
 			'published'        => 0,
+			'adult'            => 0,
 			'created_by'       => 0,
 		);
 

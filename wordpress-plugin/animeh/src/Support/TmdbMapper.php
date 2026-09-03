@@ -119,6 +119,10 @@ final class TmdbMapper {
 			'total_episodes'   => (int) ( $tv['number_of_episodes'] ?? 0 ),
 			'duration_seconds' => array() === $runtimes ? 0 : $runtimes[0] * 60,
 			'score'            => round( (float) ( $tv['vote_average'] ?? 0 ), 2 ),
+			// TMDB's own flag. Taken as a starting point rather than the last
+			// word: it is set for pornography and little else, and plenty of
+			// series this catalog would want to warn about are not marked.
+			'adult'            => (bool) ( $tv['adult'] ?? false ),
 		);
 	}
 
@@ -221,6 +225,46 @@ final class TmdbMapper {
 		// Nothing matched on either title or year: better to return nothing and
 		// let a human choose than to attach the most popular unrelated show.
 		return $score >= 20.0 ? $best : null;
+	}
+
+	/**
+	 * The TMDB id in a search box, when there is one.
+	 *
+	 * Searching by title does not always reach the show you meant — several
+	 * series share a name, and an anime's Turkish, romanised and English
+	 * titles are three different searches. The id is unambiguous, and it is
+	 * sitting in the address bar of the page you are already looking at, so
+	 * pasting either the number or the whole URL is the fastest route to a
+	 * specific title.
+	 *
+	 * Accepts a bare number, or any themoviedb.org URL for a TV show —
+	 * "/tv/96316", "/tv/96316-title", with or without a scheme, a language
+	 * prefix, a trailing path or a query string. A movie URL yields nothing,
+	 * because this catalog imports series and looking a movie id up as a
+	 * series would fetch some unrelated show that happens to share the number.
+	 *
+	 * @param string $query What was typed.
+	 * @return int The id, or zero when the text is an ordinary search.
+	 */
+	public static function extract_id( string $query ): int {
+		$query = trim( $query );
+
+		if ( '' === $query ) {
+			return 0;
+		}
+
+		// A bare number is an id. Nothing else this catalog searches for is
+		// digits alone, so there is no ambiguity to resolve.
+		if ( preg_match( '/^\d+$/', $query ) ) {
+			return (int) $query;
+		}
+
+		// themoviedb.org/tv/96316, /tr/tv/96316-baslik, ?language=…, /seasons.
+		if ( preg_match( '#themoviedb\.org/(?:[a-z]{2}(?:-[A-Za-z]{2})?/)?tv/(\d+)#i', $query, $matches ) ) {
+			return (int) $matches[1];
+		}
+
+		return 0;
 	}
 
 	/**

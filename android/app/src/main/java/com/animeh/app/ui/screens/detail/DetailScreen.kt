@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -56,6 +57,34 @@ fun DetailScreen(
         }
     }
 
+    // Every route into the player from this screen goes through here, so the
+    // warning cannot be walked around by tapping an episode instead of İzle.
+    // Answered once per visit rather than once per tap: a viewer who has just
+    // said yes does not need asking again three minutes later.
+    var acknowledgedAdult by remember(state.work) { mutableStateOf(false) }
+    var pendingEpisode by remember { mutableStateOf<Long?>(null) }
+
+    val play: (Long) -> Unit = { episodeId ->
+        val work = (state.work as? UiState.Success)?.data
+
+        when {
+            !signedIn -> onSignIn()
+            work?.adult == true && !acknowledgedAdult -> pendingEpisode = episodeId
+            else -> onPlayEpisode(episodeId)
+        }
+    }
+
+    pendingEpisode?.let { episodeId ->
+        AdultWarningDialog(
+            onDismiss = { pendingEpisode = null },
+            onContinue = {
+                pendingEpisode = null
+                acknowledgedAdult = true
+                onPlayEpisode(episodeId)
+            },
+        )
+    }
+
     Box(Modifier.fillMaxSize()) {
         when (val workState = state.work) {
             is UiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
@@ -84,11 +113,8 @@ fun DetailScreen(
                             onFavorite = { if (signedIn) viewModel.toggleFavorite() else onSignIn() },
                             onWatchlist = { if (signedIn) viewModel.toggleWatchlist() else onSignIn() },
                             onPlay = {
-                                val episode = viewModel.nextEpisodeToPlay()
-                                when {
-                                    episode == null -> Unit
-                                    !signedIn -> onSignIn()
-                                    else -> onPlayEpisode(episode.id)
+                                viewModel.nextEpisodeToPlay()?.let { episode ->
+                                    play(episode.id)
                                 }
                             },
                         )
@@ -146,7 +172,7 @@ fun DetailScreen(
                         is UiState.Success -> items(episodesState.data, key = { it.id }) { episode ->
                             EpisodeRowCard(
                                 episode = episode,
-                                onClick = { if (signedIn) onPlayEpisode(episode.id) else onSignIn() },
+                                onClick = { play(episode.id) },
                             )
                         }
                     }
@@ -213,6 +239,26 @@ private fun DetailHeader(
             modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(8.dp),
         ) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back), tint = Color.White)
+        }
+
+        // Visible before anything is tapped, so the dialog is a confirmation
+        // rather than a surprise.
+        if (work.adult) {
+            Surface(
+                color = StatusError,
+                shape = RoundedCornerShape(8.dp),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(14.dp),
+            ) {
+                Text(
+                    stringResource(R.string.adult_badge),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                )
+            }
         }
 
         Row(
@@ -355,4 +401,35 @@ private fun MetaRow(label: String, value: String) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = TextMuted, modifier = Modifier.width(90.dp))
         Text(value, style = MaterialTheme.typography.bodySmall)
     }
+}
+
+/**
+ * The question asked before an episode of a flagged series plays.
+ *
+ * Not dismissible by tapping outside, and "Vazgeç" is the default-looking
+ * action: an accidental tap on a poster should not start playing something
+ * somebody deliberately marked, and the whole value of the flag is in the
+ * pause it creates.
+ */
+@Composable
+private fun AdultWarningDialog(
+    onDismiss: () -> Unit,
+    onContinue: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(Icons.Filled.Warning, contentDescription = null, tint = StatusWarning)
+        },
+        title = { Text(stringResource(R.string.adult_warning_title)) },
+        text = { Text(stringResource(R.string.adult_warning_body)) },
+        confirmButton = {
+            TextButton(onClick = onContinue) {
+                Text(stringResource(R.string.adult_warning_continue))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) }
+        },
+    )
 }

@@ -34,6 +34,7 @@ fun WorkDto.toDomain(): Work = Work(
     totalEpisodes = totalEpisodes,
     durationSeconds = durationSeconds,
     published = published,
+    adult = adult,
     seasons = seasons.map { Season(it.number, it.title, it.episodeCount) },
     isFavorite = isFavorite,
     inWatchlist = inWatchlist,
@@ -133,6 +134,7 @@ fun Work.toEntity(rail: String = "", railOrder: Int = 0): WorkEntity = WorkEntit
     genres = genres.joinToString(","),
     totalEpisodes = totalEpisodes,
     durationSeconds = durationSeconds,
+    adult = adult,
     rail = rail,
     railOrder = railOrder,
 )
@@ -169,6 +171,7 @@ fun WorkEntity.toDomain(): Work = Work(
     genres = genres.split(",").filter { it.isNotBlank() },
     totalEpisodes = totalEpisodes,
     durationSeconds = durationSeconds,
+    adult = adult,
 )
 
 fun EpisodeEntity.toDomain(progress: Progress? = null): Episode = Episode(

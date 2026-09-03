@@ -26,6 +26,13 @@ data class Work(
     val totalEpisodes: Int = 0,
     val durationSeconds: Int = 0,
     val published: Boolean = true,
+    /**
+     * Whether to ask before playing.
+     *
+     * Not a rating and not a filter: the work stays in every list it would
+     * otherwise be in, and the flag only puts a question in front of playback.
+     */
+    val adult: Boolean = false,
     val seasons: List<Season> = emptyList(),
     val isFavorite: Boolean = false,
     val inWatchlist: Boolean = false,

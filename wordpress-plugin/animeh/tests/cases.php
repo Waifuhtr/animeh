@@ -1421,6 +1421,33 @@ describe( 'TmdbMapper', static function (): void {
 		same( 0, $rows[1]['duration_seconds'] );
 	} );
 
+	it( 'reads an id out of a pasted TMDB address', static function (): void {
+		$id = 96316;
+
+		same( $id, \Animeh\Support\TmdbMapper::extract_id( '96316' ) );
+		same( $id, \Animeh\Support\TmdbMapper::extract_id( '  96316  ' ) );
+		same( $id, \Animeh\Support\TmdbMapper::extract_id( 'https://www.themoviedb.org/tv/96316' ) );
+		same( $id, \Animeh\Support\TmdbMapper::extract_id( 'https://www.themoviedb.org/tv/96316-shijou-saikyou' ) );
+		same( $id, \Animeh\Support\TmdbMapper::extract_id( 'themoviedb.org/tr/tv/96316' ) );
+		same( $id, \Animeh\Support\TmdbMapper::extract_id( 'https://www.themoviedb.org/tv/96316/seasons' ) );
+		same( $id, \Animeh\Support\TmdbMapper::extract_id( 'https://www.themoviedb.org/tv/96316?language=tr-TR' ) );
+	} );
+
+	it( 'treats ordinary text as a search, not an id', static function (): void {
+		same( 0, \Animeh\Support\TmdbMapper::extract_id( 'Naruto' ) );
+		same( 0, \Animeh\Support\TmdbMapper::extract_id( '' ) );
+		same( 0, \Animeh\Support\TmdbMapper::extract_id( '86 Eighty Six' ) );
+
+		// A movie URL is not a series id: looking it up as one would fetch
+		// whichever unrelated series happens to share the number.
+		same( 0, \Animeh\Support\TmdbMapper::extract_id( 'https://www.themoviedb.org/movie/96316' ) );
+	} );
+
+	it( 'carries TMDB\'s own adult flag into the mapping', static function (): void {
+		same( true, \Animeh\Support\TmdbMapper::work( array( 'id' => 1, 'adult' => true ) )['adult'] );
+		same( false, \Animeh\Support\TmdbMapper::work( array( 'id' => 1 ) )['adult'] );
+	} );
+
 	it( 'never numbers an imported episode zero', static function (): void {
 		// The import skips these: a row with number 0 would sort before the
 		// first episode and has no place in the numbering.

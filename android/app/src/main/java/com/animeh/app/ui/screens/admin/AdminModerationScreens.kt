@@ -512,7 +512,18 @@ fun AdminTmdbScreen(
                 placeholder = { Text(stringResource(R.string.admin_tmdb_search)) },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 singleLine = true,
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 16.dp, end = 16.dp, top = 16.dp),
+            )
+
+            // Searching by title does not always reach the show you meant, and
+            // the id is in the address bar of the page you are looking at.
+            Text(
+                stringResource(R.string.admin_tmdb_hint),
+                style = MaterialTheme.typography.labelSmall,
+                color = TextMuted,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
             )
 
             when (val current = results) {

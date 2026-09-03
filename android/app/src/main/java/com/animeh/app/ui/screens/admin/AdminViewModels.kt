@@ -161,6 +161,7 @@ class AdminWorkEditViewModel @Inject constructor(
                             genres = work.genres,
                             totalEpisodes = work.totalEpisodes,
                             published = work.published,
+                            adult = work.adult,
                         )
                     }
                 }
@@ -543,7 +544,7 @@ class AdminTmdbViewModel @Inject constructor(
         _query.value = value
         searchJob?.cancel()
 
-        if (value.length < MIN_QUERY) {
+        if (!isSearchable(value)) {
             _results.value = UiState.Empty
             return
         }
@@ -588,6 +589,22 @@ class AdminTmdbViewModel @Inject constructor(
 
     fun dismissMessage() {
         _message.value = null
+    }
+
+    /**
+     * Whether this is worth spending a request on.
+     *
+     * The three-letter floor is there so typing a title does not fire a
+     * request per keystroke, but an id is complete the moment it is typed and
+     * a short one would never get past that floor — so digits are exempt. The
+     * server decides what is an id and what is a title; this only decides
+     * whether to ask at all.
+     */
+    private fun isSearchable(value: String): Boolean {
+        val trimmed = value.trim()
+
+        return trimmed.length >= MIN_QUERY ||
+            (trimmed.isNotEmpty() && trimmed.all { it.isDigit() })
     }
 
     private companion object {

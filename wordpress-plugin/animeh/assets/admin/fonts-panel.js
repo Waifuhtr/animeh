@@ -13,6 +13,7 @@ export class FontsPanel {
   #api
   #els = {}
   #fonts = []
+  #wanted = []
 
   /**
    * @param {HTMLElement} root Mount point.
@@ -40,6 +41,26 @@ export class FontsPanel {
           </div>
           <p class="animeh-error" id="animeh-font-error" hidden></p>
           <p class="animeh-hint" id="animeh-font-status" hidden></p>
+        </section>
+
+        <section class="animeh-card" id="animeh-wanted-card" hidden>
+          <h2>İstenen Fontlar <span class="animeh-count" id="animeh-wanted-count"></span></h2>
+          <p class="animeh-hint">
+            Altyazıların istediği ama burada bulunmayan aileler. Uygulama bir bölümü oynatırken
+            bunları bildiriyor. Dosya adının birebir aynı olması gerekmiyor — "Sans" istenmişse
+            <code>sans-test.ttf</code> de cevap verir, kalın hali istenmişse ailenin kendisi yeter.
+          </p>
+          <table class="widefat striped animeh-table">
+            <thead>
+              <tr>
+                <th scope="col">Aile adı</th>
+                <th scope="col">Kaç kez</th>
+                <th scope="col">Son</th>
+                <th scope="col"></th>
+              </tr>
+            </thead>
+            <tbody id="animeh-wanted-rows"></tbody>
+          </table>
         </section>
 
         <section class="animeh-card">
@@ -70,6 +91,9 @@ export class FontsPanel {
       status: byId('animeh-font-status'),
       rows: byId('animeh-font-rows'),
       count: byId('animeh-font-count'),
+      wantedCard: byId('animeh-wanted-card'),
+      wantedRows: byId('animeh-wanted-rows'),
+      wantedCount: byId('animeh-wanted-count'),
     }
 
     this.#els.upload.addEventListener('click', () => void this.#upload())
@@ -77,11 +101,56 @@ export class FontsPanel {
 
   async #load() {
     try {
-      const { fonts } = await this.#api.listFonts()
+      const { fonts, wanted } = await this.#api.listFonts()
       this.#fonts = fonts
+      this.#wanted = wanted ?? []
       this.#renderRows()
+      this.#renderWanted()
     } catch (error) {
       this.#els.rows.innerHTML = `<tr><td colspan="5">${escapeHtml(describeError(error))}</td></tr>`
+    }
+  }
+
+  /**
+   * What the subtitles asked for and did not get.
+   *
+   * The card hides itself when the list is empty rather than sitting there
+   * saying "nothing" — an empty list here is the normal, good state, and a
+   * permanent empty table trains people to stop looking at it.
+   */
+  #renderWanted() {
+    this.#els.wantedCard.hidden = this.#wanted.length === 0
+    this.#els.wantedCount.textContent = this.#wanted.length > 0 ? `(${this.#wanted.length})` : ''
+
+    if (this.#wanted.length === 0) return
+
+    this.#els.wantedRows.replaceChildren(
+      ...this.#wanted.map((entry) => {
+        const row = document.createElement('tr')
+        row.innerHTML = `
+          <td><strong>${escapeHtml(entry.family)}</strong></td>
+          <td>${entry.count}</td>
+          <td class="animeh-muted">${escapeHtml(entry.last_seen ?? '')}</td>
+          <td class="animeh-table__actions"></td>
+        `
+        const forget = document.createElement('button')
+        forget.type = 'button'
+        forget.className = 'button button-link-delete'
+        forget.textContent = 'Listeden çıkar'
+        forget.addEventListener('click', () => void this.#forget(entry))
+        row.querySelector('.animeh-table__actions').append(forget)
+        return row
+      }),
+    )
+  }
+
+  async #forget(entry) {
+    try {
+      const { wanted } = await this.#api.forgetWantedFont(entry.family)
+      this.#wanted = wanted ?? []
+      this.#renderWanted()
+    } catch (error) {
+      this.#showError(describeError(error))
     }
   }
 

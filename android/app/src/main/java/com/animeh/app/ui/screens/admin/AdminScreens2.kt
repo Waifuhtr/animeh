@@ -673,7 +673,41 @@ fun AdminFontsScreen(onBack: () -> Unit, viewModel: AdminFontsViewModel = hiltVi
                     Icons.Filled.FontDownload,
                 )
                 is UiState.Success -> LazyColumn {
-                    items(current.data, key = { it.id }) { font ->
+                    // What the subtitles asked for and did not get, first:
+                    // this is the list somebody has to act on, and the one
+                    // that used to exist only inside a subtitle file.
+                    if (current.data.wanted.isNotEmpty()) {
+                        item {
+                            ListItem(
+                                headlineContent = { Text("İstenen fontlar") },
+                                supportingContent = {
+                                    Text(
+                                        "Altyazıların istediği ama burada olmayan aileler. " +
+                                            "Dosya adının birebir aynı olması gerekmez; " +
+                                            "ailenin kendisi kalın ve italik hallerine de cevap verir.",
+                                    )
+                                },
+                            )
+                        }
+
+                        items(current.data.wanted, key = { "wanted-" + it.family }) { wanted ->
+                            ListItem(
+                                leadingContent = {
+                                    Icon(
+                                        Icons.Filled.FontDownload,
+                                        null,
+                                        tint = MaterialTheme.colorScheme.error,
+                                    )
+                                },
+                                headlineContent = { Text(wanted.family) },
+                                supportingContent = { Text("${wanted.count} kez istendi") },
+                            )
+                        }
+
+                        item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
+                    }
+
+                    items(current.data.fonts, key = { it.id }) { font ->
                         ListItem(
                             headlineContent = { Text(font.family) },
                             supportingContent = {

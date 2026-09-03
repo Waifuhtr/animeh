@@ -12,11 +12,13 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -131,15 +133,29 @@ class WatchPartySession @Inject constructor(
         party.publish(current.code, uid, positionMs, playing, episodeId)
     }
 
-    /** What everyone else is doing. Empty when not in a room. */
-    fun playback(): Flow<RoomPlayback> =
-        _room.value?.let { party.playback(it.code) } ?: emptyFlow()
+    /**
+     * What everyone else is doing.
+     *
+     * Built on the room *flow* rather than on whatever room happened to be
+     * current when this was called. A collector set up a moment before the
+     * room opened — or one that was still running when the room changed —
+     * used to end up listening to nothing at all, silently, which is the
+     * shape of a watch party that syncs sometimes and not others.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun playback(): Flow<RoomPlayback> = _room.flatMapLatest { room ->
+        room?.let { party.playback(it.code) } ?: emptyFlow()
+    }
 
-    fun members(): Flow<List<RoomMember>> =
-        _room.value?.let { party.members(it.code) } ?: emptyFlow()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun members(): Flow<List<RoomMember>> = _room.flatMapLatest { room ->
+        room?.let { party.members(it.code) } ?: emptyFlow()
+    }
 
-    fun chat(): Flow<List<ChatMessage>> =
-        _room.value?.let { party.chat(it.code) } ?: emptyFlow()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    fun chat(): Flow<List<ChatMessage>> = _room.flatMapLatest { room ->
+        room?.let { party.chat(it.code) } ?: emptyFlow()
+    }
 
     fun send(text: String) {
         val current = _room.value ?: return

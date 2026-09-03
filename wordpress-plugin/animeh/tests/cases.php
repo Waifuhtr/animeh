@@ -1644,3 +1644,63 @@ describe( 'AppLinks', static function (): void {
 		ok( str_starts_with( (string) $encoded, '[' ) );
 	} );
 } );
+
+describe( 'FontMatch', static function (): void {
+	$score = static fn( string $a, string $b ): int => \Animeh\Support\FontMatch::score( $a, $b );
+
+	it( 'treats one name written three ways as one font', static function () use ( $score ): void {
+		same( 100, $score( 'DejaVu Sans', 'dejavu sans' ) );
+		same( 100, $score( 'DejaVuSans', 'DejaVu Sans' ) );
+		same( 100, $score( 'dejavu-sans', 'DejaVu Sans' ) );
+		same( 100, $score( '@Yu Gothic', 'Yu Gothic' ) );
+	} );
+
+	it( 'answers a weight from the family it belongs to', static function () use ( $score ): void {
+		// A script naming a face inside a family is asking for the family; the
+		// renderer emboldens. Refusing over the word "Bold" helps nobody.
+		same( 90, $score( 'Arial Bold', 'Arial' ) );
+		same( 90, $score( 'Arial', 'Arial Bold Italic' ) );
+		same( 90, $score( 'Roboto Condensed Light', 'Roboto Condensed' ) );
+	} );
+
+	it( 'answers a short name from a longer file', static function () use ( $score ): void {
+		// The reported case: the script asks for Sans, the file to hand is
+		// sans-test.ttf, whose name table says "Sans Test".
+		ok( $score( 'Sans', 'Sans Test' ) > 0 );
+		ok( $score( 'Sans Test', 'Sans' ) > 0 );
+		ok( $score( 'Animeh Gothic', 'Animeh Gothic Extra' ) > 0 );
+	} );
+
+	it( 'never substitutes a different family', static function () use ( $score ): void {
+		// The rule that makes the rest of this safe: a wrong typeface renders
+		// at the wrong metrics and breaks the typesetting silently, which is
+		// worse than a font somebody can see is missing.
+		same( 0, $score( 'Sans', 'Comic Sans' ) );
+		same( 0, $score( 'Gothic', 'Century Gothic' ) );
+		same( 0, $score( 'Arial', 'Helvetica' ) );
+		same( 0, $score( 'Sans', '' ) );
+	} );
+
+	it( 'prefers the closest family when several answer', static function (): void {
+		$candidates = array(
+			array( 'family' => 'Sans Test Extra' ),
+			array( 'family' => 'Sans' ),
+			array( 'family' => 'Comic Sans' ),
+		);
+
+		$best = \Animeh\Support\FontMatch::best( 'Sans', $candidates );
+		same( 'Sans', $best['family'] );
+
+		$exact = \Animeh\Support\FontMatch::best( 'Sans Test Extra', $candidates );
+		same( 'Sans Test Extra', $exact['family'] );
+
+		same( null, \Animeh\Support\FontMatch::best( 'Nothing Like It', $candidates ) );
+	} );
+
+	it( 'keeps a family that is only made of style words', static function (): void {
+		// "Black" is a real family name. Stripping it would leave nothing,
+		// and a font with no words matches everything.
+		same( array( 'black' ), \Animeh\Support\FontMatch::base( 'Black' ) );
+		same( 100, \Animeh\Support\FontMatch::score( 'Black', 'black' ) );
+	} );
+} );

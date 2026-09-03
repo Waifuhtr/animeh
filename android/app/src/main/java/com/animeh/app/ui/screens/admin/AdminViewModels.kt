@@ -920,8 +920,8 @@ class AdminFontsViewModel @Inject constructor(
     private val repository: AdminRepository,
 ) : ViewModel() {
 
-    private val _state = MutableStateFlow<UiState<List<AdminFontDto>>>(UiState.Loading)
-    val state: StateFlow<UiState<List<AdminFontDto>>> = _state.asStateFlow()
+    private val _state = MutableStateFlow<UiState<AdminFontListDto>>(UiState.Loading)
+    val state: StateFlow<UiState<AdminFontListDto>> = _state.asStateFlow()
 
     init {
         load()
@@ -932,7 +932,15 @@ class AdminFontsViewModel @Inject constructor(
             _state.value = UiState.Loading
             _state.value = when (val result = repository.fonts()) {
                 is AppResult.Success ->
-                    if (result.data.isEmpty()) UiState.Empty else UiState.Success(result.data)
+                    // Empty only when there is nothing to show at all. A
+                    // library with no fonts but a list of families somebody
+                    // needs to upload is the opposite of nothing to do.
+                    if (result.data.fonts.isEmpty() && result.data.wanted.isEmpty()) {
+                        UiState.Empty
+                    } else {
+                        UiState.Success(result.data)
+                    }
+
                 is AppResult.Failure -> UiState.Error(result.error)
             }
         }

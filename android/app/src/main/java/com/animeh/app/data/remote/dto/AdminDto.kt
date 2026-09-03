@@ -285,7 +285,25 @@ data class AdminFontDto(
 )
 
 @Serializable
-data class AdminFontListDto(val fonts: List<AdminFontDto> = emptyList())
+data class AdminFontListDto(
+    val fonts: List<AdminFontDto> = emptyList(),
+    val wanted: List<WantedFontDto> = emptyList(),
+)
+
+/**
+ * A family a subtitle asked for and nothing could answer.
+ *
+ * Reported by whoever was watching, because that is the only moment anybody
+ * knows: the name lives inside the subtitle file. The server drops a family
+ * from this list as soon as an uploaded font answers it, so what is left is
+ * always work still to do.
+ */
+@Serializable
+data class WantedFontDto(
+    val family: String = "",
+    val count: Int = 0,
+    @SerialName("last_seen") val lastSeen: String = "",
+)
 
 // ---------------------------------------------------------------------------
 // TMDB

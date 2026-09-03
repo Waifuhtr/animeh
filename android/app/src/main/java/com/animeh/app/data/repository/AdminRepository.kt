@@ -206,8 +206,9 @@ class AdminRepository @Inject constructor(
     suspend fun clearLogs(): AppResult<Unit> =
         ApiErrorMapper.call({ Unit }) { api.clearLogs() }
 
-    suspend fun fonts(): AppResult<List<AdminFontDto>> =
-        ApiErrorMapper.call({ it.fonts }) { api.fonts() }
+    /** The library and what is still missing from it, in one call. */
+    suspend fun fonts(): AppResult<AdminFontListDto> =
+        ApiErrorMapper.call { api.fonts() }
 
     suspend fun deleteFont(id: Long): AppResult<Unit> =
         ApiErrorMapper.call({ Unit }) { api.deleteFont(id) }

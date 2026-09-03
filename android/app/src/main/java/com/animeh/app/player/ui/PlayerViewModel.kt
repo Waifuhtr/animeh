@@ -14,6 +14,7 @@ import com.animeh.app.player.PlaybackController
 import com.animeh.app.player.QualitySelection
 import com.animeh.app.social.WatchPartySession
 import dagger.hilt.android.lifecycle.HiltViewModel
+import android.os.SystemClock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -97,8 +98,20 @@ class PlayerViewModel @Inject constructor(
 
     private var roomJob: Job? = null
 
-    /** True while a remote state is being applied, so it is not echoed back. */
-    private var applyingRemote = false
+    private var publishJob: Job? = null
+
+    /**
+     * The last state a remote device asked for, and when.
+     *
+     * This is the echo guard, and it has to be a record rather than a flag.
+     * Applying a remote pause reaches ExoPlayer, whose own listener then
+     * changes the local state — asynchronously, after any `applying = false`
+     * would already have run. Comparing what is about to be published against
+     * what was just received catches the echo whenever it arrives, and lets a
+     * genuinely different action through immediately.
+     */
+    private var appliedPlaying: Boolean? = null
+    private var appliedAt = 0L
 
     /** What to run once the warning is answered. */
     private var pendingStart: (() -> Unit)? = null
@@ -116,32 +129,70 @@ class PlayerViewModel @Inject constructor(
     private fun followRoom() {
         roomJob?.cancel()
 
-        if (party.room.value == null) return
-
+        // Subscribed unconditionally rather than only when a room is already
+        // open: the flow follows the room, so a party started after playback
+        // began is picked up without anything having to re-subscribe.
         roomJob = viewModelScope.launch {
             party.playback().collect { remote ->
                 if (remote.by.isBlank() || remote.by == party.uid) return@collect
                 if (remote.episodeId != 0L && remote.episodeId != currentEpisodeId) return@collect
 
-                applyingRemote = true
+                appliedPlaying = remote.playing
+                appliedAt = SystemClock.elapsedRealtime()
+
+                // Play state first, position second. Somebody who pressed
+                // pause is waiting for the picture to stop, and seeking a
+                // network stream can take seconds to re-buffer — doing that
+                // first is what made a pause look several seconds late.
+                if (remote.playing != controller.state.value.phase.isPlaying) {
+                    if (remote.playing) controller.play() else controller.pause()
+                }
 
                 val drift = kotlin.math.abs(controller.state.value.positionMs - remote.positionMs)
                 if (drift > SYNC_TOLERANCE_MS) {
                     controller.seekTo(remote.positionMs)
                 }
-
-                if (remote.playing != controller.state.value.phase.isPlaying) {
-                    if (remote.playing) controller.play() else controller.pause()
-                }
-
-                applyingRemote = false
             }
         }
     }
 
-    /** Tell the room what this device just did. */
+    /**
+     * Tell the room whenever this device starts or stops playing.
+     *
+     * Driven by the controller's state rather than by the buttons, so a pause
+     * from the notification, a headset, an incoming call or the end of an
+     * episode reaches the room like any other — pressing pause on the screen
+     * was previously the only thing anyone else heard about.
+     */
+    private fun publishLocalPlayback() {
+        publishJob?.cancel()
+
+        publishJob = viewModelScope.launch {
+            var last: Boolean? = null
+
+            controller.state.collect { state ->
+                val playing = state.phase.isPlaying
+
+                if (playing == last) return@collect
+                last = playing
+
+                if (party.room.value == null) return@collect
+
+                // The echo of a remote change, arriving through ExoPlayer's
+                // own listener a moment after it was applied.
+                val echo = appliedPlaying == playing &&
+                    SystemClock.elapsedRealtime() - appliedAt < ECHO_WINDOW_MS
+
+                if (!echo) {
+                    party.publish(state.positionMs, playing, currentEpisodeId)
+                }
+            }
+        }
+    }
+
+    /** Tell the room where the playhead was just moved to. */
     fun broadcast() {
-        if (applyingRemote || party.room.value == null) return
+        if (party.room.value == null) return
 
         val state = controller.state.value
         party.publish(state.positionMs, state.phase.isPlaying, currentEpisodeId)
@@ -229,6 +280,7 @@ class PlayerViewModel @Inject constructor(
                     }
 
                     followRoom()
+                    publishLocalPlayback()
                 }
 
                 is AppResult.Failure -> {
@@ -284,5 +336,14 @@ class PlayerViewModel @Inject constructor(
          * seconds is under a sentence of dialogue.
          */
         const val SYNC_TOLERANCE_MS = 2_000L
+
+        /**
+         * How long a local change is treated as the echo of a remote one.
+         *
+         * Long enough to cover ExoPlayer telling us what we just told it,
+         * short enough that somebody pressing pause a moment after being
+         * paused is still heard.
+         */
+        const val ECHO_WINDOW_MS = 1_500L
     }
 }

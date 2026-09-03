@@ -82,6 +82,16 @@ export class Api {
   }
 
   /**
+   * Drop a family from the wanted list, or all of them when none is named.
+   *
+   * @param {string} [family]
+   */
+  forgetWantedFont(family = '') {
+    const query = family ? `?family=${encodeURIComponent(family)}` : ''
+    return this.request(`/fonts/wanted${query}`, { method: 'DELETE' })
+  }
+
+  /**
    * Look up one family. Resolves to null when the backend does not have it,
    * because "not registered" is an ordinary answer here, not a failure.
    * @param {string} family

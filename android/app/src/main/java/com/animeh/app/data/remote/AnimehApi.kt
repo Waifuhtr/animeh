@@ -98,6 +98,9 @@ interface UserApi {
     @POST("auth/logout")
     suspend fun logout(): Response<OkDto>
 
+    @POST("fonts/wanted")
+    suspend fun reportWantedFonts(@Body body: WantedFontsRequest): Response<WantedFontsResultDto>
+
     @POST("auth/password/change")
     suspend fun changePassword(@Body body: ChangePasswordRequest): Response<SessionDto>
 

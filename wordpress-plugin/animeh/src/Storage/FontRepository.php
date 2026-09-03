@@ -15,6 +15,7 @@ declare( strict_types = 1 );
 namespace Animeh\Storage;
 
 use Animeh\Support\FontFile;
+use Animeh\Support\FontMatch;
 use WP_Error;
 
 /**
@@ -241,11 +242,19 @@ final class FontRepository {
 	/**
 	 * Resolve a font by the family name a subtitle asked for.
 	 *
+	 * The exact key first, because that is the common case and it costs one
+	 * indexed row. Only when nothing matches exactly does this look at the
+	 * whole library — a font library is a handful of files, and a script that
+	 * asks for "Sans" while the file to hand is called "Sans Test" should not
+	 * be told the font is missing. {@see FontMatch} decides what counts as an
+	 * answer, and refuses to substitute a different family.
+	 *
 	 * @param string $family Family name.
 	 * @return array<string, mixed>|null
 	 */
 	public static function resolve( string $family ): ?array {
 		global $wpdb;
+
 		$row = $wpdb->get_row( // phpcs:ignore WordPress.DB.DirectDatabaseQuery
 			$wpdb->prepare(
 				'SELECT * FROM ' . Schema::fonts_table() . ' WHERE family_key = %s ORDER BY id ASC LIMIT 1', // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared
@@ -253,7 +262,14 @@ final class FontRepository {
 			),
 			ARRAY_A
 		);
-		return is_array( $row ) ? self::shape( $row ) : null;
+
+		if ( is_array( $row ) ) {
+			return self::shape( $row );
+		}
+
+		$best = FontMatch::best( $family, self::all() );
+
+		return null === $best ? null : $best;
 	}
 
 	/**

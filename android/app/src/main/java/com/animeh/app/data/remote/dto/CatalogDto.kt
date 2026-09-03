@@ -205,3 +205,16 @@ data class AnnouncementListDto(val announcements: List<AnnouncementDto> = emptyL
 
 @Serializable
 data class OkDto(@Serializable(with = LenientBoolean::class) val ok: Boolean = true)
+
+/**
+ * Families a script asked for that nothing could answer.
+ *
+ * Sent so the operator has a list to work from: the name of a font lives
+ * inside a subtitle file, and without this the only symptom is that the
+ * subtitles look wrong.
+ */
+@Serializable
+data class WantedFontsRequest(val families: List<String>)
+
+@Serializable
+data class WantedFontsResultDto(val added: Int = 0)

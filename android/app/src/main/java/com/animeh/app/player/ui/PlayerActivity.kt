@@ -150,14 +150,12 @@ fun PlayerScreen(
 
         PlayerControls(
             state = playerState,
-            // Every local control reports itself to the room afterwards. The
-            // view model ignores the report when it is the one that just
-            // applied a remote change, which is what stops two devices
-            // pausing each other in a loop.
-            onPlayPause = {
-                viewModel.controller.togglePlayPause()
-                viewModel.broadcast()
-            },
+            // Play and pause are not reported from here: the view model
+            // watches the player's own state, so a pause reaches the room
+            // whatever caused it — this button, the notification, a headset,
+            // or an incoming call. Seeks are reported here because only the
+            // caller knows the playhead moved deliberately.
+            onPlayPause = viewModel.controller::togglePlayPause,
             onSeek = { position ->
                 viewModel.controller.seekTo(position)
                 viewModel.broadcast()

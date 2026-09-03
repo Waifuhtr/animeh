@@ -110,6 +110,15 @@ fun SubtitleLayer(
         val sideMargin = with(density) { SIDE_MARGIN_DP.dp.toPx() }
         val canvas = drawContext.canvas.nativeCanvas
 
+        // The vertical bands already taken by a cue in this frame.
+        //
+        // Two cues on screen at once — a line of dialogue and a sign, or two
+        // people speaking — are placed at the same height by the parser more
+        // often than not. Drawn in order they land on top of each other,
+        // which reads as one of them having vanished. This is what the second
+        // one is moved out of.
+        val occupied = mutableListOf<Pair<Float, Float>>()
+
         cues.forEach { cue ->
             val text = cue.text?.toString().orEmpty()
             if (text.isBlank()) return@forEach
@@ -125,9 +134,21 @@ fun SubtitleLayer(
                 else -> defaultSize
             }
 
-            paint.textAlign = when (cue.textAlignment) {
-                android.text.Layout.Alignment.ALIGN_NORMAL -> Paint.Align.LEFT
-                android.text.Layout.Alignment.ALIGN_OPPOSITE -> Paint.Align.RIGHT
+            // Which edge of the text `position` marks decides how it is
+            // aligned, and the anchor is the authority on that — the text
+            // alignment is only a fallback for a cue that was never
+            // positioned. Reading the two the other way round centred text on
+            // a point meant to be its left edge, which for a sign near the
+            // side of the frame put most of it off screen: subtitles present
+            // in most scenes and gone in a few.
+            val positioned = cue.position != Cue.DIMEN_UNSET
+
+            paint.textAlign = when {
+                positioned && cue.positionAnchor == Cue.ANCHOR_TYPE_START -> Paint.Align.LEFT
+                positioned && cue.positionAnchor == Cue.ANCHOR_TYPE_END -> Paint.Align.RIGHT
+                positioned && cue.positionAnchor == Cue.ANCHOR_TYPE_MIDDLE -> Paint.Align.CENTER
+                cue.textAlignment == android.text.Layout.Alignment.ALIGN_NORMAL -> Paint.Align.LEFT
+                cue.textAlignment == android.text.Layout.Alignment.ALIGN_OPPOSITE -> Paint.Align.RIGHT
                 else -> Paint.Align.CENTER
             }
 
@@ -167,18 +188,56 @@ fun SubtitleLayer(
             // Whatever the decoder said, the text stays on screen. A cue that
             // would fall outside is clamped rather than clipped, because half
             // a sentence is worse than a sentence in slightly the wrong place.
-            val top = rawTop.coerceIn(
-                0f,
-                (heightPx - blockHeight).coerceAtLeast(0f),
-            )
+            val floor = (heightPx - blockHeight).coerceAtLeast(0f)
+
+            var top = rawTop.coerceIn(0f, floor)
+
+            // Move up out of anything already drawn this frame.
+            var attempts = 0
+            while (attempts++ < MAX_STACKING) {
+                val clash = occupied.firstOrNull { (start, end) ->
+                    top < end && start < top + blockHeight
+                } ?: break
+
+                top = clash.first - blockHeight - lineHeight * STACK_GAP_RATIO
+            }
+
+            top = top.coerceIn(0f, floor)
+            occupied += top to (top + blockHeight)
 
             val firstBaseline = top + ascent
 
-            val x = when {
-                cue.position != Cue.DIMEN_UNSET -> widthPx * cue.position
+            val rawX = when {
+                positioned -> widthPx * cue.position
                 paint.textAlign == Paint.Align.LEFT -> sideMargin
                 paint.textAlign == Paint.Align.RIGHT -> widthPx - sideMargin
                 else -> widthPx / 2f
+            }
+
+            // And horizontally, for the same reason the vertical placement is
+            // clamped: a script positions against its own declared resolution
+            // and a phone is not that shape, so a line placed near an edge can
+            // end up almost entirely outside the frame.
+            val widest = lines.maxOf { paint.measureText(it) }
+
+            val leftLimit = when (paint.textAlign) {
+                Paint.Align.LEFT -> sideMargin
+                Paint.Align.RIGHT -> sideMargin + widest
+                else -> sideMargin + widest / 2f
+            }
+
+            val rightLimit = when (paint.textAlign) {
+                Paint.Align.LEFT -> widthPx - sideMargin - widest
+                Paint.Align.RIGHT -> widthPx - sideMargin
+                else -> widthPx - sideMargin - widest / 2f
+            }
+
+            // A line wider than the frame inverts the two limits; centring it
+            // is the least bad answer and beats an exception.
+            val x = if (leftLimit > rightLimit) {
+                widthPx / 2f
+            } else {
+                rawX.coerceIn(leftLimit, rightLimit)
             }
 
             lines.forEachIndexed { index, line ->
@@ -205,6 +264,12 @@ private const val DEFAULT_SIZE_FRACTION = 0.052f
 private const val BOTTOM_MARGIN_DP = 44f
 private const val SIDE_MARGIN_DP = 24f
 private const val OUTLINE_RATIO = 0.10f
+
+/** How many times a cue may be pushed up before it is left where it is. */
+private const val MAX_STACKING = 8
+
+/** The gap between two stacked cues, as a fraction of a line. */
+private const val STACK_GAP_RATIO = 0.25f
 
 private val OutlineColor = Color.Black.copy(alpha = 0.9f).toArgb()
 private val FillColor = Color.White.toArgb()

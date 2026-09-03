@@ -5,6 +5,8 @@ import android.graphics.Typeface
 import android.util.Log
 import com.animeh.app.data.local.dao.FontDao
 import com.animeh.app.data.local.entity.FontEntity
+import com.animeh.app.data.remote.UserApi
+import com.animeh.app.data.remote.dto.WantedFontsRequest
 import com.animeh.app.domain.SubtitleFont
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -42,6 +44,7 @@ class FontResolver @Inject constructor(
     // has no binding in the singleton component at all.
     @ApplicationContext private val context: Context,
     private val fontDao: FontDao,
+    private val userApi: UserApi,
     @Named("base_client") private val client: OkHttpClient,
 ) {
 
@@ -71,10 +74,8 @@ class FontResolver @Inject constructor(
         val typefaces = mutableMapOf<String, Typeface>()
         val missing = mutableListOf<String>()
 
-        // Indexed by normalised key: a script asking for "DejaVu Sans" and a
-        // registry holding "dejavu sans" are the same font, and matching on the
-        // raw string is why font lookups usually fail.
-        val offeredByKey = offered.associateBy { AssParser.key(it.family) }
+        // Everything already on this device, for the lenient pass below.
+        val cachedFonts = fontDao.all()
 
         for (family in required) {
             val key = AssParser.key(family)
@@ -89,7 +90,14 @@ class FontResolver @Inject constructor(
                 continue
             }
 
+            // Exact first, then by family. A script asking for "Sans" and a
+            // file whose name table says "Sans Test" are the same typeface as
+            // far as anyone watching is concerned, and "Arial Bold" is a face
+            // inside Arial rather than a font somebody has to find separately.
+            // [FontMatch] is what refuses to answer with a *different* family.
             val cached = fontDao.byFamily(key)
+                ?: FontMatch.best(family, cachedFonts) { it.family }
+
             if (cached != null && File(cached.localPath).exists()) {
                 val typeface = load(cached.localPath)
                 if (typeface != null) {
@@ -99,7 +107,7 @@ class FontResolver @Inject constructor(
                 }
             }
 
-            val remote = offeredByKey[key]
+            val remote = FontMatch.best(family, offered) { it.family }
             if (remote != null && remote.url.isNotBlank()) {
                 val file = download(remote.url, key)
                 if (file != null) {
@@ -125,7 +133,32 @@ class FontResolver @Inject constructor(
             missing += family
         }
 
+        report(missing)
+
         Resolution(typefaces, missing)
+    }
+
+    /**
+     * Tell the server which families nobody could answer.
+     *
+     * §15's loop needs somebody to be told, and this is the only moment anyone
+     * knows: the family name lives inside a subtitle file, and an operator who
+     * is not told has no symptom to work from beyond "the subtitles look
+     * wrong". The plugin's Fonts screen lists what arrives here, and drops a
+     * family again as soon as a font that answers it is uploaded.
+     *
+     * Failure is silent by design. This is a courtesy to the operator, not
+     * part of playing an episode, and an offline phone must not turn a missing
+     * font into a visible error.
+     */
+    private suspend fun report(missing: List<String>) {
+        if (missing.isEmpty()) return
+
+        try {
+            userApi.reportWantedFonts(WantedFontsRequest(missing.distinct().take(MAX_REPORTED)))
+        } catch (error: Exception) {
+            Log.w(TAG, "missing fonts could not be reported", error)
+        }
     }
 
     /** A typeface for one family, or null when it was never resolved. */
@@ -198,5 +231,8 @@ class FontResolver @Inject constructor(
 
     private companion object {
         const val TAG = "FontResolver"
+
+        /** A script naming more families than this is not asking in earnest. */
+        const val MAX_REPORTED = 50
     }
 }

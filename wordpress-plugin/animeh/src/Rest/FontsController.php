@@ -10,6 +10,7 @@ declare( strict_types = 1 );
 namespace Animeh\Rest;
 
 use Animeh\Storage\FontRepository;
+use Animeh\Storage\WantedFonts;
 use Animeh\Support\FontFile;
 use WP_Error;
 use WP_REST_Request;
@@ -67,6 +68,44 @@ final class FontsController {
 
 		register_rest_route(
 			self::NAMESPACE,
+			'/fonts/wanted',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'wanted' ),
+					'permission_callback' => array( Permissions::class, 'require_manage' ),
+				),
+				array(
+					// Reported by whoever is watching, not by an administrator:
+					// the app discovers a missing font while playing an episode,
+					// and that is the only moment anybody knows about it.
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'report_wanted' ),
+					'permission_callback' => static fn(): bool => is_user_logged_in(),
+					'args'                => array(
+						'families' => array(
+							'required' => true,
+							'type'     => 'array',
+						),
+					),
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'forget_wanted' ),
+					'permission_callback' => array( Permissions::class, 'require_manage' ),
+					'args'                => array(
+						'family' => array(
+							'type'              => 'string',
+							'default'           => '',
+							'sanitize_callback' => 'sanitize_text_field',
+						),
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			self::NAMESPACE,
 			'/fonts/(?P<id>\d+)',
 			array(
 				'methods'             => WP_REST_Server::DELETABLE,
@@ -84,10 +123,56 @@ final class FontsController {
 	}
 
 	/**
-	 * List registered fonts.
+	 * List registered fonts, and the ones subtitles have asked for.
+	 *
+	 * Both in one response because they are one screen: what is here, and what
+	 * is still needed.
 	 */
 	public function index(): WP_REST_Response {
-		return new WP_REST_Response( array( 'fonts' => FontRepository::all() ) );
+		return new WP_REST_Response(
+			array(
+				'fonts'  => FontRepository::all(),
+				'wanted' => WantedFonts::all(),
+			)
+		);
+	}
+
+	/**
+	 * The families subtitles have asked for and not found.
+	 */
+	public function wanted(): WP_REST_Response {
+		return new WP_REST_Response( array( 'wanted' => WantedFonts::all() ) );
+	}
+
+	/**
+	 * Record families a player could not resolve.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function report_wanted( WP_REST_Request $request ): WP_REST_Response {
+		$families = array();
+
+		// Bounded here rather than trusted: this is the one font route a
+		// non-administrator can reach, and a client is not a reason to accept
+		// an unbounded list.
+		foreach ( array_slice( (array) $request->get_param( 'families' ), 0, 50 ) as $entry ) {
+			if ( is_string( $entry ) ) {
+				$families[] = sanitize_text_field( $entry );
+			}
+		}
+
+		return new WP_REST_Response( array( 'added' => WantedFonts::report( $families ) ) );
+	}
+
+	/**
+	 * Drop one wanted family, or all of them.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function forget_wanted( WP_REST_Request $request ): WP_REST_Response {
+		WantedFonts::forget( (string) $request->get_param( 'family' ) );
+
+		return new WP_REST_Response( array( 'wanted' => WantedFonts::all() ) );
 	}
 
 	/**

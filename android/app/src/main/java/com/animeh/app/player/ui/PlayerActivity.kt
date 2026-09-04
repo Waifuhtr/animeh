@@ -15,14 +15,17 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.animeh.app.core.AppError
 import com.animeh.app.core.UiState
 import com.animeh.app.ui.components.AdultWarningDialog
 import com.animeh.app.player.ass.SubtitleLayer
@@ -46,6 +49,9 @@ import dagger.hilt.android.AndroidEntryPoint
 @AndroidEntryPoint
 class PlayerActivity : ComponentActivity() {
 
+    /** The episode this screen has been asked to play, most recent last. */
+    private val request = mutableStateOf(PlayRequest())
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -64,17 +70,46 @@ class PlayerActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
         }
 
-        val episodeId = intent.getLongExtra(EXTRA_EPISODE_ID, 0L)
+        request.value = requestFrom(intent)
 
         setContent {
             AnimehTheme {
                 PlayerScreen(
-                    episodeId = episodeId,
+                    request = request.value,
                     onBack = { finish() },
                 )
             }
         }
     }
+
+    /**
+     * A second "play this" arriving at the activity that is already open.
+     *
+     * This screen is `singleTask`, which is what stops two players existing at
+     * once — but it also means a second launch does not run [onCreate]. It
+     * arrives here instead, and an activity that ignores it keeps showing
+     * whatever it was showing: the previous episode, or, if the engine was
+     * torn down while it was in the background, nothing at all. Every episode
+     * asked for has to reach the composition, which is what [request] is for.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+
+        // So `getIntent()` and anything reading it later agree with what is on
+        // screen; Android does not replace it on its own.
+        setIntent(intent)
+
+        request.value = requestFrom(intent)
+    }
+
+    private fun requestFrom(intent: Intent) = PlayRequest(
+        episodeId = intent.getLongExtra(EXTRA_EPISODE_ID, 0L),
+        // Two taps on the same episode are two requests. Without something
+        // that differs, the second is indistinguishable from the first and
+        // the screen would ignore it — which is the case that matters, since
+        // it is how somebody re-opens a player that went blank.
+        nonce = request.value.nonce + 1,
+    )
 
     override fun onStop() {
         super.onStop()
@@ -89,9 +124,17 @@ class PlayerActivity : ComponentActivity() {
     }
 }
 
+/**
+ * One request to play an episode.
+ *
+ * [nonce] is what makes a repeat of the same episode a new request rather than
+ * the same one, so re-opening the player re-opens the episode.
+ */
+data class PlayRequest(val episodeId: Long = 0L, val nonce: Int = 0)
+
 @Composable
 fun PlayerScreen(
-    episodeId: Long,
+    request: PlayRequest,
     onBack: () -> Unit,
     viewModel: PlayerViewModel = hiltViewModel(),
 ) {
@@ -104,8 +147,20 @@ fun PlayerScreen(
 
     var settingsOpen by remember { mutableStateOf(false) }
 
-    LaunchedEffect(episodeId) {
-        if (episodeId > 0 && loadState is UiState.Loading) viewModel.open(episodeId)
+    // Keyed on the whole request, not just the episode: asking for the same
+    // episode again is a new request, and it is the one that has to work —
+    // it is how a player that came back empty gets told to load again.
+    LaunchedEffect(request) {
+        viewModel.open(request.episodeId)
+    }
+
+    // The engine belongs to whichever screen is in front. This one can be
+    // brought back to the front without being created again, so it re-takes
+    // the engine — and reloads the episode when it finds it empty — every time
+    // it starts, not only the first time.
+    LifecycleStartEffect(Unit) {
+        viewModel.restore()
+        onStopOrDispose { }
     }
 
     // The last gate before the media loads. Declining leaves nothing playing,
@@ -156,6 +211,14 @@ fun PlayerScreen(
 
         PlayerControls(
             state = playerState,
+            // Neither of these is something the phase can say: before the
+            // payload arrives there is nothing loaded, and `Idle` draws a
+            // black screen with a play button whether the fetch is still
+            // running, has failed, or was never made.
+            loading = loadState is UiState.Loading,
+            loadError = (loadState as? UiState.Error)?.error?.let { error ->
+                if (error is AppError.Message) error.text else stringResource(error.messageRes)
+            },
             // Play and pause are not reported from here: the view model
             // watches the player's own state, so a pause reaches the room
             // whatever caused it — this button, the notification, a headset,

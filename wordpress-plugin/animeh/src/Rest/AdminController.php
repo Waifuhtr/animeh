@@ -630,17 +630,10 @@ final class AdminController {
 		$episodes = $repo->episodes( $work_id, 0, true );
 
 		// The admin list shows how many sources each episode has, because "no
-		// video attached" is the thing an operator is looking for.
-		$items = array();
-		foreach ( $episodes as $episode ) {
-			$item                    = CatalogController::episode_payload( $episode );
-			$sources                 = $repo->sources( (int) $episode['id'] );
-			$item['source_counts']   = array(
-				'video'    => count( array_filter( $sources, static fn( array $s ): bool => 'video' === $s['kind'] ) ),
-				'subtitle' => count( array_filter( $sources, static fn( array $s ): bool => 'subtitle' === $s['kind'] ) ),
-			);
-			$items[]                 = $item;
-		}
+		// video attached" is the thing an operator is looking for. The listing
+		// query counts them, so this is one query for the page rather than one
+		// more for every episode in it.
+		$items = array_map( array( CatalogController::class, 'episode_payload' ), $episodes );
 
 		return new WP_REST_Response( array( 'items' => $items, 'total' => count( $items ) ) );
 	}

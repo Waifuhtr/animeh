@@ -188,7 +188,12 @@ fun RoomScreen(
                             onClick = { onPlay(episode.id) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
-                            Text(stringResource(R.string.detail_play))
+                            // Which episode, not just "İzle". A room is opened
+                            // on one episode and lived in for an evening, and
+                            // the one thing everybody in it needs to agree on
+                            // is which episode that is. The series is already
+                            // in the bar above.
+                            Text(stringResource(R.string.room_play_episode, episode.number))
                         }
                     }
                 }

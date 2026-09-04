@@ -49,6 +49,17 @@ import kotlin.math.roundToLong
 @Composable
 fun PlayerControls(
     state: PlayerUiState,
+    /**
+     * Whether the episode payload is still being fetched.
+     *
+     * The phase cannot say this. Until the payload arrives there is nothing to
+     * hand the engine, so the phase is [PlaybackPhase.Idle] — which draws a
+     * play button over a black screen and a duration of zero, and looks
+     * exactly like a player that has decided to do nothing.
+     */
+    loading: Boolean = false,
+    /** Why the episode could not be fetched, if it could not. */
+    loadError: String? = null,
     onPlayPause: () -> Unit,
     onSeek: (Long) -> Unit,
     onSeekBy: (Long) -> Unit,
@@ -135,6 +146,7 @@ fun PlayerControls(
 
                 CenterControls(
                     state = state,
+                    loading = loading,
                     onPlayPause = onPlayPause,
                     onSeekBy = onSeekBy,
                     onNext = onNext,
@@ -172,36 +184,61 @@ fun PlayerControls(
             )
         }
 
-        when (val phase = state.phase) {
-            // Buffering and preparing are drawn by the centre control itself,
-            // which swaps to a spinner; a second one over the top was the
-            // overlap. Only states the controls cannot express land here.
-            is PlaybackPhase.Buffering, is PlaybackPhase.Preparing ->
-                if (!state.controlsVisible) {
-                    LoadingIndicator(
-                        label = stringResource(R.string.player_buffering),
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-
-            is PlaybackPhase.Reconnecting ->
-                if (!state.controlsVisible) {
-                    LoadingIndicator(
-                        label = stringResource(R.string.player_reconnecting) + " (${phase.attempt})",
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-
-            is PlaybackPhase.Failed ->
+        // The payload comes before the phase. Until it has arrived there is
+        // nothing for the engine to be doing, so the phase is `Idle` — and an
+        // `Idle` overlay draws nothing. A fetch that failed therefore looked
+        // identical to one that had never been asked for: a black screen, a
+        // play button and 0:00, with no way to tell which.
+        when {
+            loadError != null ->
                 PlayerErrorPanel(
-                    message = stringResource(phase.error.messageRes),
-                    canRetry = phase.canRetry,
+                    message = loadError,
+                    canRetry = true,
                     onRetry = onRetry,
                     onBack = onBack,
                     modifier = Modifier.align(Alignment.Center),
                 )
 
-            else -> Unit
+            loading ->
+                if (!state.controlsVisible) {
+                    LoadingIndicator(
+                        label = stringResource(R.string.player_opening),
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
+
+            else -> when (val phase = state.phase) {
+                // Buffering and preparing are drawn by the centre control
+                // itself, which swaps to a spinner; a second one over the top
+                // was the overlap. Only states the controls cannot express
+                // land here.
+                is PlaybackPhase.Buffering, is PlaybackPhase.Preparing ->
+                    if (!state.controlsVisible) {
+                        LoadingIndicator(
+                            label = stringResource(R.string.player_buffering),
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+
+                is PlaybackPhase.Reconnecting ->
+                    if (!state.controlsVisible) {
+                        LoadingIndicator(
+                            label = stringResource(R.string.player_reconnecting) + " (${phase.attempt})",
+                            modifier = Modifier.align(Alignment.Center),
+                        )
+                    }
+
+                is PlaybackPhase.Failed ->
+                    PlayerErrorPanel(
+                        message = stringResource(phase.error.messageRes),
+                        canRetry = phase.canRetry,
+                        onRetry = onRetry,
+                        onBack = onBack,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+
+                else -> Unit
+            }
         }
     }
 }
@@ -256,6 +293,7 @@ private fun TopBar(
 @Composable
 private fun CenterControls(
     state: PlayerUiState,
+    loading: Boolean,
     onPlayPause: () -> Unit,
     onSeekBy: (Long) -> Unit,
     onNext: () -> Unit,
@@ -292,7 +330,8 @@ private fun CenterControls(
         // While the episode is being fetched the spinner stands in the button's
         // place rather than on top of it: there is nothing to play yet, so
         // offering the control and covering it at once was the worst of both.
-        val busy = state.phase is PlaybackPhase.Preparing ||
+        val busy = loading ||
+            state.phase is PlaybackPhase.Preparing ||
             state.phase is PlaybackPhase.Buffering ||
             state.phase is PlaybackPhase.Reconnecting
 

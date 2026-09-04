@@ -1,9 +1,10 @@
 package com.animeh.app.player.ui
 
-import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
+import com.animeh.app.core.ClientLog
 import com.animeh.app.core.UiState
 import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.repository.CatalogRepository
@@ -15,6 +16,7 @@ import com.animeh.app.player.QualitySelection
 import com.animeh.app.social.WatchPartySession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import android.os.SystemClock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,7 +40,6 @@ class PlayerViewModel @Inject constructor(
     private val settingsStore: SettingsStore,
     val controller: PlaybackController,
     private val party: WatchPartySession,
-    savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val _loadState = MutableStateFlow<UiState<Playback>>(UiState.Loading)
@@ -50,7 +51,14 @@ class PlayerViewModel @Inject constructor(
     val assLines = controller.assLines
     val script = controller.script
 
-    private var currentEpisodeId: Long = savedStateHandle["episodeId"] ?: 0L
+    /**
+     * The episode this player is on.
+     *
+     * Set by [open] rather than read from the activity's arguments: the screen
+     * can be handed a new episode without being created again, so the screen
+     * is the one place that says which episode is playing.
+     */
+    private var currentEpisodeId: Long = 0L
     private var currentWorkId: Long = 0L
 
     init {
@@ -76,11 +84,8 @@ class PlayerViewModel @Inject constructor(
                 }
             }
         }
-
-        if (currentEpisodeId > 0) open(currentEpisodeId)
     }
 
-    /** Load and start an episode. */
     /**
      * The work whose adult-content warning is waiting to be answered.
      *
@@ -101,6 +106,16 @@ class PlayerViewModel @Inject constructor(
     private var roomJob: Job? = null
 
     private var publishJob: Job? = null
+
+    /**
+     * The fetch of the current episode's payload.
+     *
+     * Held so a second open cancels the first rather than racing it: the
+     * screen can be told to open an episode again — a new intent, a retry, a
+     * resume — and two payloads arriving in either order would hand the engine
+     * two sources.
+     */
+    private var loadJob: Job? = null
 
     /**
      * The last state a remote device asked for, and when.
@@ -199,13 +214,23 @@ class PlayerViewModel @Inject constructor(
 
                 if (playing == last) return@collect
 
-                // The first settled state is where this player arrived, not a
-                // change anybody made. Publishing it would broadcast a pause
-                // nobody asked for.
                 val first = last == null
                 last = playing
 
-                if (first || party.room.value == null) return@collect
+                if (party.room.value == null) return@collect
+
+                // The first settled state is where this player arrived, not a
+                // change anybody made, so it is not announced — with one
+                // exception. Whoever opened the room sets where the room
+                // starts, and without that a device joining later has nothing
+                // to sync to and sits at its own resume position.
+                //
+                // Only the playing half of it, and only from the host. A first
+                // state published as a pause is what told everybody else to
+                // stop the moment somebody opened an episode; a guest's
+                // arrival published at all would drag the room back to
+                // wherever that one phone happened to resume from.
+                if (first && !(playing && party.isHost)) return@collect
 
                 // The echo of a remote change, arriving through ExoPlayer's
                 // own listener a moment after it was applied.
@@ -255,11 +280,47 @@ class PlayerViewModel @Inject constructor(
         pendingStart = null
     }
 
+    /**
+     * Re-take the engine, and reload if it was taken down while away.
+     *
+     * The engine is one object shared by every player screen, and the screen
+     * that closes tears it down. A screen that is only *stopped* — the player
+     * activity is `singleTask`, so it can be brought back to the front rather
+     * than created again — comes back to a composition that is still alive
+     * over an engine that is not: nothing attached, nothing loaded, and no
+     * `onCreate` to start any of it again. That is a black screen showing
+     * 0:00 with a play button that does nothing.
+     */
+    fun restore() {
+        controller.attach(viewModelScope, this)
+
+        if (currentEpisodeId <= 0) return
+
+        // Already on its way, or waiting on the viewer to answer the warning.
+        if (loadJob?.isActive == true || _adultGate.value != null) return
+
+        // `episode` is the payload the engine last accepted, so this asks
+        // "does the engine still hold this episode" rather than "did the fetch
+        // once succeed" — which stays true long after a release.
+        if (controller.state.value.episode == null) open(currentEpisodeId)
+    }
+
     fun open(episodeId: Long) {
         currentEpisodeId = episodeId
         _loadState.value = UiState.Loading
 
-        viewModelScope.launch {
+        if (episodeId <= 0) {
+            // Nothing to fetch and nothing to play. Said out loud, because the
+            // alternative is a screen that waits forever for a request that
+            // was never made.
+            _loadState.value = UiState.Error(AppError.Video("bölüm kimliği yok"))
+            ClientLog.record("Oynatıcı açılamadı", "Bölüm kimliği geçersiz: $episodeId")
+            return
+        }
+
+        loadJob?.cancel()
+
+        loadJob = viewModelScope.launch {
             val settings = settingsStore.settings.first()
 
             when (val result = catalogRepository.playback(episodeId)) {
@@ -323,6 +384,17 @@ class PlayerViewModel @Inject constructor(
                     _loadState.value = UiState.Error(result.error)
                 }
             }
+        }
+
+        // A payload fetch that threw used to end the coroutine and nothing
+        // else: the state stayed `Loading`, the engine stayed empty, and the
+        // screen stayed black for ever. Whatever went wrong, the screen says
+        // so and offers the retry.
+        loadJob?.invokeOnCompletion { cause ->
+            if (cause == null || cause is CancellationException) return@invokeOnCompletion
+
+            ClientLog.record("Bölüm açılamadı ($episodeId)", cause.stackTraceToString())
+            _loadState.value = UiState.Error(AppError.Video(cause.message ?: cause::class.java.simpleName))
         }
     }
 

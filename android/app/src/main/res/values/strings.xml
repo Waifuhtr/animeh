@@ -148,6 +148,7 @@
     <string name="player_play">Oynat</string>
     <string name="player_pause">Duraklat</string>
     <string name="player_buffering">Yükleniyor…</string>
+    <string name="player_opening">Bölüm açılıyor…</string>
     <string name="player_reconnecting">Yeniden bağlanılıyor…</string>
     <string name="player_up_next">Sırada</string>
     <string name="player_settings">Oynatıcı ayarları</string>
@@ -327,6 +328,7 @@
     <string name="rooms_join_explainer">Odayı açan kişinin verdiği kodu yaz. Kod, davet bağlantısının sonundaki kısımdır.</string>
     <string name="rooms_refresh">Yenile</string>
     <string name="rooms_code">Kod: %1$s</string>
+    <string name="room_play_episode">%1$d. Bölümü izle</string>
     <string name="room_invited_partial">%1$d kişiye davet gönderildi, %2$d kişiye bildirim ulaştı.</string>
     <string name="room_invited_silent">%1$d kişi davet edildi ama bildirim gönderilemedi. Sunucuda Firebase servis hesabı ayarlı mı?</string>
 

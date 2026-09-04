@@ -543,7 +543,7 @@ final class CatalogController {
 	 * @return array<string, mixed>
 	 */
 	public static function episode_payload( array $episode ): array {
-		return array(
+		$payload = array(
 			'id'               => (int) $episode['id'],
 			'work_id'          => (int) $episode['work_id'],
 			'season_number'    => (int) $episode['season_number'],
@@ -559,6 +559,19 @@ final class CatalogController {
 			'published'        => (bool) $episode['published'],
 			'published_at'     => (string) $episode['published_at'],
 		);
+
+		// Only when the query asked for them. An episode row on its own does
+		// not know what is attached to it, and reporting zero for a query that
+		// never counted would tell the app an episode has no video when it
+		// simply was not asked.
+		if ( isset( $episode['video_sources'] ) || isset( $episode['subtitle_sources'] ) ) {
+			$payload['source_counts'] = array(
+				'video'    => (int) ( $episode['video_sources'] ?? 0 ),
+				'subtitle' => (int) ( $episode['subtitle_sources'] ?? 0 ),
+			);
+		}
+
+		return $payload;
 	}
 
 	/**

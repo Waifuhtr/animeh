@@ -440,16 +440,26 @@ final class CatalogRepository {
 			$where[] = 'published = 1';
 		}
 
-		$table  = CatalogSchema::episodes();
-		$works  = CatalogSchema::works();
-		$clause = 'WHERE ' . implode( ' AND ', array_map( static fn( string $c ): string => 'e.' . $c, $where ) );
+		$table   = CatalogSchema::episodes();
+		$works   = CatalogSchema::works();
+		$sources = CatalogSchema::sources();
+		$clause  = 'WHERE ' . implode( ' AND ', array_map( static fn( string $c ): string => 'e.' . $c, $where ) );
 
 		// The work's poster comes along so an episode with no thumbnail of its
 		// own still has something to draw. Most imports carry no per-episode
 		// image, and a list of empty grey boxes is what that looked like.
+		//
+		// The source counts come along for a sharper reason: an imported
+		// series has a row for every episode the metadata knows about, and
+		// only some of them have a file behind them. Without the counts the
+		// app cannot tell those apart, and "play the next episode" happily
+		// picks one that cannot be played — which the player can only report
+		// after asking for it. Both are indexed lookups on `episode_kind`.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-				"SELECT e.*, w.poster_url AS work_poster
+				"SELECT e.*, w.poster_url AS work_poster,
+				        (SELECT COUNT(*) FROM {$sources} sv WHERE sv.episode_id = e.id AND sv.kind = 'video') AS video_sources,
+				        (SELECT COUNT(*) FROM {$sources} ss WHERE ss.episode_id = e.id AND ss.kind = 'subtitle') AS subtitle_sources
 				 FROM {$table} e
 				 LEFT JOIN {$works} w ON w.id = e.work_id
 				 {$clause}

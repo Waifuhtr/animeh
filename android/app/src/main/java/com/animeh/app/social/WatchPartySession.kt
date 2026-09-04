@@ -59,6 +59,15 @@ class WatchPartySession @Inject constructor(
     /** Who this device is, in Firebase's terms. */
     val uid: String get() = sessionStore.state.value.user?.id?.toString().orEmpty()
 
+    /**
+     * Whether this device opened the room it is in.
+     *
+     * The room has no host in the sense of "only they may press pause" —
+     * everyone holds the remote. It matters for one thing: whose playhead the
+     * room starts from.
+     */
+    val isHost: Boolean get() = _room.value?.host?.id?.toString() == uid
+
     private val displayName: String
         get() = sessionStore.state.value.user?.let { it.displayName.ifBlank { it.username } }.orEmpty()
 

@@ -302,8 +302,18 @@ class DetailViewModel @Inject constructor(
     fun nextEpisodeToPlay(): Episode? {
         val episodes = (_state.value.episodes as? UiState.Success)?.data ?: return null
 
-        return episodes.firstOrNull { it.progress?.completed != true }
-            ?: episodes.firstOrNull()
+        // An imported series has a row for every episode its metadata knows
+        // about, and only some of them have a file behind them. Picking one of
+        // the others opens a player with nothing to play — and, when it is a
+        // watch party being opened, puts everybody in the room in front of it.
+        //
+        // So: unwatched is the preference, playable is the rule. The fallback
+        // covers a list that reports no sources at all — an older server, or
+        // the offline copy — where the old behaviour is still the best guess.
+        val candidates = episodes.filter { it.videoSourceCount > 0 }.ifEmpty { episodes }
+
+        return candidates.firstOrNull { it.progress?.completed != true }
+            ?: candidates.firstOrNull()
     }
 
     private fun loadEpisodes(season: Int) {

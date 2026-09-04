@@ -55,6 +55,16 @@ sealed interface PlaybackPhase {
     val isPlaying: Boolean get() = this is Playing
     val isLoading: Boolean get() = this is Preparing || this is Buffering || this is Reconnecting
     val isTerminal: Boolean get() = this is Completed || this is Failed
+
+    /**
+     * Whether the player has settled into a state somebody chose.
+     *
+     * The distinction a watch party lives or dies on. [isPlaying] is false
+     * while preparing and while buffering, but neither of those is a pause —
+     * nobody pressed anything, and telling the room otherwise stops everyone
+     * else's episode for a hiccup that was going to end on its own.
+     */
+    val isSettled: Boolean get() = this is Playing || this is Paused
 }
 
 /** Which rendition the viewer asked for. */

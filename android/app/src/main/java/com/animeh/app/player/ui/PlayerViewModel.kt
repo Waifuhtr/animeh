@@ -21,6 +21,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 /**
@@ -145,8 +146,24 @@ class PlayerViewModel @Inject constructor(
                 // pause is waiting for the picture to stop, and seeking a
                 // network stream can take seconds to re-buffer — doing that
                 // first is what made a pause look several seconds late.
-                if (remote.playing != controller.state.value.phase.isPlaying) {
-                    if (remote.playing) controller.play() else controller.pause()
+                //
+                // But only once this player has started. Pausing one that is
+                // still opening leaves a screen with no picture, no spinner
+                // and nothing to press: `Paused` is not a loading state, so
+                // the UI stops saying anything is happening. That is what
+                // opening an episode inside a room looked like.
+                if (controller.state.value.phase.isSettled) {
+                    applyRemotePlayback(remote.playing)
+                } else {
+                    // Held rather than dropped, so a pause pressed while this
+                    // device was still loading still lands.
+                    launch {
+                        val settled = withTimeoutOrNull(SETTLE_TIMEOUT_MS) {
+                            controller.state.first { it.phase.isSettled }
+                        }
+
+                        if (settled != null) applyRemotePlayback(remote.playing)
+                    }
                 }
 
                 val drift = kotlin.math.abs(controller.state.value.positionMs - remote.positionMs)
@@ -172,12 +189,23 @@ class PlayerViewModel @Inject constructor(
             var last: Boolean? = null
 
             controller.state.collect { state ->
+                // Only states somebody chose. Preparing and buffering both
+                // report "not playing", and announcing either of those to the
+                // room is how opening an episode told everyone else to stop —
+                // including, on the way in, the device that had just opened it.
+                if (!state.phase.isSettled) return@collect
+
                 val playing = state.phase.isPlaying
 
                 if (playing == last) return@collect
+
+                // The first settled state is where this player arrived, not a
+                // change anybody made. Publishing it would broadcast a pause
+                // nobody asked for.
+                val first = last == null
                 last = playing
 
-                if (party.room.value == null) return@collect
+                if (first || party.room.value == null) return@collect
 
                 // The echo of a remote change, arriving through ExoPlayer's
                 // own listener a moment after it was applied.
@@ -189,6 +217,13 @@ class PlayerViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /** Put this player into the state the room is in. */
+    private fun applyRemotePlayback(playing: Boolean) {
+        if (playing == controller.state.value.phase.isPlaying) return
+
+        if (playing) controller.play() else controller.pause()
     }
 
     /** Tell the room where the playhead was just moved to. */
@@ -346,5 +381,12 @@ class PlayerViewModel @Inject constructor(
          * paused is still heard.
          */
         const val ECHO_WINDOW_MS = 1_500L
+
+        /**
+         * How long to wait for this player to start before giving up on
+         * applying a room's play state to it. Longer than an ordinary open,
+         * short enough that a failed one does not leave the wait hanging.
+         */
+        const val SETTLE_TIMEOUT_MS = 15_000L
     }
 }

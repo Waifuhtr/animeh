@@ -21,8 +21,10 @@ import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
 import com.animeh.app.core.AppError
 import com.animeh.app.domain.MediaSource
 import com.animeh.app.domain.Playback
-import com.animeh.app.player.ass.AssFontIndex
+import com.animeh.app.player.ass.AssLine
 import com.animeh.app.player.ass.AssParser
+import com.animeh.app.player.ass.AssReader
+import com.animeh.app.player.ass.AssScript
 import com.animeh.app.player.ass.FontResolver
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -79,15 +81,25 @@ class PlaybackController @Inject constructor(
     val typefaces: StateFlow<Map<String, Typeface>> = _typefaces.asStateFlow()
 
     /**
-     * Which font each line of the current script is set in.
+     * The script this episode's subtitles come from, once it is parsed.
      *
-     * Held beside the typefaces because a Cue does not carry its style, so
-     * without this the renderer has no way to know that the sign at the top of
-     * the frame and the dialogue at the bottom are meant to be two different
-     * fonts — see [AssParser.fontIndex].
+     * Null for a subtitle that is not ASS, and for the moment before the file
+     * has been fetched. While it is null the player's own text track is what
+     * gets drawn; see [assLines].
      */
-    private val _fontIndex = MutableStateFlow<AssFontIndex?>(null)
-    val fontIndex: StateFlow<AssFontIndex?> = _fontIndex.asStateFlow()
+    private val _script = MutableStateFlow<AssScript?>(null)
+    val script: StateFlow<AssScript?> = _script.asStateFlow()
+
+    /**
+     * The subtitle lines on screen right now, read from the script.
+     *
+     * Driven by the playhead rather than by the player's text renderer. That
+     * is the whole point: a line appears because the position says so, not
+     * because a track was selected, loaded and decoded in time — which is a
+     * chain that can quietly fail, and did.
+     */
+    private val _assLines = MutableStateFlow<List<AssLine>>(emptyList())
+    val assLines: StateFlow<List<AssLine>> = _assLines.asStateFlow()
 
     private var exoPlayer: ExoPlayer? = null
     private var trackSelector: DefaultTrackSelector? = null
@@ -98,6 +110,7 @@ class PlaybackController @Inject constructor(
     private var retryJob: Job? = null
     private var controlsJob: Job? = null
     private var subtitleJob: Job? = null
+    private var subtitleTimingJob: Job? = null
 
     /** Whether any cue has arrived since the current item was opened. */
     private var sawCue = false
@@ -462,7 +475,10 @@ class PlaybackController @Inject constructor(
 
         _state.update { it.copy(selectedSubtitleId = sourceId, subtitlesEnabled = enabled) }
 
-        if (!enabled) _cues.value = emptyList()
+        if (!enabled) {
+            _cues.value = emptyList()
+            _assLines.value = emptyList()
+        }
 
         // ExoPlayer resolves side-loaded subtitles at prepare time, so changing
         // one means re-opening the item at the current position.
@@ -508,6 +524,7 @@ class PlaybackController @Inject constructor(
         retryJob?.cancel()
         controlsJob?.cancel()
         subtitleJob?.cancel()
+        subtitleTimingJob?.cancel()
         exoPlayer?.removeListener(listener)
         exoPlayer?.release()
         exoPlayer = null
@@ -760,7 +777,8 @@ class PlaybackController @Inject constructor(
         // resolves: a track switched mid-episode would otherwise keep drawing
         // in the last script's font until the download finished.
         _typefaces.value = emptyMap()
-        _fontIndex.value = null
+        _script.value = null
+        _assLines.value = emptyList()
 
         scope?.launch {
             if (subtitle == null) return@launch
@@ -768,7 +786,13 @@ class PlaybackController @Inject constructor(
             val script = downloadSubtitle(subtitle) ?: return@launch
             val required = AssParser.requiredFonts(script)
 
-            _fontIndex.value = AssParser.fontIndex(script)
+            // Parsed before the fonts are fetched, so lines start appearing
+            // as soon as the file arrives rather than after every download.
+            val parsed = AssReader.read(script)
+            if (!parsed.isEmpty) {
+                _script.value = parsed
+                startSubtitleLoop()
+            }
 
             if (required.isEmpty()) return@launch
 
@@ -776,6 +800,38 @@ class PlaybackController @Inject constructor(
 
             _typefaces.value = resolution.typefaces
             _state.update { it.copy(missingFonts = resolution.missing) }
+        }
+    }
+
+    /**
+     * Keep [assLines] in step with the playhead.
+     *
+     * Its own loop rather than the progress one, which runs at half a second:
+     * that is visible on a subtitle, where a line arriving late reads as bad
+     * timing. Ten times a second is imperceptible and costs a filter over a
+     * few hundred rows.
+     */
+    private fun startSubtitleLoop() {
+        subtitleTimingJob?.cancel()
+
+        subtitleTimingJob = scope?.launch {
+            while (true) {
+                val current = _script.value
+
+                if (current == null) {
+                    _assLines.value = emptyList()
+                } else {
+                    val position = exoPlayer?.currentPosition ?: 0L
+
+                    _assLines.value = if (_state.value.subtitlesEnabled) {
+                        current.activeAt(position)
+                    } else {
+                        emptyList()
+                    }
+                }
+
+                delay(SUBTITLE_TICK_MS)
+            }
         }
     }
 
@@ -836,6 +892,9 @@ class PlaybackController @Inject constructor(
          * gap between two lines of dialogue.
          */
         const val SUBTITLE_SILENCE_MS = 6_000L
+
+        /** How often the script is asked what should be on screen. */
+        const val SUBTITLE_TICK_MS = 100L
         const val SEEK_STEP_MS = 10_000L
         const val UP_NEXT_LEAD_MS = 25_000L
         const val USER_AGENT = "Animeh/0.1 (Android)"

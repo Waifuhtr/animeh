@@ -46,7 +46,8 @@ class PlayerViewModel @Inject constructor(
     val playerState = controller.state
     val cues = controller.cues
     val typefaces = controller.typefaces
-    val fontIndex = controller.fontIndex
+    val assLines = controller.assLines
+    val script = controller.script
 
     private var currentEpisodeId: Long = savedStateHandle["episodeId"] ?: 0L
     private var currentWorkId: Long = 0L

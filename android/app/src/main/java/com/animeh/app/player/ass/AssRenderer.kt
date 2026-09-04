@@ -14,45 +14,52 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.media3.common.text.Cue
 
 /**
- * Draws the subtitle cues.
+ * Draws the subtitles.
  *
- * The split here is the one §13 asks for. ExoPlayer's SSA/ASS extractor is the
- * *parser*: it reads the script, resolves styles, positioning, alignment,
- * margins and inline overrides, and emits [Cue]s already carrying that
- * information. This file is the *renderer*: it puts those cues on screen with
- * the typefaces [FontResolver] found, at the position the script asked for.
+ * Two sources, and the first one that has anything wins:
  *
- * Drawing rather than using Media3's `SubtitleView` is what makes the custom
- * fonts possible — `SubtitleView` has no way to be told "this script asked for
- * this family" — and it keeps the subtitle layer inside Compose, so it stacks
- * with the rest of the player UI instead of being a View poking through it.
+ * 1. **The script itself**, parsed by [AssReader] and timed against the
+ *    playhead. Every line arrives carrying its own font, size, weight,
+ *    colours, alignment and position, because that is what an ASS style *is*.
+ * 2. **The player's text track**, for subtitles that are not ASS — an SRT or a
+ *    WebVTT still has to be drawn, and Media3 parses those perfectly well.
+ *
+ * The first exists because the second cannot answer the two questions that
+ * matter here. A [Cue] is rendered text and a place to put it, with the style
+ * resolved away: nothing distinguishes a sign at the top of the frame from the
+ * dialogue at the bottom, so every line ends up in one font. And a cue only
+ * arrives once a track has been selected, loaded and decoded, which is a chain
+ * that can quietly not happen — an episode resumed part-way through being the
+ * case that kept catching us.
  *
  * ## What this covers, and what it does not
  *
- * Covered, because ExoPlayer's parser resolves them and this honours them:
- * styles, size, colour, alignment, absolute positioning, line placement,
- * margins, multiple styles, and dialogue timing.
+ * Covered: styles, per-line font, size, bold, italic, fill and outline colour,
+ * outline width, numpad alignment, margins, `\pos`, and every override that
+ * changes one of those for a line.
  *
- * **Not covered:** karaoke timing (`\k`), transform animations (`\t`), and
- * vector drawing (`\p`). Those need a full libass; a karaoke line drawn without
- * its timing renders here as the plain lyric, which is the honest degradation.
- * Adding libass through the NDK is the extension point, and [SubtitleLayer]'s
- * signature does not change when it lands.
+ * **Not covered:** karaoke timing (`\k`), transforms (`\t`), movement and
+ * fades (`\move`, `\fad`), rotation, and mid-line style changes — a line that
+ * switches colour halfway takes the first colour. Vector drawings (`\p`) are
+ * skipped by the reader rather than printed as commands. Those need a full
+ * libass; adding it through the NDK is the extension point, and this
+ * composable's signature does not change when it lands.
  */
 @Composable
 fun SubtitleLayer(
+    /** Lines read from the script, when the subtitle is an ASS one. */
+    lines: List<AssLine>,
+    /** The script those lines are measured against. */
+    script: AssScript?,
+    /** The player's own cues, drawn when there is no script. */
     cues: List<Cue>,
     typefaces: Map<String, Typeface>,
-    /** Which font each line is set in, from [AssParser.fontIndex]. */
-    fonts: AssFontIndex? = null,
     fontScale: Float = 1f,
     modifier: Modifier = Modifier,
 ) {
-    if (cues.isEmpty()) return
-
     val density = LocalDensity.current
 
-    // One Paint reused across frames: allocating one per cue per frame is the
+    // One Paint reused across frames: allocating one per line per frame is the
     // classic way to make a subtitle overlay stutter.
     val paint = remember {
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -60,90 +67,211 @@ fun SubtitleLayer(
         }
     }
 
-    // The face for the script's dialogue, and the fallback for everything the
-    // index cannot place.
-    val fallback = remember(typefaces, fonts) {
-        fonts?.primary?.let { typefaces[AssParser.key(it)] }
-            ?: typefaces.values.firstOrNull()
-            ?: Typeface.DEFAULT_BOLD
+    // Faces are synthesised for weight and slant, so a family uploaded once
+    // covers its bold and italic styles rather than needing three files.
+    val faces = remember(typefaces) { HashMap<String, Typeface>() }
+
+    val faceFor: (String, Boolean, Boolean) -> Typeface = { family, bold, italic ->
+        val key = "${AssParser.key(family)}|$bold|$italic"
+
+        faces.getOrPut(key) {
+            // The family, or the system face — never another family from the
+            // same script. Drawing a page of dialogue in the one decorative
+            // font that happened to be uploaded is worse than drawing it in
+            // the phone's own sans: the metrics are wrong, the glyphs may not
+            // exist, and it looks like the app picked a font at random.
+            val base = typefaces[AssParser.key(family)] ?: Typeface.SANS_SERIF
+
+            val style = when {
+                bold && italic -> Typeface.BOLD_ITALIC
+                bold -> Typeface.BOLD
+                italic -> Typeface.ITALIC
+                else -> Typeface.NORMAL
+            }
+
+            if (style == Typeface.NORMAL) base else Typeface.create(base, style)
+        }
     }
 
-    // The face one line should be drawn in.
-    //
-    // A script names a font per style — one for speech, others for signs,
-    // titles and credits — and a Cue carries none of that, which is why every
-    // line used to be drawn in the same face. [AssFontIndex] puts the style
-    // back by looking the line up by what it says.
-    val faceFor: (String) -> Typeface = { text ->
-        fonts?.familyFor(text)
-            ?.let { typefaces[AssParser.key(it)] }
-            ?: fallback
+    if (script != null && lines.isNotEmpty()) {
+        ScriptLayer(lines, script, faceFor, paint, fontScale, modifier)
+        return
     }
 
-    // Whether a face can actually draw a given character.
-    //
-    // The last line of defence, and the one that makes "subtitles invisible"
-    // impossible rather than unlikely: a font with no Turkish letters, or no
-    // letters at all, is caught here and the line is drawn in the system face
-    // instead. Cached per face because `hasGlyph` shapes the character, and a
-    // subtitle is redrawn on every frame.
-    val probe = remember { Paint() }
-    val glyphs = remember(typefaces) { HashMap<Typeface, HashMap<Char, Boolean>>() }
+    if (cues.isNotEmpty()) {
+        CueLayer(cues, typefaces, paint, density, fontScale, modifier)
+    }
+}
 
-    val canDraw: (Typeface, List<String>) -> Boolean = { face, lines ->
-        probe.typeface = face
-        val known = glyphs.getOrPut(face) { HashMap() }
+/** The ASS path: every line placed the way its style asks. */
+@Composable
+private fun ScriptLayer(
+    lines: List<AssLine>,
+    script: AssScript,
+    faceFor: (String, Boolean, Boolean) -> Typeface,
+    paint: Paint,
+    fontScale: Float,
+    modifier: Modifier,
+) {
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val widthPx = size.width
+        val heightPx = size.height
+        if (widthPx <= 0f || heightPx <= 0f) return@Canvas
 
-        lines.all { line ->
-            line.all { character ->
-                !character.isLetterOrDigit() ||
-                    known.getOrPut(character) { probe.hasGlyph(character.toString()) }
+        // The script is written against its own resolution; this is the only
+        // conversion between the two, and everything below is in script units
+        // until it passes through here.
+        val scaleX = widthPx / script.playResX
+        val scaleY = heightPx / script.playResY
+
+        val canvas = drawContext.canvas.nativeCanvas
+
+        // Bands already taken, so two lines timed together do not land on top
+        // of each other. Only lines the script did not place: one it placed
+        // is where the typesetter wanted it.
+        val occupied = mutableListOf<Pair<Float, Float>>()
+
+        lines.forEach { line ->
+            val rows = line.text.split('\n')
+
+            paint.typeface = faceFor(line.family, line.bold, line.italic)
+            paint.textSize = line.sizePx * scaleY * fontScale
+            paint.textAlign = when (line.alignment % 3) {
+                1 -> Paint.Align.LEFT
+                0 -> Paint.Align.RIGHT
+                else -> Paint.Align.CENTER
+            }
+
+            val metrics = paint.fontMetrics
+            val ascent = -metrics.ascent
+            val descent = metrics.descent
+            val lineHeight = paint.fontSpacing
+            val blockHeight = (rows.size - 1) * lineHeight + ascent + descent
+
+            val widest = rows.maxOf { paint.measureText(it) }
+
+            // Numpad alignment: 1-3 sit on the bottom, 4-6 in the middle,
+            // 7-9 at the top; the remainder decides left, centre or right.
+            val vertical = (line.alignment - 1) / 3
+
+            val anchorX = line.posX?.let { it * scaleX } ?: when (paint.textAlign) {
+                Paint.Align.LEFT -> line.marginL * scaleX
+                Paint.Align.RIGHT -> widthPx - line.marginR * scaleX
+                else -> (line.marginL * scaleX + (widthPx - line.marginR * scaleX)) / 2f
+            }
+
+            val anchorY = line.posY?.let { it * scaleY } ?: when (vertical) {
+                2 -> line.marginV * scaleY
+                1 -> heightPx / 2f
+                else -> heightPx - line.marginV * scaleY
+            }
+
+            // `\pos` names the point the alignment corner sits on, so the top
+            // of the block is derived from both rather than from the position
+            // alone — reading it as the top is what pushed placed signs off
+            // the frame.
+            val rawTop = when (vertical) {
+                2 -> anchorY
+                1 -> anchorY - blockHeight / 2f
+                else -> anchorY - blockHeight
+            }
+
+            var top = rawTop.coerceIn(0f, (heightPx - blockHeight).coerceAtLeast(0f))
+
+            if (line.posY == null) {
+                var attempts = 0
+                while (attempts++ < MAX_STACKING) {
+                    val clash = occupied.firstOrNull { (start, end) ->
+                        top < end && start < top + blockHeight
+                    } ?: break
+
+                    top = clash.first - blockHeight - lineHeight * STACK_GAP_RATIO
+                }
+
+                top = top.coerceIn(0f, (heightPx - blockHeight).coerceAtLeast(0f))
+                occupied += top to (top + blockHeight)
+            }
+
+            // Whatever the script said, the words stay on screen: it is
+            // written for a 16:9 frame and a phone is not always one.
+            val leftLimit = when (paint.textAlign) {
+                Paint.Align.LEFT -> 0f
+                Paint.Align.RIGHT -> widest
+                else -> widest / 2f
+            }
+            val rightLimit = when (paint.textAlign) {
+                Paint.Align.LEFT -> widthPx - widest
+                Paint.Align.RIGHT -> widthPx
+                else -> widthPx - widest / 2f
+            }
+
+            val x = if (leftLimit > rightLimit) widthPx / 2f else anchorX.coerceIn(leftLimit, rightLimit)
+            val firstBaseline = top + ascent
+
+            // The outline is drawn as a stroke under the fill, which is the
+            // two-pass way to get an ASS border. Android centres a stroke on
+            // the glyph edge and ASS measures it outwards, hence the doubling.
+            val border = line.outlineWidth * scaleY * 2f
+
+            rows.forEachIndexed { index, row ->
+                val y = firstBaseline + index * lineHeight
+
+                if (border > 0f) {
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = border
+                    paint.strokeJoin = Paint.Join.ROUND
+                    paint.color = line.outline
+                    canvas.drawText(row, x, y, paint)
+                }
+
+                paint.style = Paint.Style.FILL
+                paint.color = line.fill
+                canvas.drawText(row, x, y, paint)
             }
         }
     }
+}
+
+/**
+ * The fallback path, for a subtitle that is not ASS.
+ *
+ * Deliberately plain: an SRT has no styling to honour, so this is one font,
+ * bottom centre, out of the way of the controls.
+ */
+@Composable
+private fun CueLayer(
+    cues: List<Cue>,
+    typefaces: Map<String, Typeface>,
+    paint: Paint,
+    density: androidx.compose.ui.unit.Density,
+    fontScale: Float,
+    modifier: Modifier,
+) {
+    val face = remember(typefaces) { typefaces.values.firstOrNull() ?: Typeface.SANS_SERIF }
 
     Canvas(modifier = modifier.fillMaxSize()) {
         val widthPx = size.width
         val heightPx = size.height
         if (widthPx <= 0f || heightPx <= 0f) return@Canvas
 
-        val defaultSize = heightPx * DEFAULT_SIZE_FRACTION * fontScale
         val bottomMargin = with(density) { BOTTOM_MARGIN_DP.dp.toPx() }
         val sideMargin = with(density) { SIDE_MARGIN_DP.dp.toPx() }
         val canvas = drawContext.canvas.nativeCanvas
-
-        // The vertical bands already taken by a cue in this frame.
-        //
-        // Two cues on screen at once — a line of dialogue and a sign, or two
-        // people speaking — are placed at the same height by the parser more
-        // often than not. Drawn in order they land on top of each other,
-        // which reads as one of them having vanished. This is what the second
-        // one is moved out of.
         val occupied = mutableListOf<Pair<Float, Float>>()
 
         cues.forEach { cue ->
             val text = cue.text?.toString().orEmpty()
             if (text.isBlank()) return@forEach
 
-            val lines = text.split('\n')
-            val face = faceFor(text)
+            val rows = text.split('\n')
 
-            paint.typeface = if (canDraw(face, lines)) face else Typeface.DEFAULT_BOLD
+            paint.typeface = face
             paint.textSize = when {
-                // Fractional: the parser expressed the size relative to the
-                // frame, which is what keeps a script legible at any surface size.
                 cue.textSizeType == Cue.TEXT_SIZE_TYPE_FRACTIONAL && cue.textSize > 0f ->
                     heightPx * cue.textSize * fontScale
-                else -> defaultSize
+                else -> heightPx * DEFAULT_SIZE_FRACTION * fontScale
             }
 
-            // Which edge of the text `position` marks decides how it is
-            // aligned, and the anchor is the authority on that — the text
-            // alignment is only a fallback for a cue that was never
-            // positioned. Reading the two the other way round centred text on
-            // a point meant to be its left edge, which for a sign near the
-            // side of the frame put most of it off screen: subtitles present
-            // in most scenes and gone in a few.
             val positioned = cue.position != Cue.DIMEN_UNSET
 
             paint.textAlign = when {
@@ -155,22 +283,11 @@ fun SubtitleLayer(
                 else -> Paint.Align.CENTER
             }
 
-            val lineHeight = paint.fontSpacing
-
-            // Measured rather than assumed: the block's height decides where
-            // its top has to be for its bottom to land where the cue asked,
-            // and a baseline is not the bottom of a glyph — descenders hang
-            // below it, which is exactly what was being cut off.
             val metrics = paint.fontMetrics
             val ascent = -metrics.ascent
-            val descent = metrics.descent
-            val blockHeight = (lines.size - 1) * lineHeight + ascent + descent
+            val lineHeight = paint.fontSpacing
+            val blockHeight = (rows.size - 1) * lineHeight + ascent + metrics.descent
 
-            // `line` is a position, and `lineAnchor` says which edge of the
-            // text that position marks. Ignoring the anchor was the bug: a
-            // decoder that reports "the bottom of this block sits at 95% of
-            // the frame" was being read as "the top does", which pushed a
-            // whole line and a half off the bottom of the screen.
             val anchored = cue.line != Cue.DIMEN_UNSET && cue.lineType == Cue.LINE_TYPE_FRACTION
 
             val rawTop = if (anchored) {
@@ -179,23 +296,15 @@ fun SubtitleLayer(
                 when (cue.lineAnchor) {
                     Cue.ANCHOR_TYPE_END -> anchorY - blockHeight
                     Cue.ANCHOR_TYPE_MIDDLE -> anchorY - blockHeight / 2f
-                    // ANCHOR_TYPE_START and unset: the position is the top.
                     else -> anchorY
                 }
             } else {
-                // Nothing placed it, and the default is where a subtitle
-                // belongs: bottom centre, clear of the controls.
                 heightPx - bottomMargin - blockHeight
             }
 
-            // Whatever the decoder said, the text stays on screen. A cue that
-            // would fall outside is clamped rather than clipped, because half
-            // a sentence is worse than a sentence in slightly the wrong place.
             val floor = (heightPx - blockHeight).coerceAtLeast(0f)
-
             var top = rawTop.coerceIn(0f, floor)
 
-            // Move up out of anything already drawn this frame.
             var attempts = 0
             while (attempts++ < MAX_STACKING) {
                 val clash = occupied.firstOrNull { (start, end) ->
@@ -208,7 +317,7 @@ fun SubtitleLayer(
             top = top.coerceIn(0f, floor)
             occupied += top to (top + blockHeight)
 
-            val firstBaseline = top + ascent
+            val widest = rows.maxOf { paint.measureText(it) }
 
             val rawX = when {
                 positioned -> widthPx * cue.position
@@ -217,61 +326,47 @@ fun SubtitleLayer(
                 else -> widthPx / 2f
             }
 
-            // And horizontally, for the same reason the vertical placement is
-            // clamped: a script positions against its own declared resolution
-            // and a phone is not that shape, so a line placed near an edge can
-            // end up almost entirely outside the frame.
-            val widest = lines.maxOf { paint.measureText(it) }
-
             val leftLimit = when (paint.textAlign) {
                 Paint.Align.LEFT -> sideMargin
                 Paint.Align.RIGHT -> sideMargin + widest
                 else -> sideMargin + widest / 2f
             }
-
             val rightLimit = when (paint.textAlign) {
                 Paint.Align.LEFT -> widthPx - sideMargin - widest
                 Paint.Align.RIGHT -> widthPx - sideMargin
                 else -> widthPx - sideMargin - widest / 2f
             }
 
-            // A line wider than the frame inverts the two limits; centring it
-            // is the least bad answer and beats an exception.
-            val x = if (leftLimit > rightLimit) {
-                widthPx / 2f
-            } else {
-                rawX.coerceIn(leftLimit, rightLimit)
-            }
+            val x = if (leftLimit > rightLimit) widthPx / 2f else rawX.coerceIn(leftLimit, rightLimit)
+            val firstBaseline = top + ascent
 
-            lines.forEachIndexed { index, line ->
+            rows.forEachIndexed { index, row ->
                 val y = firstBaseline + index * lineHeight
 
-                // Outline, then fill on top: the two-pass way to get an ASS
-                // border, and what keeps white text readable over a bright frame.
                 paint.style = Paint.Style.STROKE
                 paint.strokeWidth = paint.textSize * OUTLINE_RATIO
                 paint.strokeJoin = Paint.Join.ROUND
                 paint.color = OutlineColor
-                canvas.drawText(line, x, y, paint)
+                canvas.drawText(row, x, y, paint)
 
                 paint.style = Paint.Style.FILL
                 paint.color = FillColor
-                canvas.drawText(line, x, y, paint)
+                canvas.drawText(row, x, y, paint)
             }
         }
     }
 }
 
-/** A size that reads at arm's length when the script declares none. */
+/** A size that reads at arm's length when the format declares none. */
 private const val DEFAULT_SIZE_FRACTION = 0.052f
 private const val BOTTOM_MARGIN_DP = 44f
 private const val SIDE_MARGIN_DP = 24f
 private const val OUTLINE_RATIO = 0.10f
 
-/** How many times a cue may be pushed up before it is left where it is. */
+/** How many times a line may be pushed up before it is left where it is. */
 private const val MAX_STACKING = 8
 
-/** The gap between two stacked cues, as a fraction of a line. */
+/** The gap between two stacked lines, as a fraction of a line. */
 private const val STACK_GAP_RATIO = 0.25f
 
 private val OutlineColor = Color.Black.copy(alpha = 0.9f).toArgb()

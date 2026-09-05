@@ -198,3 +198,28 @@ fun ProgressLine(fraction: Float, modifier: Modifier = Modifier) {
         )
     }
 }
+
+/**
+ * A watch total someone can read at a glance.
+ *
+ * Hours and minutes together once past an hour: "37s" hides whether that is
+ * nearly 38 hours or barely 37, and this number is the one people compare.
+ *
+ * Shared by the profile and the public profile rather than written twice. The
+ * public one used to divide by 3600 and print the hours, so a first evening's
+ * watching — or any amount under an hour — showed as "0s", which reads as
+ * "this is not recorded" rather than "this is small".
+ */
+fun formatWatched(seconds: Long): String {
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}s ${minutes}dk"
+        hours > 0 -> "${hours}s"
+        minutes > 0 -> "${minutes}dk"
+        // Under a minute is still something watched, and a fresh account
+        // testing one episode should see it move.
+        else -> "${seconds}sn"
+    }
+}

@@ -105,6 +105,21 @@ class SettingsStore @Inject constructor(
         }
     }
 
+    /**
+     * The name the sign-in form last filled itself with, if it was asked to.
+     *
+     * "Beni hatırla" cannot mean "keep me signed in" here — the session is
+     * already kept, on this device, until somebody signs out. What it is
+     * actually asked for is not having to type the same name again, so that
+     * is what it does. Blank means the box was unticked, and unticking it
+     * also forgets what was stored.
+     */
+    val rememberedLogin: Flow<String> = context.dataStore.data.map { prefs ->
+        prefs[KEY_REMEMBERED_LOGIN].orEmpty()
+    }
+
+    suspend fun rememberLogin(value: String) = edit { it[KEY_REMEMBERED_LOGIN] = value.trim() }
+
     suspend fun setQuality(value: String) = edit { it[KEY_QUALITY] = value }
     suspend fun setSubtitleLanguage(value: String) = edit { it[KEY_SUBTITLE_LANG] = value }
     suspend fun setSubtitlesEnabled(value: Boolean) = edit { it[KEY_SUBTITLES_ON] = value }
@@ -171,6 +186,9 @@ class SettingsStore @Inject constructor(
          */
         val KEY_ADULT_OK = stringSetPreferencesKey("adult_acknowledged")
         val KEY_SPEED = floatPreferencesKey("playback_speed")
+
+        /** What the sign-in field pre-fills with; blank when not remembered. */
+        val KEY_REMEMBERED_LOGIN = stringPreferencesKey("remembered_login")
     }
 }
 

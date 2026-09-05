@@ -28,6 +28,7 @@ import com.animeh.app.core.UiState
 import com.animeh.app.data.remote.dto.ProfileReviewDto
 import com.animeh.app.data.remote.dto.ProfileWorkDto
 import com.animeh.app.ui.components.ErrorState
+import com.animeh.app.ui.components.formatWatched
 import com.animeh.app.ui.theme.PosterShape
 import com.animeh.app.ui.theme.StatusWarning
 import com.animeh.app.ui.theme.SurfaceCard
@@ -170,7 +171,7 @@ fun PublicProfileScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             Stat(
-                                "${profile.stats.secondsWatched / 3600}s",
+                                formatWatched(profile.stats.secondsWatched),
                                 stringResource(R.string.profile_time_watched),
                                 Modifier.weight(1f),
                             )

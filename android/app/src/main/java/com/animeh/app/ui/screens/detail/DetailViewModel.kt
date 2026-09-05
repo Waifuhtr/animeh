@@ -81,6 +81,10 @@ class DetailViewModel @Inject constructor(
         load()
         observeLibrary()
         loadReviews()
+
+        // Normally already loaded by the home screen; this covers the page
+        // being opened straight from a link or a notification.
+        viewModelScope.launch { community.ensureTerms() }
     }
 
     fun loadReviews() {

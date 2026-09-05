@@ -55,6 +55,39 @@
     <string name="auth_password_too_short">Şifre en az 8 karakter olmalı.</string>
     <string name="auth_login_required">Bu bölümü izlemek için giriş yapmalısın.</string>
 
+    <!--
+      The auth screens colour the last words of their headings, so each one is
+      two strings: the part that stays white and the part that takes the
+      accent. Translating them means keeping that split, not the wording.
+    -->
+    <string name="auth_login_title_lead">"Tekrar "</string>
+    <string name="auth_login_title_accent">hoş geldin!</string>
+    <string name="auth_login_subtitle_lead">"Anime dünyasına "</string>
+    <string name="auth_login_subtitle_accent">geri dön</string>
+    <string name="auth_register_title_lead">"Hesap "</string>
+    <string name="auth_register_title_accent">oluştur</string>
+    <string name="auth_register_subtitle">Anime macerana başla</string>
+
+    <string name="auth_remember_me">Beni hatırla</string>
+    <string name="auth_forgot_question">Şifremi unuttum?</string>
+    <string name="auth_no_account_question">Hesabın yok mu?</string>
+    <string name="auth_have_account_question">Zaten hesabın var mı?</string>
+    <string name="auth_password_repeat">Şifreyi tekrar gir</string>
+    <string name="auth_password_mismatch">Şifreler aynı değil.</string>
+    <string name="auth_password_min">En az 8 karakter olmalı</string>
+    <string name="auth_password_show">Şifreyi göster</string>
+    <string name="auth_password_hide">Şifreyi gizle</string>
+    <string name="auth_strength_weak">Zayıf şifre</string>
+    <string name="auth_strength_fair">Orta güçte</string>
+    <string name="auth_strength_good">İyi şifre</string>
+    <string name="auth_strength_strong">Güçlü şifre</string>
+
+    <!-- One sentence in four pieces, so the two named documents can be tinted. -->
+    <string name="auth_terms_use">Kullanım şartlarını</string>
+    <string name="auth_terms_and">" ve "</string>
+    <string name="auth_terms_privacy">gizlilik politikasını</string>
+    <string name="auth_terms_tail">" okudum ve kabul ediyorum."</string>
+
     <!-- Home -->
     <string name="home_continue">Kaldığın yerden devam et</string>
     <string name="home_popular">Popüler</string>

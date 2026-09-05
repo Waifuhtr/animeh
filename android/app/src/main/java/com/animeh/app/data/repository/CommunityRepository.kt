@@ -47,6 +47,21 @@ class CommunityRepository @Inject constructor(
         }
     }
 
+    /**
+     * Fetch the labels only if nothing has yet.
+     *
+     * For screens that need them but are not the one that normally loads
+     * them: an anime page opened straight from a notification or a link has
+     * never been through the home screen, and drawing "Slice of Life" there
+     * while every other screen says "Yaşamdan Kesitler" is the sort of
+     * inconsistency that reads as a bug.
+     */
+    suspend fun ensureTerms() {
+        if (_terms.value.isNotEmpty()) return
+
+        refreshTerms()
+    }
+
     suspend fun reviews(
         workId: Long,
         page: Int = 1,

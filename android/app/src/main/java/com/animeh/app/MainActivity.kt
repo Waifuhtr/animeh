@@ -19,14 +19,19 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.animeh.app.core.AccountGate
+import com.animeh.app.core.LaunchGate
 import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.SessionStore
 import com.animeh.app.data.repository.AuthRepository
 import com.animeh.app.ui.navigation.AnimehApp
+import com.animeh.app.ui.screens.SplashOverlay
 import com.animeh.app.ui.screens.auth.BannedScreen
 import com.animeh.app.ui.theme.AnimehTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -39,6 +44,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var sessionStore: SessionStore
 
     @Inject lateinit var authRepository: AuthRepository
+
+    @Inject lateinit var launchGate: LaunchGate
 
     /** The code this activity was opened with, if it was. */
     private var pendingRoomCode: String? = null
@@ -107,13 +114,23 @@ class MainActivity : ComponentActivity() {
                         onSignOut = { scope.launch { authRepository.logout() } },
                     )
                 } else {
-                    AnimehApp(
-                        authState = authState,
-                        roomCode = roomCode,
-                        onRoomHandled = { roomCode = null },
-                        workId = workId,
-                        onWorkHandled = { workId = null },
-                    )
+                    // The launch screen sits *over* the app rather than
+                    // before it: everything underneath composes and loads the
+                    // whole time it is up, so it hides the skeleton without
+                    // delaying what replaces it.
+                    val ready by launchGate.ready.collectAsStateWithLifecycle()
+
+                    Box(Modifier.fillMaxSize()) {
+                        AnimehApp(
+                            authState = authState,
+                            roomCode = roomCode,
+                            onRoomHandled = { roomCode = null },
+                            workId = workId,
+                            onWorkHandled = { workId = null },
+                        )
+
+                        SplashOverlay(ready = ready)
+                    }
                 }
             }
         }

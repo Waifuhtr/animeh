@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.core.UiState
+import com.animeh.app.data.repository.label
 import com.animeh.app.domain.Work
 import com.animeh.app.ui.components.*
 import com.animeh.app.ui.theme.*
@@ -60,6 +61,11 @@ fun DetailScreen(
             viewModel.dismissMessage()
         }
     }
+
+    // The display names an admin set for imported terms. Fetched once and
+    // shared: an import writes "Slice of Life" and "summer", and this is what
+    // turns those into the words on the page.
+    val labels by viewModel.labels.collectAsStateWithLifecycle()
 
     val play: (Long) -> Unit = { episodeId ->
         if (signedIn) onPlayEpisode(episodeId) else onSignIn()
@@ -101,6 +107,7 @@ fun DetailScreen(
                     item {
                         DetailHeader(
                             work = work,
+                            labels = labels,
                             isFavorite = state.isFavorite,
                             inWatchlist = state.inWatchlist,
                             following = state.following,
@@ -143,7 +150,7 @@ fun DetailScreen(
                         item { Synopsis(work.synopsis) }
                     }
 
-                    item { MetaGrid(work) }
+                    item { MetaGrid(work, labels) }
 
                     if (work.seasons.size > 1) {
                         item {
@@ -221,6 +228,7 @@ fun DetailScreen(
 @Composable
 private fun DetailHeader(
     work: Work,
+    labels: Map<String, Map<String, String>>,
     isFavorite: Boolean,
     inWatchlist: Boolean,
     following: Boolean,
@@ -325,7 +333,7 @@ private fun DetailHeader(
                     Text(
                         text = listOfNotNull(
                             work.year.takeIf { it > 0 }?.toString(),
-                            work.format.takeIf { it.isNotBlank() },
+                            work.format.takeIf { it.isNotBlank() }?.let { labels.label("format", it) },
                             work.totalEpisodes.takeIf { it > 0 }?.let { "$it bölüm" },
                         ).joinToString(" · "),
                         style = MaterialTheme.typography.labelMedium,
@@ -405,12 +413,14 @@ private fun Synopsis(text: String) {
 }
 
 @Composable
-private fun MetaGrid(work: Work) {
+private fun MetaGrid(work: Work, labels: Map<String, Map<String, String>>) {
     Column(Modifier.padding(horizontal = 16.dp)) {
         if (work.genres.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(work.genres) { genre ->
-                    AssistChip(onClick = {}, label = { Text(genre) })
+                    // The stored value is whatever the import wrote; what is
+                    // drawn is whatever an admin named it under Terimler.
+                    AssistChip(onClick = {}, label = { Text(labels.label("genre", genre)) })
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -420,7 +430,10 @@ private fun MetaGrid(work: Work) {
             MetaRow(stringResource(R.string.detail_studio), work.studio)
         }
         if (work.season.isNotBlank() && work.year > 0) {
-            MetaRow(stringResource(R.string.discover_season), "${work.season.replaceFirstChar { it.uppercase() }} ${work.year}")
+            MetaRow(
+                stringResource(R.string.discover_season),
+                "${labels.label("season", work.season).replaceFirstChar { it.uppercase() }} ${work.year}",
+            )
         }
     }
 }

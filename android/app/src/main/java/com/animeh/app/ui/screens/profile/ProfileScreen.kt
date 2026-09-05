@@ -27,6 +27,7 @@ import com.animeh.app.R
 import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.user
 import com.animeh.app.ui.components.EmptyState
+import com.animeh.app.ui.components.formatWatched
 import com.animeh.app.ui.theme.SurfaceCard
 import com.animeh.app.ui.theme.TextMuted
 import com.animeh.app.ui.theme.TextSecondary
@@ -134,7 +135,7 @@ fun ProfileScreen(
                     modifier = Modifier.weight(1f),
                 )
                 StatCard(
-                    value = formatHours(current.secondsWatched),
+                    value = formatWatched(current.secondsWatched),
                     label = stringResource(R.string.profile_time_watched),
                     modifier = Modifier.weight(1f),
                 )
@@ -209,22 +210,5 @@ private fun StatCard(value: String, label: String, modifier: Modifier = Modifier
                 textAlign = TextAlign.Center,
             )
         }
-    }
-}
-
-/**
- * A watch total someone can read at a glance.
- *
- * Hours and minutes together once past an hour: "37s" hides whether that is
- * nearly 38 hours or barely 37, and this number is the one people compare.
- */
-private fun formatHours(seconds: Long): String {
-    val hours = seconds / 3600
-    val minutes = (seconds % 3600) / 60
-
-    return when {
-        hours > 0 && minutes > 0 -> "${hours}s ${minutes}dk"
-        hours > 0 -> "${hours}s"
-        else -> "${minutes}dk"
     }
 }

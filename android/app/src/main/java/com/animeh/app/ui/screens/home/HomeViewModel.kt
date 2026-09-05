@@ -3,6 +3,7 @@ package com.animeh.app.ui.screens.home
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.animeh.app.core.AppResult
+import com.animeh.app.core.LaunchGate
 import com.animeh.app.core.UiState
 import com.animeh.app.data.repository.CatalogRepository
 import com.animeh.app.data.repository.CommunityRepository
@@ -19,6 +20,7 @@ import javax.inject.Inject
 class HomeViewModel @Inject constructor(
     private val repository: CatalogRepository,
     private val community: CommunityRepository,
+    private val launchGate: LaunchGate,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<UiState<HomeFeed>>(UiState.Loading)
@@ -50,6 +52,10 @@ class HomeViewModel @Inject constructor(
                 }
                 is AppResult.Failure -> _state.value = UiState.Error(result.error)
             }
+
+            // Whatever came back, the launch screen has waited long enough:
+            // the page underneath now has either content or something to say.
+            launchGate.markReady()
         }
 
         viewModelScope.launch {

@@ -9,6 +9,13 @@
 
 import { describeError } from './test-panel.js'
 
+/** What each artwork role is called on screen. */
+const LABELS = {
+  poster: 'Poster',
+  banner: 'Banner',
+  still: 'Bölüm kapağı',
+}
+
 /** Backblaze regions, with the endpoint each one implies. */
 const REGIONS = [
   'us-west-000',
@@ -91,6 +98,32 @@ export class StoragePanel {
         </section>
 
         <section class="animeh-card">
+          <h2>Görseller</h2>
+          <p class="animeh-hint">
+            Poster, banner ve bölüm kapağı adresleri elle yazıldığı için ne kadar
+            büyük oldukları belli olmaz. Bu işlem onları çekip çizildikleri boyuta
+            küçültür, bucket'a kopyalar ve katalogdaki adresi kendi kopyasına
+            çevirir — TMDB'nin w500/w1280 yaptığının aynısı, elle eklenenler için.
+          </p>
+          <p class="animeh-hint" id="animeh-image-sizes"></p>
+          <div class="animeh-field">
+            <label>
+              <input type="checkbox" id="animeh-image-auto" />
+              Kaydederken otomatik küçült
+            </label>
+            <span class="animeh-muted">
+              Kapalıyken yalnızca aşağıdaki düğmeye bastığında çalışır. Açıkken her
+              anime ve bölüm kaydı biraz daha uzun sürer.
+            </span>
+          </div>
+          <div class="animeh-row" style="margin-top: 12px">
+            <button type="button" class="button" id="animeh-image-run">Mevcut görselleri optimize et</button>
+          </div>
+          <p class="animeh-error" id="animeh-image-error" hidden></p>
+          <p class="animeh-hint" id="animeh-image-status" hidden></p>
+        </section>
+
+        <section class="animeh-card">
           <h2>Durum</h2>
           <div class="ap-checks" id="animeh-storage-checks"></div>
           <div class="animeh-row" style="margin-top: 12px">
@@ -120,11 +153,18 @@ export class StoragePanel {
       test: byId('animeh-test'),
       error: byId('animeh-storage-error'),
       status: byId('animeh-storage-status'),
+      imageAuto: byId('animeh-image-auto'),
+      imageRun: byId('animeh-image-run'),
+      imageSizes: byId('animeh-image-sizes'),
+      imageError: byId('animeh-image-error'),
+      imageStatus: byId('animeh-image-status'),
     }
 
     this.#els.save.addEventListener('click', () => void this.#save())
     this.#els.test.addEventListener('click', () => void this.#test())
     this.#els.publicBucket.addEventListener('change', () => this.#renderPublicNote())
+    this.#els.imageRun.addEventListener('click', () => void this.#optimiseImages())
+    this.#els.imageAuto.addEventListener('change', () => void this.#saveImageAuto())
   }
 
   async #load() {
@@ -135,6 +175,100 @@ export class StoragePanel {
     } catch (error) {
       this.#showError(describeError(error))
     }
+
+    void this.#loadImageStatus()
+  }
+
+  async #loadImageStatus() {
+    try {
+      const status = await this.#api.request('/storage/images')
+
+      this.#els.imageAuto.checked = Boolean(status.automatic)
+
+      // The ceilings come from the server rather than being written twice, so
+      // changing them there changes what this promises.
+      const sizes = Object.entries(status.sizes ?? {})
+        .map(([role, box]) => `${LABELS[role] ?? role}: en fazla ${box.width}×${box.height}`)
+        .join(' · ')
+      this.#els.imageSizes.textContent = sizes
+
+      // A blocker is a setting somebody has to go and change, so it is shown
+      // straight away rather than waiting for the button to be pressed.
+      this.#showImageError(status.blocker ?? '')
+      this.#els.imageRun.disabled = Boolean(status.blocker)
+      this.#els.imageAuto.disabled = Boolean(status.blocker)
+    } catch (error) {
+      this.#showImageError(describeError(error))
+    }
+  }
+
+  async #saveImageAuto() {
+    try {
+      // `run: false` — this is the switch being flipped, not the button
+      // being pressed, and flipping a switch must not start a job.
+      await this.#api.request('/storage/images', {
+        method: 'POST',
+        json: { automatic: this.#els.imageAuto.checked, run: false },
+      })
+    } catch (error) {
+      this.#showImageError(describeError(error))
+    }
+  }
+
+  /**
+   * Walk the catalog a few works at a time.
+   *
+   * The server hands back where it stopped; this asks again from there until
+   * it says it is done. One request for the whole library would be one
+   * request the host kills halfway through, with no way to tell how far it
+   * had got.
+   */
+  async #optimiseImages() {
+    this.#els.imageRun.disabled = true
+    this.#showImageError('')
+
+    let cursor = 0
+    let works = 0
+    let images = 0
+
+    try {
+      for (;;) {
+        const step = await this.#api.request('/storage/images', {
+          method: 'POST',
+          json: { cursor },
+        })
+
+        cursor = step.cursor
+        works += step.works
+        images += step.images
+
+        this.#setImageStatus(
+          `${works} anime tarandı, ${images} görsel küçültüldü. Kalan: ${step.remaining}`,
+        )
+
+        if (step.done) break
+      }
+
+      this.#setImageStatus(
+        images > 0
+          ? `Bitti. ${works} anime tarandı, ${images} görsel küçültülüp bucket'a taşındı.`
+          : `Bitti. ${works} anime tarandı, küçültülecek bir şey yoktu.`,
+      )
+    } catch (error) {
+      this.#showImageError(describeError(error))
+    } finally {
+      this.#els.imageRun.disabled = false
+    }
+  }
+
+  #showImageError(message) {
+    this.#els.imageError.textContent = message
+    this.#els.imageError.hidden = !message
+  }
+
+  #setImageStatus(message) {
+    this.#els.imageStatus.textContent = message
+    this.#els.imageStatus.hidden = !message
   }
 
   #fill(storage) {

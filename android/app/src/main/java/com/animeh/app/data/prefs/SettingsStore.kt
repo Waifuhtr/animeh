@@ -42,6 +42,10 @@ class SettingsStore @Inject constructor(
             wifiOnlyDownload = prefs[KEY_WIFI_ONLY] ?: true,
             notifications = prefs[KEY_NOTIFICATIONS] ?: true,
             playbackSpeed = prefs[KEY_SPEED] ?: 1.0f,
+            spatialAudio = prefs[KEY_SPATIAL_ON] ?: false,
+            spatialStrength = prefs[KEY_SPATIAL_STRENGTH] ?: 0.6f,
+            rotaryAudio = prefs[KEY_ROTARY_ON] ?: false,
+            rotarySpeed = prefs[KEY_ROTARY_SPEED] ?: 0.16f,
         )
     }
 
@@ -130,6 +134,11 @@ class SettingsStore @Inject constructor(
     suspend fun setNotifications(value: Boolean) = edit { it[KEY_NOTIFICATIONS] = value }
     suspend fun setPlaybackSpeed(value: Float) = edit { it[KEY_SPEED] = value }
 
+    suspend fun setSpatialAudio(value: Boolean) = edit { it[KEY_SPATIAL_ON] = value }
+    suspend fun setSpatialStrength(value: Float) = edit { it[KEY_SPATIAL_STRENGTH] = value }
+    suspend fun setRotaryAudio(value: Boolean) = edit { it[KEY_ROTARY_ON] = value }
+    suspend fun setRotarySpeed(value: Float) = edit { it[KEY_ROTARY_SPEED] = value }
+
     /** Overwrite local preferences with what the server has. */
     suspend fun applyRemote(remote: AppSettingsDto) = edit { prefs ->
         prefs[KEY_QUALITY] = remote.defaultQuality
@@ -189,6 +198,19 @@ class SettingsStore @Inject constructor(
 
         /** What the sign-in field pre-fills with; blank when not remembered. */
         val KEY_REMEMBERED_LOGIN = stringPreferencesKey("remembered_login")
+
+        /**
+         * The two sound effects, and both of them off.
+         *
+         * Neither is a correction to how an episode sounds — they are effects
+         * somebody may want, on headphones, some of the time. Anything that
+         * changes what a mix sounds like without being asked is a bug, so the
+         * default is the mix as it was made.
+         */
+        val KEY_SPATIAL_ON = booleanPreferencesKey("spatial_audio")
+        val KEY_SPATIAL_STRENGTH = floatPreferencesKey("spatial_strength")
+        val KEY_ROTARY_ON = booleanPreferencesKey("rotary_audio")
+        val KEY_ROTARY_SPEED = floatPreferencesKey("rotary_speed")
     }
 }
 
@@ -202,4 +224,11 @@ data class LocalSettings(
     val wifiOnlyDownload: Boolean = true,
     val notifications: Boolean = true,
     val playbackSpeed: Float = 1.0f,
+    /** Stereo widening through the device's own effect. Off by default. */
+    val spatialAudio: Boolean = false,
+    val spatialStrength: Float = 0.6f,
+    /** The slow circling pan the internet calls 8D. Off by default. */
+    val rotaryAudio: Boolean = false,
+    /** Sweeps per second for the circling pan. */
+    val rotarySpeed: Float = 0.16f,
 )

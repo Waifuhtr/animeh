@@ -1704,3 +1704,112 @@ describe( 'FontMatch', static function (): void {
 		same( 100, \Animeh\Support\FontMatch::score( 'Black', 'black' ) );
 	} );
 } );
+
+describe( 'ImageResizer', static function (): void {
+	$fit = static fn( int $w, int $h, string $role ): array =>
+		\Animeh\Support\ImageResizer::fit(
+			$w,
+			$h,
+			\Animeh\Support\ImageResizer::role( $role )['width'],
+			\Animeh\Support\ImageResizer::role( $role )['height']
+		);
+
+	it( 'scales a poster into its box and keeps its shape', static function () use ( $fit ): void {
+		// A 2:3 poster is exactly the box's shape, so both edges land.
+		same( array( 500, 750 ), $fit( 2000, 3000, 'poster' ) );
+		// A squarer one is limited by its height, not its width.
+		same( array( 500, 625 ), $fit( 1600, 2000, 'poster' ) );
+		// And a very wide one by its width.
+		same( array( 1280, 540 ), $fit( 2560, 1080, 'banner' ) );
+	} );
+
+	it( 'never enlarges what is already small', static function () use ( $fit ): void {
+		// Scaling up produces a bigger file that looks worse; there is no
+		// version of that which is an optimisation.
+		same( array( 300, 450 ), $fit( 300, 450, 'poster' ) );
+		same( array( 1, 1 ), $fit( 1, 1, 'banner' ) );
+		same( array( 0, 0 ), $fit( 0, 0, 'poster' ) );
+	} );
+
+	it( 'reads the format from the bytes, not the name', static function (): void {
+		$format = static fn( string $b ): string => \Animeh\Support\ImageResizer::format( $b );
+
+		same( 'jpeg', $format( "\xFF\xD8\xFF\xE0" . str_repeat( "\x00", 16 ) ) );
+		same( 'png', $format( "\x89PNG\r\n\x1A\n" . str_repeat( "\x00", 16 ) ) );
+		same( 'gif', $format( 'GIF89a' . str_repeat( "\x00", 16 ) ) );
+		same( 'webp', $format( 'RIFF' . '1234' . 'WEBP' . str_repeat( "\x00", 16 ) ) );
+		// An HTML error page served with an image URL is the common case.
+		same( '', $format( '<!doctype html><html>404' . str_repeat( ' ', 16 ) ) );
+		same( '', $format( 'short' ) );
+	} );
+
+	it( 'leaves alone what is already the right size', static function (): void {
+		$should = static fn( int $w, int $h, int $len, string $role ): bool =>
+			\Animeh\Support\ImageResizer::should_shrink( $w, $h, $len, $role );
+
+		// A TMDB w500 poster: right shape, small file, nothing to gain.
+		ok( ! $should( 500, 750, 60 * 1024, 'poster' ) );
+
+		// Right shape, wrong weight — a PNG export of the same picture.
+		ok( $should( 500, 750, 3 * 1024 * 1024, 'poster' ) );
+
+		// Wrong shape, small file — a key visual straight off a fan site.
+		ok( $should( 2000, 3000, 90 * 1024, 'poster' ) );
+	} );
+
+	it( 'refuses an image it could not hold', static function (): void {
+		$fits = static fn( int $w, int $h, int $limit ): bool =>
+			\Animeh\Support\ImageResizer::fits_in_memory( $w, $h, $limit, 0 );
+
+		// Running out of memory in PHP is fatal and uncatchable, so the
+		// answer has to be worked out before the decoder is handed anything.
+		ok( $fits( 2000, 3000, 256 * 1024 * 1024 ) );
+		ok( ! $fits( 8000, 8000, 256 * 1024 * 1024 ) );
+
+		// No limit at all is the one unconditional yes, up to the ceiling
+		// that exists so a decompression bomb still gets refused.
+		ok( $fits( 6000, 6000, -1 ) );
+		ok( ! $fits( 9000, 9000, -1 ) );
+	} );
+
+	it( 'parses the shorthand PHP writes memory limits in', static function (): void {
+		$bytes = static fn( string $v ): int => \Animeh\Support\ImageResizer::bytes( $v );
+
+		same( 256 * 1024 * 1024, $bytes( '256M' ) );
+		same( 2 * 1024 * 1024 * 1024, $bytes( '2G' ) );
+		same( 512 * 1024, $bytes( '512K' ) );
+		same( 1024, $bytes( '1024' ) );
+	} );
+
+	it( 'shrinks a real image and stops when there is nothing left to do', static function (): void {
+		if ( ! \Animeh\Support\ImageResizer::available() ) {
+			skip( 'GD yok' );
+			return;
+		}
+
+		// Built here rather than committed: the point is the round trip
+		// through GD, and a fixture would only be a slower way to do it.
+		$image = imagecreatetruecolor( 2400, 3600 );
+		for ( $y = 0; $y < 3600; $y += 40 ) {
+			$colour = imagecolorallocate( $image, (int) ( $y / 14 ) % 256, 120, 200 );
+			imagefilledrectangle( $image, 0, $y, 2400, $y + 39, $colour );
+		}
+		ob_start();
+		imagepng( $image );
+		$source = (string) ob_get_clean();
+		imagedestroy( $image );
+
+		$smaller = \Animeh\Support\ImageResizer::shrink( $source, 'poster' );
+		ok( null !== $smaller );
+
+		$size = getimagesizefromstring( (string) $smaller );
+		same( 500, (int) $size[0] );
+		same( 750, (int) $size[1] );
+		same( 'jpeg', \Animeh\Support\ImageResizer::format( (string) $smaller ) );
+		ok( strlen( (string) $smaller ) < strlen( $source ) );
+
+		// Run again on its own output: already within the box and under the
+		// budget, so it is left exactly as it is.
+		same( null, \Animeh\Support\ImageResizer::shrink( (string) $smaller, 'poster' ) );
+	} );
+} );

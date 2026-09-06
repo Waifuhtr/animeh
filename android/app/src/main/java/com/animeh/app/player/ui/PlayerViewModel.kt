@@ -64,6 +64,20 @@ class PlayerViewModel @Inject constructor(
     init {
         controller.attach(viewModelScope, this)
 
+        // Followed rather than read once: the switches live in Settings, and a
+        // viewer who turns one on there and comes back to an episode already
+        // playing should hear it change.
+        viewModelScope.launch {
+            settingsStore.settings.collect { settings ->
+                controller.setAudioEffects(
+                    spatial = settings.spatialAudio,
+                    strength = settings.spatialStrength,
+                    rotary = settings.rotaryAudio,
+                    speed = settings.rotarySpeed,
+                )
+            }
+        }
+
         controller.onProgress = { position, duration, watched ->
             viewModelScope.launch {
                 libraryRepository.recordProgress(

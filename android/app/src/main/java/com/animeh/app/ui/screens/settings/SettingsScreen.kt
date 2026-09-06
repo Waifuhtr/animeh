@@ -94,6 +94,55 @@ fun SettingsScreen(
             )
 
             HorizontalDivider()
+            SectionLabel(stringResource(R.string.settings_sound))
+
+            // Both off until somebody turns them on, and said plainly: these
+            // change how a mix sounds, they are made for headphones, and
+            // neither is a correction to anything.
+            Text(
+                stringResource(R.string.settings_sound_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+
+            SwitchRow(
+                title = stringResource(R.string.settings_spatial),
+                subtitle = stringResource(R.string.settings_spatial_note),
+                checked = settings.spatialAudio,
+                onCheckedChange = viewModel::setSpatialAudio,
+            )
+
+            if (settings.spatialAudio) {
+                SliderRow(
+                    title = stringResource(R.string.settings_spatial_strength),
+                    value = settings.spatialStrength,
+                    range = 0.2f..1f,
+                    onChange = viewModel::setSpatialStrength,
+                    format = { "%d%%".format((it * 100).toInt()) },
+                )
+            }
+
+            SwitchRow(
+                title = stringResource(R.string.settings_rotary),
+                subtitle = stringResource(R.string.settings_rotary_note),
+                checked = settings.rotaryAudio,
+                onCheckedChange = viewModel::setRotaryAudio,
+            )
+
+            if (settings.rotaryAudio) {
+                SliderRow(
+                    title = stringResource(R.string.settings_rotary_speed),
+                    value = settings.rotarySpeed,
+                    range = 0.04f..0.5f,
+                    onChange = viewModel::setRotarySpeed,
+                    // Stated as how long one turn takes, which is the thing
+                    // being chosen; nobody thinks about it in hertz.
+                    format = { "%.0f sn/tur".format(1f / it) },
+                )
+            }
+
+            HorizontalDivider()
             SectionLabel(stringResource(R.string.settings_data))
 
             SwitchRow(
@@ -184,12 +233,50 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun SwitchRow(title: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+private fun SwitchRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    subtitle: String? = null,
+) {
     ListItem(
         headlineContent = { Text(title) },
+        supportingContent = subtitle?.let { { Text(it, color = TextSecondary) } },
         trailingContent = { Switch(checked = checked, onCheckedChange = onCheckedChange) },
         modifier = Modifier.clickable { onCheckedChange(!checked) },
     )
+}
+
+/**
+ * A setting with a range rather than two states.
+ *
+ * The value is written back as it moves rather than when the finger lifts:
+ * both of these are heard live, and a slider you have to let go of to hear is
+ * a slider nobody can aim.
+ */
+@Composable
+private fun SliderRow(
+    title: String,
+    value: Float,
+    range: ClosedFloatingPointRange<Float>,
+    onChange: (Float) -> Unit,
+    format: (Float) -> String,
+) {
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
+            Text(format(value), style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
+        }
+
+        Slider(
+            value = value.coerceIn(range),
+            valueRange = range,
+            onValueChange = onChange,
+        )
+    }
 }
 
 @Composable

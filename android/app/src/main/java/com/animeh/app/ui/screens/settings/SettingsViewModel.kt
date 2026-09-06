@@ -55,6 +55,11 @@ class SettingsViewModel @Inject constructor(
     fun setWifiOnlyDownload(value: Boolean) = update { settingsStore.setWifiOnlyDownload(value) }
     fun setNotifications(value: Boolean) = update { settingsStore.setNotifications(value) }
 
+    fun setSpatialAudio(value: Boolean) = update { settingsStore.setSpatialAudio(value) }
+    fun setSpatialStrength(value: Float) = update { settingsStore.setSpatialStrength(value) }
+    fun setRotaryAudio(value: Boolean) = update { settingsStore.setRotaryAudio(value) }
+    fun setRotarySpeed(value: Float) = update { settingsStore.setRotarySpeed(value) }
+
     /**
      * Point the app at a different WordPress.
      *

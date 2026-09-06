@@ -10,7 +10,9 @@ declare( strict_types = 1 );
 namespace Animeh\Rest;
 
 use Animeh\Storage\B2Client;
+use Animeh\Storage\ImageOptimizer;
 use Animeh\Storage\StorageSettings;
+use Animeh\Support\ImageResizer;
 use Animeh\Support\StorageKey;
 use WP_Error;
 use WP_REST_Request;
@@ -63,6 +65,32 @@ final class StorageController {
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'test' ),
 				'permission_callback' => $guard,
+			)
+		);
+
+		register_rest_route(
+			$namespace,
+			'/storage/images',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'image_status' ),
+					'permission_callback' => $guard,
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'optimise_images' ),
+					'permission_callback' => $guard,
+					'args'                => array(
+						// A slice at a time; the panel calls back with what it
+						// was handed until the run reports itself done.
+						'cursor'    => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
+						'automatic' => array( 'type' => 'boolean' ),
+						// False when the panel is only saving the switch. A
+						// setting being changed is not a job being started.
+						'run'       => array( 'type' => 'boolean', 'default' => true ),
+					),
+				),
 			)
 		);
 
@@ -431,5 +459,56 @@ final class StorageController {
 			'public_bucket' => array( 'type' => 'boolean', 'default' => false ),
 			'link_ttl'      => array( 'type' => 'integer', 'default' => 3600, 'sanitize_callback' => 'absint' ),
 		);
+	}
+
+	/* ── Artwork ─────────────────────────────────────────────────────── */
+
+	/**
+	 * What the artwork optimiser could do right now.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function image_status( WP_REST_Request $request ): WP_REST_Response {
+		unset( $request );
+
+		$optimizer = new ImageOptimizer();
+
+		return new WP_REST_Response(
+			array(
+				'blocker'   => $optimizer->blocker(),
+				'automatic' => ImageOptimizer::is_automatic(),
+				'sizes'     => ImageResizer::ROLES,
+			)
+		);
+	}
+
+	/**
+	 * Shrink and re-host one slice of the catalog's artwork.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function optimise_images( WP_REST_Request $request ) {
+		$automatic = $request->get_param( 'automatic' );
+
+		if ( null !== $automatic ) {
+			ImageOptimizer::set_automatic( (bool) $automatic );
+		}
+
+		if ( ! (bool) $request->get_param( 'run' ) ) {
+			return new WP_REST_Response( array( 'automatic' => ImageOptimizer::is_automatic() ) );
+		}
+
+		$optimizer = new ImageOptimizer();
+		$blocker   = $optimizer->blocker();
+
+		if ( '' !== $blocker ) {
+			return new WP_Error( 'STORAGE_ERROR', $blocker, array( 'status' => 409 ) );
+		}
+
+		$result              = $optimizer->optimise_batch( (int) $request->get_param( 'cursor' ) );
+		$result['automatic'] = ImageOptimizer::is_automatic();
+
+		return new WP_REST_Response( $result );
 	}
 }

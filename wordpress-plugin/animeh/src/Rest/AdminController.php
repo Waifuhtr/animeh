@@ -16,6 +16,7 @@ namespace Animeh\Rest;
 
 use Animeh\Storage\CatalogRepository;
 use Animeh\Storage\CatalogSchema;
+use Animeh\Storage\ImageOptimizer;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\ModerationRepository;
 use Animeh\Storage\Notifier;
@@ -599,10 +600,47 @@ final class AdminController {
 
 		$work = $repo->work( $saved );
 
+		if ( null !== $work ) {
+			$work = $this->optimise_artwork( $repo, $work );
+		}
+
 		return new WP_REST_Response(
 			array( 'work' => null === $work ? null : CatalogController::work_payload( $work ) ),
 			0 === $id ? 201 : 200
 		);
+	}
+
+	/**
+	 * Re-host a work's poster and banner at the size they are drawn at.
+	 *
+	 * Only when it has been asked for — the setting is off until somebody
+	 * turns it on — because it is a download and an upload per image, inside a
+	 * request that was meant to be a save. The bulk action on the Depolama
+	 * screen is the other way in, and the one that exists for artwork that was
+	 * added before the setting was.
+	 *
+	 * A failure is silent by design: the original address still works, and a
+	 * save refused because a fan site was slow would be worse than a poster
+	 * that is larger than it needs to be.
+	 *
+	 * @param CatalogRepository    $repo Catalog.
+	 * @param array<string, mixed> $work Saved row.
+	 * @return array<string, mixed> The row as it now stands.
+	 */
+	private function optimise_artwork( CatalogRepository $repo, array $work ): array {
+		if ( ! ImageOptimizer::is_automatic() ) {
+			return $work;
+		}
+
+		$changes = ( new ImageOptimizer() )->work_changes( $work );
+
+		if ( array() === $changes ) {
+			return $work;
+		}
+
+		$repo->save_work( $changes, (int) $work['id'] );
+
+		return array_merge( $work, $changes );
 	}
 
 	/**
@@ -721,6 +759,19 @@ final class AdminController {
 		}
 
 		$episode = $repo->episode( $saved );
+
+		if ( null !== $episode && ImageOptimizer::is_automatic() ) {
+			$work    = $repo->work( $work_id );
+			$changes = ( new ImageOptimizer() )->episode_changes(
+				$episode,
+				(string) ( $work['slug'] ?? '' )
+			);
+
+			if ( array() !== $changes ) {
+				$repo->save_episode( $work_id, $changes, (int) $episode['id'] );
+				$episode = array_merge( $episode, $changes );
+			}
+		}
 
 		// The bell rings on the transition, not on the state. Saving a
 		// published episode again — a typo in its title, a new source — must

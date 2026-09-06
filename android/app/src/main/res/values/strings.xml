@@ -53,6 +53,15 @@
     <string name="auth_continue_guest">Üye olmadan gez</string>
     <string name="auth_reset_sent">Bu hesap varsa şifre sıfırlama bağlantısı gönderildi.</string>
     <string name="auth_password_too_short">Şifre en az 8 karakter olmalı.</string>
+    <string name="settings_sound">Ses</string>
+    <string name="settings_sound_note">İkisi de kulaklık için. Telefon hoparlöründe veya televizyonda ya duyulmaz ya da yanlış durur. Sesin aslını değiştirdikleri için varsayılan olarak kapalılar.</string>
+    <string name="settings_spatial">Mekansal ses</string>
+    <string name="settings_spatial_note">Cihazın kendi ses işlemcisiyle stereo alanı genişletir.</string>
+    <string name="settings_spatial_strength">Genişlik</string>
+    <string name="settings_rotary">Döngüsel ses (8D)</string>
+    <string name="settings_rotary_note">Sesi kulaklarının çevresinde yavaşça döndürür. Uzun bölümlerde yorabilir.</string>
+    <string name="settings_rotary_speed">Tur süresi</string>
+
     <string name="auth_login_required">Bu bölümü izlemek için giriş yapmalısın.</string>
 
     <!--

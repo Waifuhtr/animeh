@@ -2,6 +2,7 @@ package com.animeh.app.player
 
 import android.content.Context
 import android.graphics.Typeface
+import android.media.audiofx.Virtualizer
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -9,12 +10,16 @@ import androidx.media3.common.MimeTypes
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.audio.AudioProcessor
 import androidx.media3.common.text.Cue
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.audio.AudioSink
+import androidx.media3.exoplayer.audio.DefaultAudioSink
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
 import androidx.media3.exoplayer.upstream.DefaultBandwidthMeter
@@ -26,6 +31,7 @@ import com.animeh.app.player.ass.AssParser
 import com.animeh.app.player.ass.AssReader
 import com.animeh.app.player.ass.AssScript
 import com.animeh.app.player.ass.FontResolver
+import com.animeh.app.player.audio.RotaryPanProcessor
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -230,7 +236,24 @@ class PlaybackController @Inject constructor(
         val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
             .experimentalParseSubtitlesDuringExtraction(true)
 
-        exoPlayer = ExoPlayer.Builder(context)
+        // The audio chain is ours as well as the video one. Media3 builds its
+        // own sink unless it is told otherwise, and the rotating panner has to
+        // sit inside that sink to reach the samples at all.
+        //
+        // `setAudioProcessors` puts it before the built-in silence-skipping
+        // and speed-adjustment stages rather than replacing them, so playback
+        // speed still works exactly as it did.
+        val renderers = object : DefaultRenderersFactory(context) {
+            override fun buildAudioSink(
+                context: Context,
+                enableFloatOutput: Boolean,
+                enableAudioTrackPlaybackParams: Boolean,
+            ): AudioSink = DefaultAudioSink.Builder(context)
+                .setAudioProcessors(arrayOf<AudioProcessor>(rotaryPan))
+                .build()
+        }
+
+        exoPlayer = ExoPlayer.Builder(context, renderers)
             .setTrackSelector(selector)
             .setLoadControl(loadControl)
             .setBandwidthMeter(meter)
@@ -243,7 +266,88 @@ class PlaybackController @Inject constructor(
                 playWhenReady = true
             }
 
+        // Re-applied to the new engine: the settings outlive it, and a player
+        // rebuilt after a screen closed should sound like the one that closed.
+        applyAudioEffects()
+
         startProgressLoop()
+    }
+
+    /* ── Sound ───────────────────────────────────────────────────────── */
+
+    /**
+     * The rotating panner, kept across engines so its setting survives one.
+     *
+     * It is in the chain whether or not it is switched on; see the class for
+     * why an inactive processor would make the switch look broken.
+     */
+    private val rotaryPan = RotaryPanProcessor()
+
+    /**
+     * The platform's own stereo widening, if the device has it.
+     *
+     * This is the honest half of what gets called "3D sound": an effect the
+     * audio DSP already implements, asked for rather than reimplemented. Not
+     * every device has one, and the ones that do vary — hence a null that is
+     * never an error.
+     */
+    private var virtualizer: Virtualizer? = null
+
+    private var spatialOn = false
+    private var spatialStrength = 0f
+
+    /**
+     * Set both effects at once.
+     *
+     * Both default to off and both stay off until somebody turns them on in
+     * Settings. Neither is something to impose on a viewer: they are made for
+     * headphones, and over a phone speaker or a television they range from
+     * inaudible to wrong.
+     *
+     * @param spatial  Whether to widen the stereo image.
+     * @param strength 0..1, how far.
+     * @param rotary   Whether to sweep the image around the listener.
+     * @param speed    Sweeps per second.
+     */
+    fun setAudioEffects(spatial: Boolean, strength: Float, rotary: Boolean, speed: Float) {
+        spatialOn = spatial
+        spatialStrength = strength.coerceIn(0f, 1f)
+
+        rotaryPan.enabled = rotary
+        rotaryPan.speedHz = speed.coerceIn(MIN_ROTARY_HZ, MAX_ROTARY_HZ)
+
+        applyAudioEffects()
+    }
+
+    /**
+     * Hand the platform effect its current state.
+     *
+     * Every call is wrapped: `Virtualizer` throws rather than returning
+     * anything when a device has no such effect, when the session is already
+     * gone, or when another app holds it with a higher priority — and none of
+     * those is a reason for an episode to stop playing.
+     */
+    private fun applyAudioEffects() {
+        val session = exoPlayer?.audioSessionId ?: return
+        if (session == C.AUDIO_SESSION_ID_UNSET) return
+
+        if (!spatialOn) {
+            runCatching { virtualizer?.release() }
+            virtualizer = null
+            return
+        }
+
+        val effect = virtualizer ?: runCatching { Virtualizer(0, session) }
+            .getOrNull()
+            ?.also { virtualizer = it }
+            ?: return
+
+        runCatching {
+            if (effect.strengthSupported) {
+                effect.setStrength((spatialStrength * MAX_EFFECT_STRENGTH).toInt().toShort())
+            }
+            effect.enabled = true
+        }
     }
 
     /** Load an episode and start it. */
@@ -528,6 +632,8 @@ class PlaybackController @Inject constructor(
         exoPlayer?.removeListener(listener)
         exoPlayer?.release()
         exoPlayer = null
+        runCatching { virtualizer?.release() }
+        virtualizer = null
         trackSelector = null
         bandwidthMeter = null
         _cues.value = emptyList()
@@ -882,6 +988,19 @@ class PlaybackController @Inject constructor(
     }
 
     private companion object {
+        /**
+         * The range the sweep speed may be set to, in sweeps per second.
+         *
+         * Slower than the minimum and nothing appears to move within a scene;
+         * faster than the maximum it stops being a circle and becomes a
+         * wobble.
+         */
+        const val MIN_ROTARY_HZ = 0.04f
+        const val MAX_ROTARY_HZ = 0.5f
+
+        /** What the platform calls full strength for an audio effect. */
+        const val MAX_EFFECT_STRENGTH = 1000f
+
         const val TICK_MS = 500L
         const val SAVE_INTERVAL_MS = 10_000L
         const val CONTROLS_TIMEOUT_MS = 3_500L

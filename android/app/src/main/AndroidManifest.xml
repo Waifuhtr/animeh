@@ -7,6 +7,12 @@
     <!-- Playback keeps the CPU awake while the screen is off during audio-only
          use; without it the system suspends the decoder mid-episode. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!--
+      Attaching an effect to the player's own audio session. A normal
+      permission — granted at install, never asked about — and used only by the
+      spatial sound switch in Settings, which is off until somebody turns it on.
+    -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />

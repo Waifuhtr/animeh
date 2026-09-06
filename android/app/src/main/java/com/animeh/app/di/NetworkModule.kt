@@ -17,6 +17,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
 import okhttp3.Cache
+import okhttp3.ConnectionPool
+import okhttp3.Dispatcher
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -75,6 +77,31 @@ object NetworkModule {
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
+            .build()
+
+    /**
+     * The client artwork is fetched with.
+     *
+     * Its own dispatcher and connection pool rather than the shared ones.
+     * Posters, the catalog API and the video stream all went through a single
+     * OkHttp instance, and OkHttp allows five concurrent connections per host:
+     * a screenful of covers competed for that budget with the request that
+     * draws the screen, and with the episode being streamed.
+     *
+     * No response cache either. Coil keeps its own 150MB disk cache of exactly
+     * these bytes, so running them through the shared 20MB one stored every
+     * poster twice and evicted the catalog JSON that cache exists for.
+     */
+    @Provides
+    @Singleton
+    @Named("image_client")
+    fun imageClient(@Named("base_client") base: OkHttpClient): OkHttpClient =
+        base.newBuilder()
+            .cache(null)
+            // newBuilder() carries the originals over, so both have to be
+            // replaced by name for the separation to be real.
+            .dispatcher(Dispatcher())
+            .connectionPool(ConnectionPool())
             .build()
 
     /**

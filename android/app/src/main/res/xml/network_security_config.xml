@@ -4,9 +4,15 @@
   network attacker to swap the video stream, and every backend and storage
   endpoint this app talks to is https.
 
-  The debug overrides exist so a developer can point the app at a WordPress
-  running on their own machine; they apply to the debug build only, because
-  `debug-overrides` is ignored in a release APK.
+  The debug overrides exist so a developer can put a proxy in front of the app
+  and have its certificate trusted. They apply to a *debuggable* build only —
+  and the debug build type is no longer debuggable, because that is what gets
+  installed on a phone and a debuggable APK is never properly compiled. Flip
+  `isDebuggable` back in build.gradle.kts for the length of a session that
+  needs them.
+
+  The cleartext exception for a machine on the other end of the emulator is a
+  `domain-config`, so it is unaffected by any of that and applies everywhere.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false">

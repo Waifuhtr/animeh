@@ -15,6 +15,7 @@ import com.animeh.app.social.PushRegistrar
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
@@ -32,7 +33,7 @@ class AnimehApplication : Application(), ImageLoaderFactory {
     @Inject lateinit var pushRegistrar: PushRegistrar
     @Inject lateinit var sessionStore: SessionStore
 
-    @Inject @Named("base_client") lateinit var okHttpClient: OkHttpClient
+    @Inject @Named("image_client") lateinit var imageClient: OkHttpClient
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -74,14 +75,22 @@ class AnimehApplication : Application(), ImageLoaderFactory {
     }
 
     /**
-     * Coil, sharing the app's OkHttp client.
+     * Coil, on its own connection and its own share of the CPU.
      *
      * Posters are the bulk of what this app downloads, so the disk cache is
      * sized for a browsing session rather than left at the default.
+     *
+     * The two limits below are what keep a screenful of covers from being felt
+     * as a stutter. Poster URLs are typed in by hand in the admin panel, so
+     * nothing constrains how large the file behind one is; a home screen opens
+     * a dozen image slots at once, and by default every one of those decodes on
+     * its own thread the moment its bytes land. On a phone with four slow cores
+     * that is the frame budget, spent on images nobody is looking at yet.
      */
+    @OptIn(ExperimentalCoroutinesApi::class)
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
-            .okHttpClient { okHttpClient }
+            .okHttpClient { imageClient }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.20)
@@ -93,7 +102,25 @@ class AnimehApplication : Application(), ImageLoaderFactory {
                     .maxSizeBytes(150L * 1024 * 1024)
                     .build()
             }
-            .crossfade(true)
+            // Decoding is the expensive half and it is pure CPU, so it is
+            // capped rather than left to `Dispatchers.IO`'s sixty-four. The
+            // covers arrive a moment later and the list keeps scrolling, which
+            // is the trade worth making.
+            .decoderDispatcher(Dispatchers.IO.limitedParallelism(decodeThreads()))
+            // Long enough to read as a fade, short enough that a dozen of them
+            // overlapping is not a dozen animations competing for the frame.
+            .crossfade(160)
             .respectCacheHeaders(false)
             .build()
+
+    /**
+     * How many covers may decode at once.
+     *
+     * Half the cores, because the other half are drawing. Never fewer than
+     * two — one would make a slow image block every image behind it — and
+     * never more than four, past which the phone is only queueing work it
+     * cannot do any faster.
+     */
+    private fun decodeThreads(): Int =
+        (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 4)
 }

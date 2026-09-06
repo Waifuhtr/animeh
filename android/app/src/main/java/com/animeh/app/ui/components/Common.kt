@@ -10,10 +10,10 @@ import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,7 +47,13 @@ fun Shimmer(
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(8.dp),
 ) {
     val transition = rememberInfiniteTransition(label = "shimmer")
-    val offset by transition.animateFloat(
+
+    // Held as a State and read in `drawBehind` rather than unwrapped here with
+    // `by`. A value read while composing makes every frame of the animation a
+    // recomposition; read while drawing, the same animation only repaints. The
+    // loading screen puts two dozen of these on at once, so the difference is
+    // two dozen recompositions a frame against none.
+    val offset = transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -60,13 +66,17 @@ fun Shimmer(
     Box(
         modifier
             .clip(shape)
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(SurfaceCard, SurfaceOverlay, SurfaceCard),
-                    start = androidx.compose.ui.geometry.Offset(offset * 600f - 300f, 0f),
-                    end = androidx.compose.ui.geometry.Offset(offset * 600f, 300f),
+            .drawBehind {
+                val travel = offset.value * 600f
+
+                drawRect(
+                    Brush.linearGradient(
+                        colors = listOf(SurfaceCard, SurfaceOverlay, SurfaceCard),
+                        start = androidx.compose.ui.geometry.Offset(travel - 300f, 0f),
+                        end = androidx.compose.ui.geometry.Offset(travel, 300f),
+                    )
                 )
-            )
+            }
     )
 }
 

@@ -1,13 +1,24 @@
 package com.animeh.app.domain
 
+import androidx.compose.runtime.Immutable
+
 /**
  * What the UI actually renders.
  *
  * Separate from the DTOs on purpose: a screen should not have to know whether a
  * field arrived from the network or from Room, and a wire-format change should
  * not ripple into Compose. The mapping in each direction lives in [Mappers.kt].
+ *
+ * Every one of them is `@Immutable`, and every one of them earns it: nothing
+ * here has a `var`, and the lists are built once by the mappers and never
+ * touched again. Compose cannot work that out on its own — `List` is an
+ * interface, so a class holding one is unstable as far as the compiler knows,
+ * and an unstable parameter is a card that redraws whenever anything above it
+ * does. Saying so out loud is what lets a rail of covers sit still while the
+ * screen around it changes.
  */
 
+@Immutable
 data class Work(
     val id: Long,
     val slug: String,
@@ -58,12 +69,14 @@ enum class WorkStatus {
     }
 }
 
+@Immutable
 data class Season(
     val number: Int,
     val title: String = "",
     val episodeCount: Int = 0,
 )
 
+@Immutable
 data class Episode(
     val id: Long,
     val workId: Long,
@@ -86,6 +99,7 @@ data class Episode(
     val label: String get() = title.ifBlank { "$number. Bölüm" }
 }
 
+@Immutable
 data class Progress(
     val positionSeconds: Int,
     val durationSeconds: Int,
@@ -147,6 +161,7 @@ data class Progress(
     }
 }
 
+@Immutable
 data class ContinueItem(
     val workId: Long,
     val workTitle: String,
@@ -160,6 +175,7 @@ data class ContinueItem(
     val progress: Progress,
 )
 
+@Immutable
 data class HomeFeed(
     val hero: List<Work> = emptyList(),
     val continueWatching: List<ContinueItem> = emptyList(),
@@ -173,9 +189,11 @@ data class HomeFeed(
             airing.isEmpty() && latestEpisodes.isEmpty()
 }
 
+@Immutable
 data class Genre(val name: String, val count: Int)
 
 /** Everything needed to start one episode. */
+@Immutable
 data class Playback(
     val episode: Episode,
     val work: Work,
@@ -188,6 +206,7 @@ data class Playback(
     val resume: Progress?,
 )
 
+@Immutable
 data class MediaSource(
     val id: Long,
     val label: String,
@@ -206,6 +225,7 @@ data class MediaSource(
     val qualityLabel: String get() = if (height > 0) "${height}p" else label.ifBlank { "—" }
 }
 
+@Immutable
 data class SubtitleFont(
     val family: String,
     val url: String,
@@ -213,6 +233,7 @@ data class SubtitleFont(
 )
 
 /** -1 means "not marked"; 0 is a real marker at the very start of the episode. */
+@Immutable
 data class Markers(
     val introStart: Int = -1,
     val introEnd: Int = -1,
@@ -226,6 +247,7 @@ data class Markers(
         outroStart >= 0 && positionSeconds >= outroStart
 }
 
+@Immutable
 data class Announcement(
     val id: Long,
     val title: String,

@@ -17,6 +17,7 @@ import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -76,16 +77,24 @@ fun HomeScreen(
         is UiState.Success -> {
             val feed = current.data
 
+            // Cut once rather than on every recomposition of the list body.
+            val newEpisodes = remember(feed.latestEpisodes) { feed.latestEpisodes.take(NEW_EPISODE_ROWS) }
+
             LazyColumn(
                 contentPadding = PaddingValues(bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp),
             ) {
+                // Every item declares what it is. A lazy list keeps a pool of
+                // retired item compositions to reuse, and it may only reuse one
+                // for an item of the same type — untyped, this list is a dozen
+                // different shapes all sharing one bucket, so scrolling throws
+                // away a rail to build a header and then builds the rail again.
                 if (current.fromCache) {
-                    item { OfflineBanner() }
+                    item(contentType = "offline") { OfflineBanner() }
                 }
 
                 if (announcements.isNotEmpty()) {
-                    item {
+                    item(contentType = "announcement") {
                         AnnouncementBar(
                             title = announcements.first().title,
                             body = announcements.first().body,
@@ -94,48 +103,65 @@ fun HomeScreen(
                 }
 
                 if (feed.hero.isNotEmpty()) {
-                    item { HeroCarousel(feed.hero, onWorkClick, labels) }
+                    item(contentType = "hero") { HeroCarousel(feed.hero, onWorkClick, labels) }
                 }
 
                 if (feed.continueWatching.isNotEmpty()) {
-                    item { SectionHeader(stringResource(R.string.home_continue)) }
-                    item {
+                    item(contentType = "header") { SectionHeader(stringResource(R.string.home_continue)) }
+                    item(contentType = "continue-rail") {
                         LazyRow(
                             contentPadding = PaddingValues(horizontal = 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
-                            items(feed.continueWatching, key = { it.episodeId }) { item ->
+                            items(
+                                items = feed.continueWatching,
+                                key = { it.episodeId },
+                                contentType = { "continue" },
+                            ) { item ->
                                 ContinueCard(item = item, onClick = { onEpisodeClick(item.episodeId) })
                             }
                         }
                     }
                 }
 
-                if (feed.latestEpisodes.isNotEmpty()) {
-                    item { SectionHeader(stringResource(R.string.home_new_episodes)) }
-                    items(feed.latestEpisodes.take(6), key = { "ep-${it.id}" }) { episode ->
+                if (newEpisodes.isNotEmpty()) {
+                    item(contentType = "header") { SectionHeader(stringResource(R.string.home_new_episodes)) }
+                    items(
+                        items = newEpisodes,
+                        key = { "ep-${it.id}" },
+                        contentType = { "episode" },
+                    ) { episode ->
                         EpisodeRowCard(episode = episode, onClick = { onEpisodeClick(episode.id) })
                     }
                 }
 
                 if (feed.popular.isNotEmpty()) {
-                    item { SectionHeader(stringResource(R.string.home_popular), onSeeAll = onSeeAll) }
-                    item { WorkRail(feed.popular, onWorkClick) }
+                    item(contentType = "header") {
+                        SectionHeader(stringResource(R.string.home_popular), onSeeAll = onSeeAll)
+                    }
+                    item(contentType = "work-rail") { WorkRail(feed.popular, onWorkClick) }
                 }
 
                 if (feed.airing.isNotEmpty()) {
-                    item { SectionHeader(stringResource(R.string.home_airing), onSeeAll = onSeeAll) }
-                    item { WorkRail(feed.airing, onWorkClick) }
+                    item(contentType = "header") {
+                        SectionHeader(stringResource(R.string.home_airing), onSeeAll = onSeeAll)
+                    }
+                    item(contentType = "work-rail") { WorkRail(feed.airing, onWorkClick) }
                 }
 
                 if (feed.recentlyAdded.isNotEmpty()) {
-                    item { SectionHeader(stringResource(R.string.home_recently_added), onSeeAll = onSeeAll) }
-                    item { WorkRail(feed.recentlyAdded, onWorkClick) }
+                    item(contentType = "header") {
+                        SectionHeader(stringResource(R.string.home_recently_added), onSeeAll = onSeeAll)
+                    }
+                    item(contentType = "work-rail") { WorkRail(feed.recentlyAdded, onWorkClick) }
                 }
             }
         }
     }
 }
+
+/** How many of the newest episodes the home screen lists. */
+private const val NEW_EPISODE_ROWS = 6
 
 @Composable
 private fun HeroCarousel(

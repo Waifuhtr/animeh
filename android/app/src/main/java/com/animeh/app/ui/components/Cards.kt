@@ -317,7 +317,7 @@ fun WorkRail(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (loading) {
-            items(6) {
+            items(count = 6, contentType = { "poster-skeleton" }) {
                 Column(Modifier.width(PosterWidth)) {
                     Shimmer(Modifier.size(PosterWidth, PosterHeight), PosterShape)
                     Spacer(Modifier.height(8.dp))
@@ -325,7 +325,10 @@ fun WorkRail(
                 }
             }
         } else {
-            items(works, key = { it.id }) { work ->
+            // Typed so a retired card is reused as a card. Without it the
+            // skeletons and the covers share one pool, and the first real
+            // rail is built on top of slots shaped like placeholders.
+            items(items = works, key = { it.id }, contentType = { "poster" }) { work ->
                 WorkCard(work = work, onClick = { onClick(work) })
             }
         }

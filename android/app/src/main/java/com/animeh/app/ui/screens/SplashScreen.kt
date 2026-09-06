@@ -12,13 +12,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
@@ -82,9 +81,16 @@ fun SplashOverlay(ready: Boolean, modifier: Modifier = Modifier) {
 private fun SplashContent() {
     val transition = rememberInfiniteTransition(label = "splash")
 
+    // Both are kept as State and read inside draw and layer blocks rather than
+    // unwrapped with `by`. Unwrapping reads them while composing, which turns
+    // every frame of the animation into a recomposition of this whole screen —
+    // and this screen is on top of the home screen while the home screen is
+    // doing the work the launch is waiting for. Read where they are used, the
+    // animation costs a repaint and nothing above it moves at all.
+
     // The glow breathing behind the mark. Slow enough to read as light rather
     // than as something flashing for attention.
-    val glow by transition.animateFloat(
+    val glow = transition.animateFloat(
         initialValue = 0.55f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
@@ -94,7 +100,7 @@ private fun SplashContent() {
         label = "glow",
     )
 
-    val spin by transition.animateFloat(
+    val spin = transition.animateFloat(
         initialValue = 0f,
         targetValue = 360f,
         animationSpec = infiniteRepeatable(animation = tween(1_400, easing = LinearEasing)),
@@ -127,11 +133,13 @@ private fun SplashContent() {
         // A pool of accent light under the wordmark, not a circle with an
         // edge: the edge is what would make it look like a misplaced shape.
         Canvas(Modifier.fillMaxSize()) {
+            val lit = glow.value
+
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        AccentDeep.copy(alpha = 0.34f * glow),
-                        AccentDeep.copy(alpha = 0.10f * glow),
+                        AccentDeep.copy(alpha = 0.34f * lit),
+                        AccentDeep.copy(alpha = 0.10f * lit),
                         Color.Transparent,
                     ),
                     center = center,
@@ -150,7 +158,7 @@ private fun SplashContent() {
                 Canvas(
                     Modifier
                         .size(132.dp)
-                        .rotate(spin)
+                        .graphicsLayer { rotationZ = spin.value }
                 ) {
                     val stroke = 3.dp.toPx()
                     val inset = stroke / 2f
@@ -170,7 +178,10 @@ private fun SplashContent() {
 
                 Text(
                     text = "Animeh",
-                    modifier = Modifier.scale(enter.value),
+                    modifier = Modifier.graphicsLayer {
+                        scaleX = enter.value
+                        scaleY = enter.value
+                    },
                     style = TextStyle(
                         fontSize = 34.sp,
                         fontWeight = FontWeight.Bold,
@@ -186,7 +197,10 @@ private fun SplashContent() {
             Text(
                 text = "Anime dünyası yükleniyor…",
                 style = MaterialTheme.typography.bodySmall,
-                color = AccentBright.copy(alpha = 0.55f + 0.35f * glow),
+                color = AccentBright,
+                // Faded in the layer rather than by rebuilding the colour, so
+                // the pulse never reaches the composition.
+                modifier = Modifier.graphicsLayer { alpha = 0.55f + 0.35f * glow.value },
             )
         }
     }

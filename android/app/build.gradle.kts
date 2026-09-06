@@ -88,6 +88,25 @@ android {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             isMinifyEnabled = false
+
+            /*
+             * Not debuggable, despite the name.
+             *
+             * This is the variant that gets installed on a phone: `release`
+             * needs a keystore and there is not one here, so `debug` is the
+             * build whose speed anyone actually experiences — and a debuggable
+             * APK is never properly compiled. ART keeps every method
+             * interpretable so a debugger could attach, ignores the baseline
+             * profiles that ship inside the Compose libraries, and Compose's
+             * own runtime carries the bookkeeping the layout inspector reads.
+             * None of that is free, and all of it is paid on every frame.
+             *
+             * What it costs is attaching a debugger or the layout inspector to
+             * this build. Nothing in this project does either — the APK goes
+             * from the build Space to a phone. A developer who needs them can
+             * flip this line back for the length of a session.
+             */
+            isDebuggable = false
         }
         release {
             isMinifyEnabled = true

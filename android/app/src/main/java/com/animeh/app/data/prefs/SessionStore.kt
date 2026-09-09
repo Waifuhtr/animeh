@@ -75,6 +75,7 @@ class SessionStore @Inject constructor(
         write(KEY_EMAIL, session.user.email)
         write(KEY_AVATAR, session.user.avatar)
         write(KEY_IS_ADMIN, session.user.isAdmin.toString())
+        write(KEY_IS_MODERATOR, session.user.isModerator.toString())
         // Stored as an absolute instant, so a refresh decision does not depend
         // on knowing when the app last launched.
         write(KEY_EXPIRES_AT, (System.currentTimeMillis() + session.expiresIn * 1000).toString())
@@ -90,6 +91,7 @@ class SessionStore @Inject constructor(
         write(KEY_EMAIL, user.email)
         write(KEY_AVATAR, user.avatar)
         write(KEY_IS_ADMIN, user.isAdmin.toString())
+        write(KEY_IS_MODERATOR, user.isModerator.toString())
 
         _state.value = load()
     }
@@ -138,6 +140,7 @@ class SessionStore @Inject constructor(
                 email = read(KEY_EMAIL),
                 avatar = read(KEY_AVATAR),
                 isAdmin = read(KEY_IS_ADMIN).toBoolean(),
+                isModerator = read(KEY_IS_MODERATOR).toBoolean(),
             )
         )
     }
@@ -166,6 +169,17 @@ class SessionStore @Inject constructor(
         const val KEY_EMAIL = "email"
         const val KEY_AVATAR = "avatar"
         const val KEY_IS_ADMIN = "is_admin"
+
+        /**
+         * Whether this account holds the moderator role.
+         *
+         * Stored alongside the admin flag rather than derived from it. The
+         * server has always sent both and the app has always parsed both, but
+         * only one was ever written down — so somebody given the moderator
+         * role signed in, was told they were not an administrator, and saw no
+         * panel at all. Which is exactly what a moderator is not.
+         */
+        const val KEY_IS_MODERATOR = "is_moderator"
         const val EXPIRY_SKEW_MS = 60_000L
     }
 }
@@ -187,3 +201,15 @@ sealed interface AuthState {
  */
 val AuthState.user: UserDto? get() = (this as? AuthState.SignedIn)?.user
 val AuthState.isAdmin: Boolean get() = user?.isAdmin == true
+
+/** Whether this account may moderate: the catalog, reports, suspensions. */
+val AuthState.isModerator: Boolean get() = user?.isModerator == true
+
+/**
+ * Whether to draw the panel at all.
+ *
+ * An administrator gets everything; a moderator gets the part of it that is
+ * about the library and the people in it. Either way the server re-checks
+ * every call, so this decides what is offered and nothing else.
+ */
+val AuthState.canManage: Boolean get() = isAdmin || isModerator

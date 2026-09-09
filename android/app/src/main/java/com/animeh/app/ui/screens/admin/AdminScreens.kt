@@ -51,8 +51,9 @@ fun AdminDashboardScreen(
     isAdmin: Boolean,
     onSection: (String) -> Unit,
     viewModel: AdminDashboardViewModel = hiltViewModel(),
+    isModerator: Boolean = false,
 ) {
-    if (!isAdmin) {
+    if (!isAdmin && !isModerator) {
         EmptyState(
             message = stringResource(R.string.admin_no_permission),
             icon = Icons.Filled.Lock,
@@ -184,7 +185,12 @@ fun AdminDashboardScreen(
 
         item { HorizontalDivider(Modifier.padding(vertical = 8.dp)) }
 
-        items(SECTIONS) { (route, labelRes, icon) ->
+        // An administrator sees everything; a moderator sees the library and
+        // the people in it. The server enforces the same split, so a tile left
+        // out here is one that would have answered 403.
+        val sections = if (isAdmin) SECTIONS else SECTIONS.filter { it.first in MODERATOR_SECTIONS }
+
+        items(sections) { (route, labelRes, icon) ->
             ListItem(
                 headlineContent = { Text(stringResource(labelRes)) },
                 leadingContent = { Icon(icon, null) },
@@ -538,4 +544,21 @@ private val SECTIONS = listOf(
     Triple(Routes.ADMIN_ANNOUNCEMENTS, R.string.admin_announcements, Icons.Filled.Campaign),
     Triple(Routes.ADMIN_SERVER, R.string.admin_server, Icons.Filled.Settings),
     Triple(Routes.ADMIN_LOGS, R.string.admin_logs, Icons.Filled.Article),
+)
+
+/**
+ * The part of the panel a moderator reaches.
+ *
+ * The split mirrors the two capabilities on the server, which is the only
+ * place it is enforced: a moderator edits the library and deals with the
+ * people in it, and never sees the bucket credentials, the metadata API keys,
+ * the server address or the run log. Offering a tile that answers 403 would be
+ * worse than not offering it.
+ */
+private val MODERATOR_SECTIONS = setOf(
+    Routes.ADMIN_WORKS,
+    Routes.ADMIN_TENRAI,
+    Routes.ADMIN_TMDB,
+    Routes.ADMIN_USERS,
+    Routes.ADMIN_REPORTS,
 )

@@ -93,7 +93,11 @@ enum class TopLevelDestination(
     ;
 
     companion object {
-        fun visible(isAdmin: Boolean): List<TopLevelDestination> =
-            entries.filter { !it.adminOnly || isAdmin }
+        /**
+         * @param canManage whether this account holds either the admin or the
+         *   moderator role. A moderator reaches a smaller panel, not none.
+         */
+        fun visible(canManage: Boolean): List<TopLevelDestination> =
+            entries.filter { !it.adminOnly || canManage }
     }
 }

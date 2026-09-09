@@ -1,6 +1,7 @@
 package com.animeh.app.ui.screens.profile
 
 import android.content.ContentResolver
+import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -8,8 +9,11 @@ import com.animeh.app.core.AppResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.animeh.app.data.remote.dto.UserStatsDto
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.animeh.app.data.repository.AuthRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -20,6 +24,7 @@ import javax.inject.Inject
 class ProfileViewModel @Inject constructor(
     private val repository: AuthRepository,
     private val contentResolver: ContentResolver,
+    @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _stats = MutableStateFlow<UserStatsDto?>(null)
@@ -27,6 +32,18 @@ class ProfileViewModel @Inject constructor(
 
     private val _uploadingAvatar = MutableStateFlow(false)
     val uploadingAvatar: StateFlow<Boolean> = _uploadingAvatar.asStateFlow()
+
+    /**
+     * The picture that was just picked, drawn while the uploaded one arrives.
+     *
+     * Uploading gives back a new address for an object nobody has ever
+     * fetched, so the picture on screen went black and stayed black until it
+     * had been downloaded — a change that had already happened, shown as if it
+     * had not. The file on this phone is the same picture and is already
+     * local, so it stands in until the screen is left.
+     */
+    private val _pendingAvatar = MutableStateFlow<Uri?>(null)
+    val pendingAvatar: StateFlow<Uri?> = _pendingAvatar.asStateFlow()
 
     init {
         refresh()
@@ -41,6 +58,8 @@ class ProfileViewModel @Inject constructor(
      */
     fun uploadAvatar(uri: Uri) {
         viewModelScope.launch {
+            // On screen before the upload starts, not after it finishes.
+            _pendingAvatar.value = uri
             _uploadingAvatar.value = true
 
             val bytes = withContext(Dispatchers.IO) {
@@ -48,12 +67,39 @@ class ProfileViewModel @Inject constructor(
                     .getOrNull()
             }
 
-            if (bytes != null && bytes.isNotEmpty()) {
+            val result = if (bytes != null && bytes.isNotEmpty()) {
                 repository.uploadAvatar(bytes)
+            } else {
+                null
             }
 
             _uploadingAvatar.value = false
+
+            when (result) {
+                is AppResult.Success -> warm(result.data)
+                // Nothing was stored, so nothing should look as though it was.
+                else -> _pendingAvatar.value = null
+            }
         }
+    }
+
+    /**
+     * Pull the new picture into the image cache before anything asks for it.
+     *
+     * The profile screen is covered by the local copy, but the same face
+     * appears in rooms, in the friends list and on a public profile — and each
+     * of those would otherwise be the first to fetch it, one blank circle at a
+     * time. Fetching it here, while somebody is still looking at the local
+     * copy, means it is already in hand wherever it turns up next.
+     */
+    private fun warm(url: String) {
+        if (url.isBlank()) return
+
+        context.imageLoader.enqueue(
+            ImageRequest.Builder(context)
+                .data(url)
+                .build()
+        )
     }
 
     fun refresh() {

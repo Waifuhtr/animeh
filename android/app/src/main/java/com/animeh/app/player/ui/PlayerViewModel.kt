@@ -9,6 +9,7 @@ import com.animeh.app.core.UiState
 import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.repository.CatalogRepository
 import com.animeh.app.data.repository.LibraryRepository
+import com.animeh.app.domain.Episode
 import com.animeh.app.domain.Playback
 import com.animeh.app.domain.Work
 import com.animeh.app.player.PlaybackController
@@ -17,11 +18,17 @@ import com.animeh.app.social.WatchPartySession
 import dagger.hilt.android.lifecycle.HiltViewModel
 import android.os.SystemClock
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
@@ -50,6 +57,70 @@ class PlayerViewModel @Inject constructor(
     val typefaces = controller.typefaces
     val assLines = controller.assLines
     val script = controller.script
+
+    /**
+     * How much of the script's own size to draw.
+     *
+     * Read here rather than in the composable so it follows the setting while
+     * an episode is on screen — the whole point of the control is to see the
+     * effect of moving it.
+     */
+    val subtitleScale: StateFlow<Float> = settingsStore.settings
+        .map { it.subtitleScale }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, 1f)
+
+    /**
+     * Every episode of the season being watched.
+     *
+     * The player used to know only the one before and the one after, which is
+     * all a fullscreen picture needs. The episode page is a list, so it needs
+     * the list.
+     */
+    private val _episodes = MutableStateFlow<List<Episode>>(emptyList())
+    val episodes: StateFlow<List<Episode>> = _episodes.asStateFlow()
+
+    /**
+     * Whether this series is on the watchlist, followed live.
+     *
+     * From the local table rather than the payload: the button has to change
+     * the instant it is pressed, and the row is written before the server is
+     * told.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val inWatchlist: StateFlow<Boolean> = _loadState
+        .flatMapLatest { state ->
+            val workId = (state as? UiState.Success)?.data?.work?.id ?: 0L
+            if (workId > 0) libraryRepository.isInWatchlist(workId) else flowOf(false)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
+    /** Put this series on the watchlist, or take it off. */
+    fun setWatchlisted(wanted: Boolean) {
+        val workId = (_loadState.value as? UiState.Success)?.data?.work?.id ?: return
+
+        viewModelScope.launch { libraryRepository.toggleWatchlist(workId, wanted) }
+    }
+
+    /** Fill the picture, or hand the screen back to the page around it. */
+    fun setFullscreen(value: Boolean) = controller.setFullscreen(value)
+
+    /**
+     * Open a watch party on the episode being watched.
+     *
+     * @param onOpened called with the room's code, which is what the link into
+     *   the room screen is built from. Not called when the room could not be
+     *   opened; the player carries on playing, which is the right failure.
+     */
+    fun openRoom(onOpened: (String) -> Unit) {
+        val episodeId = currentEpisodeId
+        if (episodeId <= 0) return
+
+        viewModelScope.launch {
+            val result = party.open(episodeId)
+
+            if (result is AppResult.Success) onOpened(result.data.code)
+        }
+    }
 
     /**
      * The episode this player is on.
@@ -392,6 +463,11 @@ class PlayerViewModel @Inject constructor(
 
                     followRoom()
                     publishLocalPlayback()
+
+                    // After the payload, not with it: the episode page can
+                    // draw its header from what has already arrived while
+                    // this is still on its way.
+                    launch { loadEpisodes(playback) }
                 }
 
                 is AppResult.Failure -> {
@@ -410,6 +486,22 @@ class PlayerViewModel @Inject constructor(
             ClientLog.record("Bölüm açılamadı ($episodeId)", cause.stackTraceToString())
             _loadState.value = UiState.Error(AppError.Video(cause.message ?: cause::class.java.simpleName))
         }
+    }
+
+    /**
+     * The season this episode belongs to, for the list under the player.
+     *
+     * Silent on failure: the page has a player, a header and a synopsis
+     * without it, and an error banner over a working screen because a second
+     * request was slow is not worth the noise.
+     */
+    private suspend fun loadEpisodes(playback: Playback) {
+        val result = catalogRepository.episodes(
+            workId = playback.work.id,
+            season = playback.episode.seasonNumber,
+        )
+
+        if (result is AppResult.Success) _episodes.value = result.data.value
     }
 
     fun playNext() {

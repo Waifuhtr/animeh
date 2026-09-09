@@ -86,6 +86,21 @@ fun SettingsScreen(
                 onCheckedChange = viewModel::setSubtitlesEnabled,
             )
 
+            SliderRow(
+                title = stringResource(R.string.settings_subtitle_size),
+                value = settings.subtitleScale,
+                range = 0.5f..1.5f,
+                onChange = viewModel::setSubtitleScale,
+                format = { "%d%%".format((it * 100).toInt()) },
+            )
+
+            Text(
+                stringResource(R.string.settings_subtitle_size_note),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+
             ChoiceRow(
                 title = stringResource(R.string.settings_subtitle_language),
                 options = LANGUAGES,

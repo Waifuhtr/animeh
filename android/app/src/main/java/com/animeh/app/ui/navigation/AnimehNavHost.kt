@@ -22,7 +22,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.animeh.app.data.prefs.AuthState
+import com.animeh.app.data.prefs.canManage
 import com.animeh.app.data.prefs.isAdmin
+import com.animeh.app.data.prefs.isModerator
 import com.animeh.app.player.ui.PlayerActivity
 import com.animeh.app.ui.screens.admin.*
 import com.animeh.app.ui.screens.auth.*
@@ -56,7 +58,7 @@ fun AnimehApp(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination
 
-    val destinations = TopLevelDestination.visible(authState.isAdmin)
+    val destinations = TopLevelDestination.visible(authState.canManage)
     val showBottomBar = destinations.any { destination ->
         currentRoute?.hierarchy?.any { it.route == destination.route } == true
     }
@@ -264,6 +266,7 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
     composable(Routes.ADMIN) {
         AdminDashboardScreen(
             isAdmin = authState.isAdmin,
+            isModerator = authState.isModerator,
             onSection = { route -> navController.navigate(route) },
         )
     }

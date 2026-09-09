@@ -42,6 +42,7 @@ class SettingsStore @Inject constructor(
             wifiOnlyDownload = prefs[KEY_WIFI_ONLY] ?: true,
             notifications = prefs[KEY_NOTIFICATIONS] ?: true,
             playbackSpeed = prefs[KEY_SPEED] ?: 1.0f,
+            subtitleScale = prefs[KEY_SUBTITLE_SCALE] ?: 1.0f,
             spatialAudio = prefs[KEY_SPATIAL_ON] ?: false,
             spatialStrength = prefs[KEY_SPATIAL_STRENGTH] ?: 0.6f,
             rotaryAudio = prefs[KEY_ROTARY_ON] ?: false,
@@ -133,6 +134,7 @@ class SettingsStore @Inject constructor(
     suspend fun setWifiOnlyDownload(value: Boolean) = edit { it[KEY_WIFI_ONLY] = value }
     suspend fun setNotifications(value: Boolean) = edit { it[KEY_NOTIFICATIONS] = value }
     suspend fun setPlaybackSpeed(value: Float) = edit { it[KEY_SPEED] = value }
+    suspend fun setSubtitleScale(value: Float) = edit { it[KEY_SUBTITLE_SCALE] = value }
 
     suspend fun setSpatialAudio(value: Boolean) = edit { it[KEY_SPATIAL_ON] = value }
     suspend fun setSpatialStrength(value: Float) = edit { it[KEY_SPATIAL_STRENGTH] = value }
@@ -196,6 +198,18 @@ class SettingsStore @Inject constructor(
         val KEY_ADULT_OK = stringSetPreferencesKey("adult_acknowledged")
         val KEY_SPEED = floatPreferencesKey("playback_speed")
 
+        /**
+         * A multiplier on whatever size the subtitle script asks for.
+         *
+         * One means exactly what the typesetter wrote, which is the only
+         * honest default. It is a setting because that number is not always
+         * sensible on a phone: a script authored at 1080p may ask for a
+         * seventy-pixel line, which is right on a television and enormous six
+         * inches from your face, and nothing in the file distinguishes the
+         * two.
+         */
+        val KEY_SUBTITLE_SCALE = floatPreferencesKey("subtitle_scale")
+
         /** What the sign-in field pre-fills with; blank when not remembered. */
         val KEY_REMEMBERED_LOGIN = stringPreferencesKey("remembered_login")
 
@@ -224,6 +238,8 @@ data class LocalSettings(
     val wifiOnlyDownload: Boolean = true,
     val notifications: Boolean = true,
     val playbackSpeed: Float = 1.0f,
+    /** Multiplier on the size the subtitle script asks for; 1 is as written. */
+    val subtitleScale: Float = 1.0f,
     /** Stereo widening through the device's own effect. Off by default. */
     val spatialAudio: Boolean = false,
     val spatialStrength: Float = 0.6f,

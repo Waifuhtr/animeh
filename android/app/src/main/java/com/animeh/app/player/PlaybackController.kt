@@ -606,6 +606,17 @@ class PlaybackController @Inject constructor(
         _state.update { it.copy(locked = locked, controlsVisible = !locked) }
     }
 
+    /**
+     * Whether the picture fills the screen or sits at the top of a page.
+     *
+     * Kept with the rest of the player's state rather than in the screen: the
+     * controls are drawn from this object and both layouts read the same
+     * fields, so which one is showing belongs beside them.
+     */
+    fun setFullscreen(value: Boolean) {
+        _state.update { it.copy(isFullscreen = value) }
+    }
+
     /** Retry after a failure the viewer chose to retry. */
     fun retry() {
         retryAttempt = 0

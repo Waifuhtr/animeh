@@ -119,6 +119,20 @@ class AuthRepository @Inject constructor(
         return AppResult.Success(Unit).takeIf { result is AppResult.Success } ?: AppResult.Success(Unit)
     }
 
+    /**
+     * Re-read what this account is allowed to do.
+     *
+     * Deliberately not [refreshProfile]: that one also applies the server's
+     * settings over the local ones, which is right on a fresh sign-in and
+     * wrong on every launch — it would quietly undo a preference changed on
+     * this device. This asks the same endpoint and keeps only the roles.
+     */
+    suspend fun refreshRoles(): AppResult<UserDto> =
+        ApiErrorMapper.call({ it.user }) { userApi.profile() }
+            .also { result ->
+                if (result is AppResult.Success) sessionStore.updateUser(result.data)
+            }
+
     suspend fun refreshProfile(): AppResult<ProfileDto> =
         ApiErrorMapper.call({ it }) { userApi.profile() }
             .also { result ->

@@ -57,6 +57,7 @@ fun ProfileScreen(
 
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val uploading by viewModel.uploadingAvatar.collectAsStateWithLifecycle()
+    val pendingAvatar by viewModel.pendingAvatar.collectAsStateWithLifecycle()
 
     val pickImage = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
@@ -74,7 +75,11 @@ fun ProfileScreen(
         ) {
             Box {
                 AsyncImage(
-                    model = user.avatar,
+                    // The file that was just picked wins over the address it
+                    // was uploaded to: it is the same picture and it is
+                    // already on this phone, so the change shows the moment it
+                    // is made rather than a download later.
+                    model = pendingAvatar ?: user.avatar,
                     contentDescription = stringResource(R.string.profile_change_photo),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

@@ -53,6 +53,9 @@
     <string name="auth_continue_guest">Üye olmadan gez</string>
     <string name="auth_reset_sent">Bu hesap varsa şifre sıfırlama bağlantısı gönderildi.</string>
     <string name="auth_password_too_short">Şifre en az 8 karakter olmalı.</string>
+    <string name="settings_subtitle_size">Altyazı boyutu</string>
+    <string name="settings_subtitle_size_note">%100, altyazı dosyasının kendi istediği boyut. Bazı dosyalar televizyon için hazırlandığından telefonda çok büyük kalır; o zaman buradan küçültebilirsin.</string>
+
     <string name="settings_sound">Ses</string>
     <string name="settings_sound_note">İkisi de kulaklık için. Telefon hoparlöründe veya televizyonda ya duyulmaz ya da yanlış durur. Sesin aslını değiştirdikleri için varsayılan olarak kapalılar.</string>
     <string name="settings_spatial">Mekansal ses</string>
@@ -194,6 +197,22 @@
     <string name="player_reconnecting">Yeniden bağlanılıyor…</string>
     <string name="player_up_next">Sırada</string>
     <string name="player_settings">Oynatıcı ayarları</string>
+    <string name="player_subtitles">Altyazı</string>
+
+    <!-- The episode page: the player at the top, the season underneath. -->
+    <string name="episode_count">%1$d Bölüm</string>
+    <string name="episode_number">%1$d. Bölüm</string>
+    <string name="episode_tab_list">Bölümler</string>
+    <string name="episode_tab_about">Açıklama</string>
+    <string name="episode_list_empty">Bu sezonda listelenecek başka bölüm yok.</string>
+    <string name="episode_no_synopsis">Bu bölüm için açıklama girilmemiş.</string>
+    <string name="episode_watchlist_add">Listeme Ekle</string>
+    <string name="episode_watchlist_remove">Listeden Çıkar</string>
+    <string name="episode_share">Paylaş</string>
+    <string name="episode_more">Daha Fazla</string>
+    <string name="episode_open_series">Anime sayfası</string>
+    <string name="episode_share_text">%1$s – %2$d. Bölüm</string>
+    <string name="player_exit_fullscreen">Tam ekrandan çık</string>
     <string name="player_stats">İstatistikler</string>
     <string name="player_seek_forward">10 saniye ileri</string>
     <string name="player_seek_back">10 saniye geri</string>

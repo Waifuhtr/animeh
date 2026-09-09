@@ -2,7 +2,12 @@
 /**
  * The API behind the in-app admin panel.
  *
- * Every route carries `Permissions::require_manage`. That is the rule from §8
+ * Every route carries a real capability check, never `__return_true`. Most
+ * carry `Permissions::require_manage`; the catalog, the metadata imports, the
+ * user list and the report queue carry `require_moderate` instead, which is
+ * the split Permissions.php has always described — a moderator edits the
+ * library and deals with the people in it, and never reaches the bucket
+ * credentials, the API keys, the server address or the run log. That is §8
  * made concrete: the app's `is_admin` flag decides which tab to draw and
  * nothing else, and a client that sets it to true reaches exactly these
  * endpoints and is refused by every one of them.
@@ -53,7 +58,7 @@ final class AdminController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'dashboard' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 			)
 		);
 
@@ -64,7 +69,7 @@ final class AdminController {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( $this, 'works' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 					'args'                => array(
 						'search'   => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
 						'page'     => array( 'type' => 'integer', 'default' => 1, 'sanitize_callback' => 'absint' ),
@@ -74,7 +79,7 @@ final class AdminController {
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, 'save_work' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 					'args'                => $this->work_args(),
 				),
 			)
@@ -87,13 +92,13 @@ final class AdminController {
 				array(
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'save_work' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 					'args'                => $this->work_args(),
 				),
 				array(
 					'methods'             => WP_REST_Server::DELETABLE,
 					'callback'            => array( $this, 'delete_work' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 				),
 			)
 		);
@@ -105,12 +110,12 @@ final class AdminController {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( $this, 'episodes' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 				),
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, 'save_episode' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 					'args'                => $this->episode_args(),
 				),
 			)
@@ -123,18 +128,18 @@ final class AdminController {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( $this, 'episode' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 				),
 				array(
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'save_episode' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 					'args'                => $this->episode_args(),
 				),
 				array(
 					'methods'             => WP_REST_Server::DELETABLE,
 					'callback'            => array( $this, 'delete_episode' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 				),
 			)
 		);
@@ -146,12 +151,12 @@ final class AdminController {
 				array(
 					'methods'             => WP_REST_Server::READABLE,
 					'callback'            => array( $this, 'sources' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 				),
 				array(
 					'methods'             => WP_REST_Server::CREATABLE,
 					'callback'            => array( $this, 'save_source' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 					'args'                => $this->source_args(),
 				),
 			)
@@ -164,13 +169,13 @@ final class AdminController {
 				array(
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'save_source' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 					'args'                => $this->source_args(),
 				),
 				array(
 					'methods'             => WP_REST_Server::DELETABLE,
 					'callback'            => array( $this, 'delete_source' ),
-					'permission_callback' => $guard,
+					'permission_callback' => $moderate,
 				),
 			)
 		);
@@ -182,7 +187,7 @@ final class AdminController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'tenrai_search' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'q'    => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 					'page' => array( 'type' => 'integer', 'default' => 1, 'sanitize_callback' => 'absint' ),
@@ -196,7 +201,7 @@ final class AdminController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'tenrai_import' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'tenrai_id'        => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 					'import_episodes'  => array( 'type' => 'boolean', 'default' => true ),
@@ -256,7 +261,7 @@ final class AdminController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'tmdb_search' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'q'    => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 					'year' => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
@@ -271,7 +276,7 @@ final class AdminController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'tmdb_import' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'tmdb_id'         => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 					'import_episodes' => array( 'type' => 'boolean', 'default' => true ),
@@ -286,7 +291,7 @@ final class AdminController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'tmdb_artwork' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'work_id'   => array( 'required' => true, 'type' => 'integer', 'sanitize_callback' => 'absint' ),
 					'tmdb_id'   => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
@@ -431,7 +436,7 @@ final class AdminController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'users' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'search'   => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
 					'page'     => array( 'type' => 'integer', 'default' => 1, 'sanitize_callback' => 'absint' ),
@@ -517,23 +522,30 @@ final class AdminController {
 	 * Numbers for the admin home screen.
 	 */
 	public function dashboard(): WP_REST_Response {
-		$counts   = ( new CatalogRepository() )->counts();
-		$settings = StorageSettings::load();
-
-		return new WP_REST_Response(
-			array(
-				'counts'  => $counts,
-				'errors'  => ( new LogRepository() )->error_summary( 7 ),
-				'storage' => array(
-					'configured'    => $settings->is_configured(),
-					'bucket'        => $settings->bucket,
-					'public_bucket' => $settings->public_bucket,
-				),
-				'tenrai'  => TenraiClient::public_settings(),
-				'tmdb'    => TmdbClient::public_settings(),
-				'reports' => ( new ModerationRepository() )->open_report_count(),
-			)
+		$payload = array(
+			'counts'  => ( new CatalogRepository() )->counts(),
+			'reports' => ( new ModerationRepository() )->open_report_count(),
 		);
+
+		// A moderator lands here too, and gets the part of it that is about
+		// the library. How storage is wired and which metadata services are
+		// connected is an administrator's business — it is the beginning of
+		// the trail to the credentials, and none of it helps somebody whose
+		// job is the catalog and the report queue.
+		if ( Permissions::current_user_can_manage() ) {
+			$settings = StorageSettings::load();
+
+			$payload['errors']  = ( new LogRepository() )->error_summary( 7 );
+			$payload['storage'] = array(
+				'configured'    => $settings->is_configured(),
+				'bucket'        => $settings->bucket,
+				'public_bucket' => $settings->public_bucket,
+			);
+			$payload['tenrai'] = TenraiClient::public_settings();
+			$payload['tmdb']   = TmdbClient::public_settings();
+		}
+
+		return new WP_REST_Response( $payload );
 	}
 
 	/**

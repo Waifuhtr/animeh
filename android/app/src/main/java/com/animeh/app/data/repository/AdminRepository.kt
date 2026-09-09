@@ -13,6 +13,7 @@ import com.animeh.app.domain.toDomain
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -320,6 +321,71 @@ class AdminRepository @Inject constructor(
             is AppResult.Failure -> completed
         }
     }
+
+    /* ── Frames and points ───────────────────────────────────────────── */
+
+    suspend fun frames(): AppResult<List<FrameDto>> =
+        ApiErrorMapper.call({ it.frames }) { api.adminFrames() }
+
+    /**
+     * Add a frame to the shop.
+     *
+     * Read whole rather than streamed: the server refuses anything over three
+     * megabytes, which is a size a phone can hold, and multipart needs a
+     * length the content resolver does not always know for a stream.
+     */
+    suspend fun uploadFrame(
+        uri: Uri,
+        name: String,
+        price: Int,
+        rarity: String,
+    ): AppResult<FrameDto> {
+        val bytes = withContext(Dispatchers.IO) {
+            runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+        }
+
+        if (bytes == null || bytes.isEmpty()) {
+            return AppResult.Failure(AppError.Message("Dosya okunamadı."))
+        }
+
+        val filename = uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "frame"
+        val type = contentResolver.getType(uri).orEmpty()
+        val part = MultipartBody.Part.createFormData(
+            "file",
+            filename,
+            bytes.toRequestBody(mediaType(type)),
+        )
+
+        val fields = mapOf(
+            "name" to name.toPlainPart(),
+            "price" to price.toString().toPlainPart(),
+            "rarity" to rarity.toPlainPart(),
+        )
+
+        return ApiErrorMapper.call({ it.frame }) { api.uploadFrame(part, fields) }
+    }
+
+    suspend fun updateFrame(
+        id: Long,
+        name: String,
+        price: Int,
+        rarity: String,
+        published: Boolean,
+    ): AppResult<FrameDto> =
+        ApiErrorMapper.call({ it.frame }) {
+            api.updateFrame(id, FrameUpdateRequest(name, price, rarity, published = published))
+        }
+
+    suspend fun deleteFrame(id: Long): AppResult<Unit> =
+        ApiErrorMapper.call({ }) { api.deleteFrame(id) }
+
+    /** A negative [amount] takes points back; the ledger keeps both rows. */
+    suspend fun grantPoints(userId: Long, amount: Int, note: String): AppResult<Int> =
+        ApiErrorMapper.call({ it.balance }) {
+            api.grantPoints(userId, GrantPointsRequest(amount, note))
+        }
+
+    private fun String.toPlainPart() = toRequestBody("text/plain".toMediaTypeOrNull())
 
     private fun fileSize(uri: Uri): Long? =
         contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length.takeIf { l -> l > 0 } }

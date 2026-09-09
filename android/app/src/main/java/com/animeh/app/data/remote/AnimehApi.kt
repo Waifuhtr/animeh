@@ -1,6 +1,7 @@
 package com.animeh.app.data.remote
 
 import com.animeh.app.data.remote.dto.*
+import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
 import retrofit2.http.*
@@ -91,6 +92,16 @@ interface PublicApi {
     /** Readable signed out, so a profile link shared outside the app works. */
     @GET("users/{id}")
     suspend fun profile(@Path("id") userId: Long): Response<PublicProfileDto>
+
+    /**
+     * The standings, readable signed out for the same reason as the catalogue:
+     * everything in the payload is already on a public profile.
+     */
+    @GET("leaderboard")
+    suspend fun leaderboard(
+        @Query("metric") metric: String,
+        @Query("limit") limit: Int = 25,
+    ): Response<LeaderboardDto>
 }
 
 interface UserApi {
@@ -228,6 +239,21 @@ interface UserApi {
         @Path("code") code: String,
         @Body body: InviteRequest,
     ): Response<InviteResultDto>
+
+    @GET("me/points")
+    suspend fun wallet(@Query("limit") limit: Int = 30): Response<WalletDto>
+
+    @GET("frames")
+    suspend fun frames(): Response<FrameShopDto>
+
+    @POST("frames/{id}/buy")
+    suspend fun buyFrame(@Path("id") id: Long): Response<FramePurchaseDto>
+
+    @POST("me/frame")
+    suspend fun equipFrame(@Body body: EquipFrameRequest): Response<EquipFrameDto>
+
+    @POST("me/profile-theme")
+    suspend fun setProfileTheme(@Body body: ProfileThemeRequest): Response<ThemeDto>
 }
 
 interface AdminApi {
@@ -395,4 +421,35 @@ interface AdminApi {
 
     @POST("admin/client-config")
     suspend fun saveClientConfig(@Body body: AdminClientConfigRequest): Response<AdminClientConfigDto>
+
+    /** Every frame, published or not. */
+    @GET("admin/frames")
+    suspend fun adminFrames(): Response<FrameListDto>
+
+    /**
+     * Multipart rather than raw bytes, unlike the avatar: a frame arrives with
+     * a name, a price and an order alongside the file, and putting those in
+     * the query string of a three-megabyte upload is a worse place for them.
+     */
+    @Multipart
+    @POST("admin/frames")
+    suspend fun uploadFrame(
+        @Part file: MultipartBody.Part,
+        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
+    ): Response<FrameEnvelopeDto>
+
+    @POST("admin/frames/{id}")
+    suspend fun updateFrame(
+        @Path("id") id: Long,
+        @Body body: FrameUpdateRequest,
+    ): Response<FrameEnvelopeDto>
+
+    @DELETE("admin/frames/{id}")
+    suspend fun deleteFrame(@Path("id") id: Long): Response<OkDto>
+
+    @POST("admin/users/{id}/points")
+    suspend fun grantPoints(
+        @Path("id") id: Long,
+        @Body body: GrantPointsRequest,
+    ): Response<GrantPointsDto>
 }

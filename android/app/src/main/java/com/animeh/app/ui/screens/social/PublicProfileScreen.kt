@@ -27,12 +27,14 @@ import com.animeh.app.R
 import com.animeh.app.core.UiState
 import com.animeh.app.data.remote.dto.ProfileReviewDto
 import com.animeh.app.data.remote.dto.ProfileWorkDto
+import com.animeh.app.ui.components.AvatarWithFrame
 import com.animeh.app.ui.components.ErrorState
 import com.animeh.app.ui.components.formatWatched
 import com.animeh.app.ui.theme.PosterShape
 import com.animeh.app.ui.theme.StatusWarning
 import com.animeh.app.ui.theme.SurfaceCard
 import com.animeh.app.ui.theme.SurfaceOverlay
+import com.animeh.app.ui.theme.profileTheme
 import com.animeh.app.ui.theme.TextMuted
 import com.animeh.app.ui.theme.TextSecondary
 
@@ -102,18 +104,25 @@ fun PublicProfileScreen(
                     contentPadding = PaddingValues(bottom = 32.dp),
                 ) {
                     item {
+                        val theme = profileTheme(profile.theme)
+
                         Row(
-                            Modifier.fillMaxWidth().padding(16.dp),
+                            Modifier
+                                .fillMaxWidth()
+                                // Their colour, on their profile. It is what
+                                // choosing one is for.
+                                .background(theme.banner)
+                                .padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            AsyncImage(
-                                model = profile.avatar,
-                                contentDescription = null,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(CircleShape)
-                                    .background(SurfaceOverlay),
+                            AvatarWithFrame(
+                                avatarUrl = profile.avatar,
+                                frame = profile.frame,
+                                size = 84.dp,
+                                // One face, at the top of one screen, with a
+                                // still list under it — the same budget as
+                                // your own profile.
+                                animate = true,
                             )
 
                             Spacer(Modifier.width(14.dp))

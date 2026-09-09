@@ -15,7 +15,9 @@ declare( strict_types = 1 );
 namespace Animeh\Rest;
 
 use Animeh\Storage\CatalogRepository;
+use Animeh\Storage\PointsRepository;
 use Animeh\Storage\UserDataRepository;
+use Animeh\Support\Points;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -201,6 +203,13 @@ final class MeController {
 				'user'     => AuthController::user_payload( $user_id ),
 				'stats'    => ( new UserDataRepository() )->stats( $user_id ),
 				'settings' => $this->stored_settings( $user_id ),
+				// Balance and rate together: a number on its own tells you
+				// what you have, not how to get more of it.
+				'points'   => array(
+					'balance'     => PointsRepository::balance( $user_id ),
+					'earned'      => PointsRepository::earned( $user_id ),
+					'per_episode' => Points::PER_EPISODE,
+				),
 			)
 		);
 	}

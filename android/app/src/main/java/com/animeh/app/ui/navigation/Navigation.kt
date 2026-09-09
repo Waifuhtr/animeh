@@ -47,6 +47,8 @@ object Routes {
     const val ADMIN_TERMS = "admin/terms"
     const val FRIENDS = "friends"
     const val ROOM = "room"
+    const val FRAME_SHOP = "frames"
+    const val LEADERBOARD = "leaderboard"
 
     private const val PROFILE_BASE = "profile/user"
     const val PUBLIC_PROFILE = "$PROFILE_BASE/{userId}"
@@ -56,6 +58,7 @@ object Routes {
     const val ADMIN_REPORTS = "admin/reports"
     const val ADMIN_MODERATORS = "admin/moderators"
     const val ADMIN_SERVER = "admin/server"
+    const val ADMIN_FRAMES = "admin/frames"
 
     private const val ADMIN_WORK_BASE = "admin/work"
     const val ADMIN_WORK_EDIT = "$ADMIN_WORK_BASE/{workId}"

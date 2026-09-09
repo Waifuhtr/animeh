@@ -15,6 +15,7 @@
     <string name="cancel">Vazgeç</string>
     <string name="save">Kaydet</string>
     <string name="delete">Sil</string>
+    <string name="upload">Yükle</string>
     <string name="search">Ara</string>
     <string name="loading">Yükleniyor…</string>
     <string name="close">Kapat</string>
@@ -421,4 +422,27 @@
     <string name="profile_add_friend">Arkadaş ekle</string>
     <string name="profile_friend_pending">İstek bekliyor</string>
     <string name="profile_friends_already">Arkadaşsınız</string>
+
+    <!-- Puanlar, çerçeveler ve sıralama -->
+    <string name="points_title">Animeh Puanı</string>
+    <string name="frames_shop">Çerçeve Mağazası</string>
+    <string name="leaderboard">Sıralama</string>
+
+    <string name="admin_frames">Çerçeveler</string>
+    <string name="admin_frames_add">Çerçeve Ekle</string>
+    <string name="admin_frames_empty">Henüz çerçeve eklenmemiş.</string>
+    <string name="admin_frames_name">Çerçeve adı</string>
+    <string name="admin_frames_price">Fiyat (puan)</string>
+    <string name="admin_frames_price_hint">Yaklaşık %1$d bölüm izlemeye denk</string>
+    <string name="admin_frames_published">Mağazada görünsün</string>
+    <string name="admin_frames_hint">Kare, 64–1024 piksel arası. Hareketli WebP, APNG veya GIF. En iyi sonuç: 288×288 hareketli WebP.</string>
+    <string name="admin_frames_delete_warning">Bu çerçeveyi silmek, satın almış olan herkesin üzerinden de kaldırır. Harcanan puanlar geri verilmez.</string>
+    <string name="admin_frames_delete_confirm">Yine de sil</string>
+
+    <string name="admin_points_send">Puan Gönder</string>
+    <string name="admin_points_title">%1$s kullanıcısına puan</string>
+    <string name="admin_points_amount">Puan miktarı</string>
+    <string name="admin_points_take">Puan geri al</string>
+    <string name="admin_points_note">Not</string>
+    <string name="admin_points_note_hint">Kullanıcının puan geçmişinde bu yazı görünür.</string>
 </resources>

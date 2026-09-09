@@ -8,10 +8,13 @@ import androidx.lifecycle.viewModelScope
 import com.animeh.app.core.AppResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.animeh.app.data.remote.dto.FrameDto
 import com.animeh.app.data.remote.dto.UserStatsDto
+import com.animeh.app.data.remote.dto.WalletDto
 import coil.imageLoader
 import coil.request.ImageRequest
 import com.animeh.app.data.repository.AuthRepository
+import com.animeh.app.data.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,12 +26,23 @@ import javax.inject.Inject
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val repository: AuthRepository,
+    private val rewards: RewardsRepository,
     private val contentResolver: ContentResolver,
     @ApplicationContext private val context: Context,
 ) : ViewModel() {
 
     private val _stats = MutableStateFlow<UserStatsDto?>(null)
     val stats: StateFlow<UserStatsDto?> = _stats.asStateFlow()
+
+    private val _wallet = MutableStateFlow(WalletDto())
+    val wallet: StateFlow<WalletDto> = _wallet.asStateFlow()
+
+    /** Applied the moment it is tapped; the server call only confirms it. */
+    private val _theme = MutableStateFlow("amethyst")
+    val theme: StateFlow<String> = _theme.asStateFlow()
+
+    private val _frame = MutableStateFlow<FrameDto?>(null)
+    val frame: StateFlow<FrameDto?> = _frame.asStateFlow()
 
     private val _uploadingAvatar = MutableStateFlow(false)
     val uploadingAvatar: StateFlow<Boolean> = _uploadingAvatar.asStateFlow()
@@ -45,9 +59,9 @@ class ProfileViewModel @Inject constructor(
     private val _pendingAvatar = MutableStateFlow<Uri?>(null)
     val pendingAvatar: StateFlow<Uri?> = _pendingAvatar.asStateFlow()
 
-    init {
-        refresh()
-    }
+    // No `init { refresh() }`: the screen calls [refresh] whenever it comes
+    // back into view, which covers the first time as well as every return
+    // from the shop — where the balance and the frame have just changed.
 
     /**
      * Send a picked image as the profile picture.
@@ -110,8 +124,41 @@ class ProfileViewModel @Inject constructor(
             // blanking a profile that was perfectly readable a moment ago.
             (repository.refreshProfile() as? AppResult.Success)?.let {
                 _stats.value = it.data.stats
+                // Balance, rate and cosmetics arrive with the profile; the
+                // history and the three ranks are a second, heavier call, so
+                // the screen fills in twice rather than waiting for both.
+                _wallet.value = it.data.points
+                _theme.value = it.data.user.theme
+                _frame.value = it.data.user.frame
             }
+
+            (rewards.wallet() as? AppResult.Success)?.let { _wallet.value = it.data }
         }
+    }
+
+    /**
+     * Choose a profile colour.
+     *
+     * Set here first and sent afterwards. A colour is not a thing worth a
+     * spinner, and the palette is free — the worst a failed request can do is
+     * leave the wrong colour until the next refresh, which is a great deal
+     * better than a swatch that does nothing for half a second.
+     */
+    fun chooseTheme(slug: String) {
+        if (_theme.value == slug) return
+
+        _theme.value = slug
+        viewModelScope.launch { rewards.setTheme(slug) }
+    }
+
+    /** Called by the shop when a frame is put on, so the header follows. */
+    fun frameChanged(frame: FrameDto?) {
+        _frame.value = frame
+    }
+
+    /** Called after a purchase, so the balance on the profile is not stale. */
+    fun walletChanged(balance: Int) {
+        _wallet.value = _wallet.value.copy(balance = balance)
     }
 
     fun logout() {

@@ -34,6 +34,16 @@ data class UserDto(
     val ban: BanDto? = null,
     val registered: String = "",
     val stats: UserStatsDto? = null,
+    /**
+     * The frame this person is wearing, if any.
+     *
+     * On the user rather than fetched per screen, because every place a user
+     * is drawn — a friends list, a room, the standings — is a place they
+     * should be drawn wearing what they chose.
+     */
+    val frame: FrameDto? = null,
+    /** A slug from the palette, never a colour value. */
+    val theme: String = "amethyst",
 )
 
 @Serializable
@@ -52,6 +62,7 @@ data class ProfileDto(
     val user: UserDto = UserDto(),
     val stats: UserStatsDto = UserStatsDto(),
     val settings: AppSettingsDto = AppSettingsDto(),
+    val points: WalletDto = WalletDto(),
 )
 
 @Serializable

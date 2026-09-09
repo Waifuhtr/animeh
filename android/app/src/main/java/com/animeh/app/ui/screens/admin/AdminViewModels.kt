@@ -649,6 +649,17 @@ class AdminUsersViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Send points to somebody, or take them back with a negative amount.
+     *
+     * Nothing in the list changes: a balance is not one of the columns a user
+     * row draws, and reloading fifty rows to show a number that is not on
+     * screen would be work for nothing.
+     */
+    fun grantPoints(userId: Long, amount: Int, note: String) {
+        viewModelScope.launch { repository.grantPoints(userId, amount, note) }
+    }
+
     /** [days] zero is permanent; anything else suspends for that many days. */
     fun ban(userId: Long, reason: String, days: Int) {
         viewModelScope.launch {
@@ -951,5 +962,92 @@ class AdminFontsViewModel @Inject constructor(
             repository.deleteFont(id)
             load()
         }
+    }
+}
+
+/**
+ * The frame catalogue, from the panel's side.
+ *
+ * Every change reloads the list rather than patching it in place. The list is
+ * a few dozen rows and a reload is one request; keeping a local copy in step
+ * with a server that also renames files and assigns ids would be more code
+ * for a worse guarantee.
+ */
+@HiltViewModel
+class AdminFramesViewModel @Inject constructor(
+    private val repository: AdminRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow<UiState<List<FrameDto>>>(UiState.Loading)
+    val state: StateFlow<UiState<List<FrameDto>>> = _state.asStateFlow()
+
+    /** True while a file is on its way up, so the add button waits its turn. */
+    private val _busy = MutableStateFlow(false)
+    val busy: StateFlow<Boolean> = _busy.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            _state.value = when (val result = repository.frames()) {
+                is AppResult.Success ->
+                    if (result.data.isEmpty()) UiState.Empty else UiState.Success(result.data)
+                is AppResult.Failure -> UiState.Error(result.error)
+            }
+        }
+    }
+
+    fun upload(uri: Uri, name: String, price: Int, rarity: String) {
+        viewModelScope.launch {
+            _busy.value = true
+
+            when (val result = repository.uploadFrame(uri, name, price, rarity)) {
+                is AppResult.Success -> {
+                    _message.value = "${result.data.name} eklendi"
+                    load()
+                }
+                // The server's own words: it knows whether the file was the
+                // wrong shape, the wrong format or simply too big, and each of
+                // those needs a different thing done about it.
+                is AppResult.Failure -> _message.value = describe(result.error)
+            }
+
+            _busy.value = false
+        }
+    }
+
+    fun update(id: Long, name: String, price: Int, rarity: String, published: Boolean) {
+        viewModelScope.launch {
+            when (val result = repository.updateFrame(id, name, price, rarity, published)) {
+                is AppResult.Success -> load()
+                is AppResult.Failure -> _message.value = describe(result.error)
+            }
+        }
+    }
+
+    fun delete(id: Long) {
+        viewModelScope.launch {
+            when (val result = repository.deleteFrame(id)) {
+                is AppResult.Success -> {
+                    _message.value = "Çerçeve silindi"
+                    load()
+                }
+                is AppResult.Failure -> _message.value = describe(result.error)
+            }
+        }
+    }
+
+    fun messageShown() {
+        _message.value = null
+    }
+
+    private fun describe(error: AppError): String = when (error) {
+        is AppError.Message -> error.text
+        else -> "Bir şeyler ters gitti."
     }
 }

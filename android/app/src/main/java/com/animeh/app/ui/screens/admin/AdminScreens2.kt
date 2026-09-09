@@ -358,12 +358,37 @@ fun AdminTenraiScreen(
 }
 
 @Composable
-fun AdminUsersScreen(onBack: () -> Unit, viewModel: AdminUsersViewModel = hiltViewModel()) {
+fun AdminUsersScreen(
+    onBack: () -> Unit,
+    /**
+     * Whether to offer the points button.
+     *
+     * A moderator reaches this screen and the server refuses their grant with
+     * a 403, which is correct but not something to make them discover by
+     * tapping: a tile or a button that always fails is worse than none.
+     */
+    canGrantPoints: Boolean = false,
+    viewModel: AdminUsersViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
 
     // Which user the ban dialog is open for, or null when it is closed.
     var banning by remember { mutableStateOf<UserDto?>(null) }
+
+    // And which one a gift is being written for.
+    var granting by remember { mutableStateOf<UserDto?>(null) }
+
+    granting?.let { user ->
+        GrantPointsDialog(
+            user = user,
+            onDismiss = { granting = null },
+            onConfirm = { amount, note ->
+                granting = null
+                viewModel.grantPoints(user.id, amount, note)
+            },
+        )
+    }
 
     banning?.let { user ->
         BanDialog(
@@ -421,6 +446,16 @@ fun AdminUsersScreen(onBack: () -> Unit, viewModel: AdminUsersViewModel = hiltVi
                                             Icons.Filled.AdminPanelSettings,
                                             null,
                                             tint = AccentPrimary,
+                                        )
+                                    }
+
+                                    // Offered against everyone, administrators
+                                    // included: a gift is not a sanction.
+                                    if (canGrantPoints) IconButton(onClick = { granting = user }) {
+                                        Icon(
+                                            Icons.Filled.Stars,
+                                            stringResource(R.string.admin_points_send),
+                                            tint = AccentBright,
                                         )
                                     }
 

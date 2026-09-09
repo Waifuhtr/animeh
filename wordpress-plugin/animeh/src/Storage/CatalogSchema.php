@@ -27,7 +27,7 @@ final class CatalogSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '7';
+	public const VERSION = '8';
 
 	/**
 	 * Option holding the installed catalog version.
@@ -205,6 +205,35 @@ final class CatalogSchema {
 	}
 
 	/**
+	 * The points ledger: one row per thing that moved a balance.
+	 *
+	 * A ledger rather than a column on the user, because "how many points has
+	 * this account got" and "where did they come from" are the same question
+	 * asked twice, and a single number can only answer the first one — and
+	 * cannot be audited when it turns out to be wrong.
+	 */
+	public static function points(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_points';
+	}
+
+	/**
+	 * The avatar frames on offer.
+	 */
+	public static function frames(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_frames';
+	}
+
+	/**
+	 * Who owns which frame.
+	 */
+	public static function user_frames(): string {
+		global $wpdb;
+		return $wpdb->prefix . 'animeh_user_frames';
+	}
+
+	/**
 	 * Every catalog table, unprefixed — the snapshot reads this list.
 	 *
 	 * @return string[]
@@ -224,6 +253,11 @@ final class CatalogSchema {
 			'animeh_terms',
 			'animeh_bans',
 			'animeh_friends',
+			// Points are somebody's balance and the frames they paid for, so
+			// they are backed up: losing them is losing something earned.
+			'animeh_points',
+			'animeh_frames',
+			'animeh_user_frames',
 			// Rooms and devices are deliberately absent: a room is worthless
 			// the moment the people in it have gone, and a push token belongs
 			// to an install rather than to the library being backed up.
@@ -570,6 +604,62 @@ final class CatalogSchema {
 			UNIQUE KEY kind_source (kind,source)
 		) {$charset};";
 
+		// `award_key` is what makes an award happen once. Two progress reports
+		// for the same episode arriving together — which is what a watch party
+		// produces — both try to insert `episode:412`, and the unique index
+		// lets exactly one of them through. Checking first and then writing
+		// would pay twice and pass every test. It is nullable because a gift
+		// from an administrator is repeatable by design, and MySQL treats each
+		// NULL in a unique index as distinct.
+		$points = 'CREATE TABLE ' . self::points() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			delta int(11) NOT NULL DEFAULT 0,
+			reason varchar(32) NOT NULL DEFAULT '',
+			award_key varchar(64) DEFAULT NULL,
+			note varchar(191) NOT NULL DEFAULT '',
+			granted_by bigint(20) unsigned NOT NULL DEFAULT 0,
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY user_award (user_id,award_key),
+			KEY user_created (user_id,created_at)
+		) {$charset};";
+
+		// `price` in points, `sort_order` so the shop has an order somebody
+		// chose rather than whichever row was inserted first.
+		$frames = 'CREATE TABLE ' . self::frames() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			slug varchar(64) NOT NULL DEFAULT '',
+			name varchar(191) NOT NULL DEFAULT '',
+			filename varchar(191) NOT NULL DEFAULT '',
+			relative_path varchar(255) NOT NULL DEFAULT '',
+			mime varchar(64) NOT NULL DEFAULT '',
+			format varchar(16) NOT NULL DEFAULT '',
+			animated tinyint(1) NOT NULL DEFAULT 0,
+			width smallint(5) unsigned NOT NULL DEFAULT 0,
+			height smallint(5) unsigned NOT NULL DEFAULT 0,
+			size_bytes bigint(20) unsigned NOT NULL DEFAULT 0,
+			sha256 char(64) NOT NULL DEFAULT '',
+			price int(10) unsigned NOT NULL DEFAULT 0,
+			rarity varchar(16) NOT NULL DEFAULT 'common',
+			sort_order int(11) NOT NULL DEFAULT 0,
+			published tinyint(1) NOT NULL DEFAULT 1,
+			created_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY slug (slug),
+			KEY listing (published,sort_order)
+		) {$charset};";
+
+		$user_frames = 'CREATE TABLE ' . self::user_frames() . " (
+			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			frame_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			acquired_at datetime NOT NULL DEFAULT '0000-00-00 00:00:00',
+			PRIMARY KEY  (id),
+			UNIQUE KEY user_frame (user_id,frame_id),
+			KEY frame_id (frame_id)
+		) {$charset};";
+
 		$tables = array(
 			$works,
 			$seasons,
@@ -589,6 +679,9 @@ final class CatalogSchema {
 			$rooms,
 			$room_members,
 			$devices,
+			$points,
+			$frames,
+			$user_frames,
 		);
 
 		foreach ( $tables as $sql ) {

@@ -40,6 +40,18 @@ final class StorageController {
 		$namespace = FontsController::NAMESPACE;
 		$guard     = array( Permissions::class, 'require_manage' );
 
+		// Publishing an episode is moderation work, and an episode without its
+		// video is not published. So the upload flow — begin, complete, abort,
+		// the small-object path and the playback URL a just-uploaded key is
+		// checked with — is open to moderators.
+		//
+		// The three that are not: settings holds the bucket credentials,
+		// `test` speaks to the account with them, and the image optimiser is a
+		// site-wide job that rewrites rows in bulk. Those stay with whoever
+		// owns the storage account. This is the same line §8 draws elsewhere —
+		// a moderator runs the catalogue, an administrator runs the site.
+		$moderate = array( Permissions::class, 'require_moderate' );
+
 		register_rest_route(
 			$namespace,
 			'/storage/settings',
@@ -100,7 +112,7 @@ final class StorageController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'begin_upload' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'anime_title'  => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 					'anime_id'     => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
@@ -119,7 +131,7 @@ final class StorageController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'complete_upload' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'key'       => array( 'required' => true, 'type' => 'string' ),
 					'upload_id' => array( 'required' => true, 'type' => 'string' ),
@@ -133,7 +145,7 @@ final class StorageController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'abort_upload' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'key'       => array( 'required' => true, 'type' => 'string' ),
 					'upload_id' => array( 'required' => true, 'type' => 'string' ),
@@ -147,7 +159,7 @@ final class StorageController {
 			array(
 				'methods'             => WP_REST_Server::CREATABLE,
 				'callback'            => array( $this, 'put_small_object' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 			)
 		);
 
@@ -157,7 +169,7 @@ final class StorageController {
 			array(
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'playback' ),
-				'permission_callback' => $guard,
+				'permission_callback' => $moderate,
 				'args'                => array(
 					'key' => array( 'required' => true, 'type' => 'string' ),
 				),

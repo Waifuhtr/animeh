@@ -15,9 +15,11 @@ declare( strict_types = 1 );
 namespace Animeh\Rest;
 
 use Animeh\Storage\B2Client;
+use Animeh\Storage\FrameRepository;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\StorageSettings;
 use Animeh\Storage\TokenRepository;
+use Animeh\Support\ProfileTheme;
 use Animeh\Support\RateLimit;
 use WP_Error;
 use WP_REST_Request;
@@ -475,6 +477,15 @@ final class AuthController {
 			// A moderator is not an admin: the app draws a smaller panel for
 			// them, and the server refuses the rest either way.
 			'is_moderator' => user_can( $user, Permissions::MODERATE ),
+			// The two cosmetics travel with the user rather than being asked
+			// for separately, because everywhere a user is drawn — a friends
+			// list, a room, the standings — is somewhere they should be drawn
+			// wearing what they chose.
+			//
+			// The balance is deliberately not here. It is one SUM per user,
+			// and this payload is built twenty at a time.
+			'frame'        => FrameRepository::payload_for_user( $user->ID ),
+			'theme'        => ProfileTheme::normalise( get_user_meta( $user->ID, self::THEME_META, true ) ),
 			'registered'   => $user->user_registered,
 		);
 	}
@@ -483,6 +494,14 @@ final class AuthController {
 	 * User meta holding the key of an uploaded profile picture.
 	 */
 	public const AVATAR_META = 'animeh_avatar_key';
+
+	/**
+	 * User meta holding the chosen profile colour.
+	 *
+	 * A slug from [ProfileTheme::THEMES], never a colour value — see that
+	 * class for why.
+	 */
+	public const THEME_META = 'animeh_theme';
 
 	/**
 	 * Whether the app accepts sign-ups. On by default: an app whose whole

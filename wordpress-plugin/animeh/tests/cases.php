@@ -1813,3 +1813,169 @@ describe( 'ImageResizer', static function (): void {
 		same( null, \Animeh\Support\ImageResizer::shrink( (string) $smaller, 'poster' ) );
 	} );
 } );
+
+describe( 'Points', function (): void {
+	it( 'bir bölüm için sabit ücret', function (): void {
+		same( 20, \Animeh\Support\Points::PER_EPISODE );
+	} );
+
+	it( 'ödeme anahtarları bölüme ve çerçeveye göre ayrı', function (): void {
+		same( 'episode:412', \Animeh\Support\Points::episode_key( 412 ) );
+		same( 'frame:7', \Animeh\Support\Points::frame_key( 7 ) );
+		// Aynı sayı, farklı anahtar: 7 numaralı bölümün ödemesi 7 numaralı
+		// çerçevenin satın alımını engellememeli.
+		ok( \Animeh\Support\Points::episode_key( 7 ) !== \Animeh\Support\Points::frame_key( 7 ) );
+	} );
+
+	it( 'bakiye kontrolü sınırda geçer, altında geçmez', function (): void {
+		ok( \Animeh\Support\Points::affordable( 200, 200 ) );
+		ok( \Animeh\Support\Points::affordable( 201, 200 ) );
+		ok( ! \Animeh\Support\Points::affordable( 199, 200 ) );
+		// Bedava bir şey her bakiyeyle alınabilir.
+		ok( \Animeh\Support\Points::affordable( 0, 0 ) );
+		// Negatif fiyat bir hediye değil, bir hata.
+		ok( ! \Animeh\Support\Points::affordable( 1000, -5 ) );
+	} );
+
+	it( 'hediye tavanı iki yönde de tutuyor', function (): void {
+		same( 500, \Animeh\Support\Points::clamp_grant( 500 ) );
+		same( 100000, \Animeh\Support\Points::clamp_grant( 99999999 ) );
+		same( -100000, \Animeh\Support\Points::clamp_grant( -99999999 ) );
+		// Sıfır bir işlem değil.
+		same( 0, \Animeh\Support\Points::clamp_grant( 0 ) );
+	} );
+} );
+
+describe( 'ProfileTheme', function (): void {
+	it( 'paletteki her slug geçerli', function (): void {
+		foreach ( \Animeh\Support\ProfileTheme::THEMES as $theme ) {
+			ok( \Animeh\Support\ProfileTheme::valid( $theme ), $theme );
+		}
+		same( 12, count( \Animeh\Support\ProfileTheme::THEMES ) );
+	} );
+
+	it( 'varsayılan paletin içinde', function (): void {
+		ok( \Animeh\Support\ProfileTheme::valid( \Animeh\Support\ProfileTheme::DEFAULT_THEME ) );
+	} );
+
+	it( 'tanımadığı her şey varsayılana düşer', function (): void {
+		$default = \Animeh\Support\ProfileTheme::DEFAULT_THEME;
+		same( $default, \Animeh\Support\ProfileTheme::normalise( '' ) );
+		same( $default, \Animeh\Support\ProfileTheme::normalise( null ) );
+		same( $default, \Animeh\Support\ProfileTheme::normalise( array( 'ocean' ) ) );
+		same( $default, \Animeh\Support\ProfileTheme::normalise( '<script>' ) );
+		same( $default, \Animeh\Support\ProfileTheme::normalise( '#ff0000' ) );
+		// Büyük harf ve boşluk bir hata değil, bir yazım.
+		same( 'ocean', \Animeh\Support\ProfileTheme::normalise( '  OCEAN ' ) );
+	} );
+} );
+
+describe( 'FrameFile', function (): void {
+	it( 'çöp veriyi reddeder', function (): void {
+		same( null, \Animeh\Support\FrameFile::inspect( '' ) );
+		same( null, \Animeh\Support\FrameFile::inspect( 'merhaba dünya, bu bir resim değil' ) );
+		// Uzantısı doğru olsa bile içeriği yanlışsa geçmez.
+		same( null, \Animeh\Support\FrameFile::inspect( str_repeat( "\x00", 4096 ) ) );
+	} );
+
+	it( 'PNG ölçülerini IHDR başlığından okur', function (): void {
+		$png = png_bytes( 288, 288 );
+		$info = \Animeh\Support\FrameFile::inspect( $png );
+		ok( null !== $info );
+		same( 288, $info['width'] );
+		same( 288, $info['height'] );
+		same( false, $info['animated'] );
+		same( 'png', $info['format'] );
+		same( '', \Animeh\Support\FrameFile::rejection( $info ) );
+	} );
+
+	it( 'acTL varsa APNG, IDAT’tan sonraysa değil', function (): void {
+		$png = png_bytes( 288, 288 );
+
+		// IHDR ile IDAT arasına bir animasyon kontrol bloğu: APNG.
+		$at       = strpos( $png, 'IDAT' ) - 4;
+		$animated = substr( $png, 0, $at ) . "\x00\x00\x00\x08acTL" . substr( $png, $at );
+		$info     = \Animeh\Support\FrameFile::inspect( $animated );
+		same( 'apng', $info['format'] );
+		same( true, $info['animated'] );
+
+		// Aynı blok sonda: hiçbir görüntüleyici oynatmaz, biz de saymayız.
+		$info = \Animeh\Support\FrameFile::inspect( $png . 'acTL' );
+		same( 'png', $info['format'] );
+		same( false, $info['animated'] );
+	} );
+
+	it( 'tek kareli ve çok kareli GIF’i ayırır', function (): void {
+		$single = gif_bytes( 288, 288, 1 );
+		$info   = \Animeh\Support\FrameFile::inspect( $single );
+		same( 'gif', $info['format'] );
+		same( 288, $info['width'] );
+		same( false, $info['animated'] );
+
+		$many = gif_bytes( 288, 288, 3 );
+		$info = \Animeh\Support\FrameFile::inspect( $many );
+		same( true, $info['animated'] );
+	} );
+
+	it( 'animasyonlu WebP’i VP8X bayrağı ve ANMF ile tanır', function (): void {
+		$still = webp_vp8x_bytes( 288, 288, false );
+		$info  = \Animeh\Support\FrameFile::inspect( $still );
+		same( 'webp', $info['format'] );
+		same( 288, $info['width'] );
+		same( 288, $info['height'] );
+		same( false, $info['animated'] );
+
+		$moving = webp_vp8x_bytes( 288, 288, true );
+		$info   = \Animeh\Support\FrameFile::inspect( $moving );
+		same( 'webp-animated', $info['format'] );
+		same( true, $info['animated'] );
+	} );
+
+	it( 'kare olmayanı ve ölçüsü tutmayanı gerekçesiyle reddeder', function (): void {
+		$wide = \Animeh\Support\FrameFile::inspect( png_bytes( 288, 144 ) );
+		ok( '' !== \Animeh\Support\FrameFile::rejection( $wide ) );
+
+		$tiny = \Animeh\Support\FrameFile::inspect( png_bytes( 32, 32 ) );
+		ok( '' !== \Animeh\Support\FrameFile::rejection( $tiny ) );
+
+		$huge = \Animeh\Support\FrameFile::inspect( png_bytes( 2048, 2048 ) );
+		ok( '' !== \Animeh\Support\FrameFile::rejection( $huge ) );
+
+		// Sınırların kendisi kabul: 64 ve 1024 dışarıda değil, içeride.
+		same( '', \Animeh\Support\FrameFile::rejection( \Animeh\Support\FrameFile::inspect( png_bytes( 64, 64 ) ) ) );
+		same( '', \Animeh\Support\FrameFile::rejection( \Animeh\Support\FrameFile::inspect( png_bytes( 1024, 1024 ) ) ) );
+	} );
+} );
+
+describe( 'Leaderboard', function (): void {
+	it( 'sıra numarası eşitlikte paylaşılır, sonrası atlar', function (): void {
+		$ranked = \Animeh\Storage\LeaderboardRepository::rank(
+			array(
+				array( 'user_id' => 1, 'value' => 90 ),
+				array( 'user_id' => 2, 'value' => 40 ),
+				array( 'user_id' => 3, 'value' => 40 ),
+				array( 'user_id' => 4, 'value' => 10 ),
+			)
+		);
+
+		same( 1, $ranked[0]['rank'] );
+		same( 2, $ranked[1]['rank'] );
+		same( 2, $ranked[2]['rank'] );
+		// İki kişi ikinciyse üçüncü yoktur.
+		same( 4, $ranked[3]['rank'] );
+	} );
+
+	it( 'boş tablo boş liste', function (): void {
+		same( array(), \Animeh\Storage\LeaderboardRepository::rank( array() ) );
+	} );
+
+	it( 'yalnızca bilinen üç ölçüt kabul edilir', function (): void {
+		ok( \Animeh\Storage\LeaderboardRepository::valid( 'works' ) );
+		ok( \Animeh\Storage\LeaderboardRepository::valid( 'seconds' ) );
+		ok( \Animeh\Storage\LeaderboardRepository::valid( 'episodes' ) );
+		// SQL’e giden tek şey bu isim olduğu için, listede olmayan hiçbir
+		// şeyin geçmemesi bir güvenlik kontrolü.
+		ok( ! \Animeh\Storage\LeaderboardRepository::valid( 'value; DROP TABLE' ) );
+		ok( ! \Animeh\Storage\LeaderboardRepository::valid( '' ) );
+	} );
+} );

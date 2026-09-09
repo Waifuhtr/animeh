@@ -18,11 +18,15 @@ namespace Animeh\Rest;
 
 use Animeh\Storage\CatalogRepository;
 use Animeh\Storage\FirebaseClient;
+use Animeh\Storage\FrameRepository;
+use Animeh\Storage\LeaderboardRepository;
 use Animeh\Storage\Notifier;
+use Animeh\Storage\PointsRepository;
 use Animeh\Storage\ReviewRepository;
 use Animeh\Storage\SocialRepository;
 use Animeh\Storage\UserDataRepository;
 use Animeh\Support\GenreTally;
+use Animeh\Support\ProfileTheme;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -329,6 +333,20 @@ final class SocialController {
 				'is_self'       => $is_self,
 				'is_public'     => self::is_public( $user_id ),
 				'stats'         => $data->stats( $user_id ),
+				// One profile at a time here, so the sums and the three
+				// standings are affordable — unlike in the user payload,
+				// which is built twenty at a time for a friends list.
+				'points'        => PointsRepository::balance( $user_id ),
+				// The same two cosmetics the user payload carries. This
+				// response is hand-built rather than made from that one, so
+				// they have to be named here as well.
+				'frame'         => FrameRepository::payload_for_user( $user_id ),
+				'theme'         => ProfileTheme::normalise( get_user_meta( $user_id, AuthController::THEME_META, true ) ),
+				'ranks'         => array(
+					'works'    => (int) LeaderboardRepository::standing( LeaderboardRepository::METRIC_WORKS, $user_id )['rank'],
+					'seconds'  => (int) LeaderboardRepository::standing( LeaderboardRepository::METRIC_SECONDS, $user_id )['rank'],
+					'episodes' => (int) LeaderboardRepository::standing( LeaderboardRepository::METRIC_EPISODES, $user_id )['rank'],
+				),
 				'favorite_work' => $favorite,
 				'top_genres'    => GenreTally::top( $genres ),
 				'recent_works'  => $recent,

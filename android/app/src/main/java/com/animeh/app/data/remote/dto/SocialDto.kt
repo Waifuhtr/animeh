@@ -84,6 +84,12 @@ data class PublicProfileDto(
     val reviews: List<ProfileReviewDto> = emptyList(),
     /** "", "pending", "requested" or "accepted", from the viewer's side. */
     val friendship: String = "",
+    /** The frame this person is wearing, so their profile looks like theirs. */
+    val frame: FrameDto? = null,
+    val theme: String = "amethyst",
+    val points: Int = 0,
+    /** Where they stand on each board; zero means "not on it". */
+    val ranks: RanksDto = RanksDto(),
 )
 
 @Serializable

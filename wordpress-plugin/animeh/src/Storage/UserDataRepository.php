@@ -93,7 +93,22 @@ final class UserDataRepository {
 			$now
 		);
 
-		return false !== $wpdb->query( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+		$stored = false !== $wpdb->query( $sql ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+
+		// Paid for the moment it counts as finished, and never again.
+		//
+		// The check against what was already stored is an optimisation, not
+		// the safeguard: progress is reported every few seconds, and without
+		// it every one of those pings after the finish line would try to
+		// insert a row the database would then refuse. The safeguard is the
+		// unique key on the award, which is what makes two devices reporting
+		// the same finish at the same instant pay once.
+		$was_complete = null !== $existing && 1 === (int) $existing['completed'];
+		if ( $stored && 1 === $completed && ! $was_complete ) {
+			PointsRepository::award_episode( $user_id, $episode_id );
+		}
+
+		return $stored;
 	}
 
 	/**
@@ -531,5 +546,8 @@ final class UserDataRepository {
 
 		// And the rooms they were hosting, which nobody else can close.
 		( new SocialRepository() )->close_rooms_hosted_by( $user_id );
+
+		PointsRepository::purge_user( $user_id );
+		FrameRepository::purge_user( $user_id );
 	}
 }

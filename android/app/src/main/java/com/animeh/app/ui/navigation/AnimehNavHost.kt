@@ -25,13 +25,16 @@ import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.canManage
 import com.animeh.app.data.prefs.isAdmin
 import com.animeh.app.data.prefs.isModerator
+import com.animeh.app.data.prefs.user
 import com.animeh.app.player.ui.PlayerActivity
 import com.animeh.app.ui.screens.admin.*
 import com.animeh.app.ui.screens.auth.*
 import com.animeh.app.ui.screens.detail.DetailScreen
 import com.animeh.app.ui.screens.discover.DiscoverScreen
 import com.animeh.app.ui.screens.home.HomeScreen
+import com.animeh.app.ui.screens.leaderboard.LeaderboardScreen
 import com.animeh.app.ui.screens.library.LibraryScreen
+import com.animeh.app.ui.screens.profile.FrameShopScreen
 import com.animeh.app.ui.screens.profile.ProfileScreen
 import com.animeh.app.ui.screens.settings.SettingsScreen
 import com.animeh.app.ui.screens.social.*
@@ -179,6 +182,24 @@ fun AnimehApp(
                     onChangePassword = { navController.navigate(Routes.CHANGE_PASSWORD) },
                     onFriends = { navController.navigate(Routes.FRIENDS) },
                     onPublicProfile = { navController.navigate(Routes.publicProfile(it)) },
+                    onFrameShop = { navController.navigate(Routes.FRAME_SHOP) },
+                    onLeaderboard = { navController.navigate(Routes.LEADERBOARD) },
+                )
+            }
+
+            composable(Routes.FRAME_SHOP) {
+                FrameShopScreen(
+                    // The picture the frames will actually be worn around, so
+                    // the preview is of this person rather than of a shape.
+                    avatarUrl = authState.user?.avatar.orEmpty(),
+                    onBack = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.LEADERBOARD) {
+                LeaderboardScreen(
+                    onBack = { navController.popBackStack() },
+                    onProfile = { navController.navigate(Routes.publicProfile(it)) },
                 )
             }
 
@@ -322,7 +343,12 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
     }
 
     composable(Routes.ADMIN_USERS) {
-        AdminUsersScreen(onBack = { navController.popBackStack() })
+        AdminUsersScreen(
+            onBack = { navController.popBackStack() },
+            // A moderator reaches this list; only an administrator can mint
+            // points, and the server refuses the rest either way.
+            canGrantPoints = authState.isAdmin,
+        )
     }
 
     composable(Routes.ADMIN_TMDB) {
@@ -355,5 +381,9 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
 
     composable(Routes.ADMIN_TERMS) {
         AdminTermsScreen(onBack = { navController.popBackStack() })
+    }
+
+    composable(Routes.ADMIN_FRAMES) {
+        AdminFramesScreen(onBack = { navController.popBackStack() })
     }
 }

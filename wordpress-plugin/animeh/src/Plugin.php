@@ -26,11 +26,13 @@ use Animeh\Rest\MeController;
 use Animeh\Rest\MigrationController;
 use Animeh\Rest\Permissions;
 use Animeh\Rest\RoomLinkPage;
+use Animeh\Rest\RewardsController;
 use Animeh\Rest\SocialController;
 use Animeh\Rest\StorageController;
 use Animeh\Rest\TestController;
 use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\FontRepository;
+use Animeh\Storage\FrameRepository;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\Schema;
 use Animeh\Storage\SnapshotStore;
@@ -81,6 +83,7 @@ final class Plugin {
 				( new CommunityController() )->register_routes();
 				( new SocialController() )->register_routes();
 				( new AdminController() )->register_routes();
+				( new RewardsController() )->register_routes();
 			}
 		);
 
@@ -134,6 +137,7 @@ final class Plugin {
 		Schema::install();
 		CatalogSchema::install();
 		FontRepository::ensure_directory();
+		FrameRepository::ensure_directory();
 		Permissions::grant_to_administrators();
 	}
 

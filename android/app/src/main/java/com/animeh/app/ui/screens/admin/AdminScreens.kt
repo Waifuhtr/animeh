@@ -542,6 +542,9 @@ private val SECTIONS = listOf(
     Triple(Routes.ADMIN_REPORTS, R.string.admin_reports, Icons.Filled.Flag),
     Triple(Routes.ADMIN_MODERATORS, R.string.admin_moderators, Icons.Filled.AdminPanelSettings),
     Triple(Routes.ADMIN_ANNOUNCEMENTS, R.string.admin_announcements, Icons.Filled.Campaign),
+    // Not in MODERATOR_SECTIONS below: what a frame costs is an economy
+    // decision, and so is the currency it is priced in.
+    Triple(Routes.ADMIN_FRAMES, R.string.admin_frames, Icons.Filled.Stars),
     Triple(Routes.ADMIN_SERVER, R.string.admin_server, Icons.Filled.Settings),
     Triple(Routes.ADMIN_LOGS, R.string.admin_logs, Icons.Filled.Article),
 )

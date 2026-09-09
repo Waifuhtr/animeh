@@ -16,19 +16,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.user
+import com.animeh.app.ui.components.AvatarWithFrame
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.components.formatWatched
 import com.animeh.app.ui.theme.SurfaceCard
+import com.animeh.app.ui.theme.profileTheme
 import com.animeh.app.ui.theme.TextMuted
 import com.animeh.app.ui.theme.TextSecondary
 
@@ -40,6 +41,8 @@ fun ProfileScreen(
     onChangePassword: () -> Unit,
     onFriends: () -> Unit = {},
     onPublicProfile: (Long) -> Unit = {},
+    onFrameShop: () -> Unit = {},
+    onLeaderboard: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val user = authState.user
@@ -58,10 +61,24 @@ fun ProfileScreen(
     val stats by viewModel.stats.collectAsStateWithLifecycle()
     val uploading by viewModel.uploadingAvatar.collectAsStateWithLifecycle()
     val pendingAvatar by viewModel.pendingAvatar.collectAsStateWithLifecycle()
+    val wallet by viewModel.wallet.collectAsStateWithLifecycle()
+    val themeSlug by viewModel.theme.collectAsStateWithLifecycle()
+    val frame by viewModel.frame.collectAsStateWithLifecycle()
+
+    val theme = profileTheme(themeSlug)
 
     val pickImage = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri -> uri?.let(viewModel::uploadAvatar) }
+
+    // Every time the tab comes forward, not only the first. Coming back from
+    // the shop with a frame just bought and points just spent is the case
+    // that matters: without this the header would show the old frame and the
+    // old balance until the app was restarted.
+    LifecycleResumeEffect(Unit) {
+        viewModel.refresh()
+        onPauseOrDispose { }
+    }
 
     Column(
         Modifier
@@ -70,32 +87,37 @@ fun ProfileScreen(
             .verticalScroll(rememberScrollState()),
     ) {
         Row(
-            Modifier.fillMaxWidth().padding(20.dp),
+            Modifier
+                .fillMaxWidth()
+                // The colour they chose, behind their own name. It is the
+                // point of choosing one.
+                .background(theme.banner)
+                .padding(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box {
-                AsyncImage(
+            Box(contentAlignment = Alignment.Center) {
+                AvatarWithFrame(
                     // The file that was just picked wins over the address it
                     // was uploaded to: it is the same picture and it is
                     // already on this phone, so the change shows the moment it
                     // is made rather than a download later.
-                    model = pendingAvatar ?: user.avatar,
+                    avatarUrl = pendingAvatar ?: user.avatar,
+                    frame = frame,
+                    size = 88.dp,
+                    // One avatar, large, on a screen with nothing else moving:
+                    // this is exactly the case frames are animated for.
+                    animate = true,
                     contentDescription = stringResource(R.string.profile_change_photo),
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .size(72.dp)
-                        .clip(CircleShape)
-                        .background(SurfaceCard)
-                        .clickable(enabled = !uploading) {
-                            pickImage.launch("image/*")
-                        },
+                    modifier = Modifier.clickable(enabled = !uploading) {
+                        pickImage.launch("image/*")
+                    },
                 )
 
                 // Over the picture rather than beside it: the picture is the
                 // button, and a separate control would need explaining.
                 if (uploading) {
                     CircularProgressIndicator(
-                        Modifier.size(72.dp).padding(8.dp),
+                        Modifier.size(88.dp).padding(10.dp),
                         strokeWidth = 2.dp,
                     )
                 } else {
@@ -127,6 +149,19 @@ fun ProfileScreen(
                     AssistChip(onClick = {}, label = { Text(stringResource(R.string.nav_admin)) })
                 }
             }
+        }
+
+        Column(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Spacer(Modifier.height(4.dp))
+
+            PointsCard(wallet = wallet, theme = theme, onShop = onFrameShop)
+
+            RankCard(wallet = wallet, theme = theme, onLeaderboard = onLeaderboard)
+
+            ThemePalette(selected = themeSlug, onChoose = viewModel::chooseTheme)
         }
 
         stats?.let { current ->

@@ -118,8 +118,16 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    /** Show or hide the status and navigation bars. */
-    fun setImmersive(immersive: Boolean) {
+    /**
+     * Show or hide the status and navigation bars.
+     *
+     * Not `setImmersive`: `Activity` already has one of those, with the same
+     * signature and a different job — it tells the system whether this window
+     * is in immersive mode for the purpose of its own confirmation prompt.
+     * Taking that name over would be overriding a platform method to mean
+     * something else.
+     */
+    fun applyImmersive(immersive: Boolean) {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             if (immersive) hide(WindowInsetsCompat.Type.systemBars())
             else show(WindowInsetsCompat.Type.systemBars())
@@ -207,7 +215,7 @@ fun PlayerScreen(
     LaunchedEffect(landscape) {
         viewModel.setFullscreen(landscape)
         // The bars belong to the page, not to the picture.
-        activity?.setImmersive(landscape)
+        activity?.applyImmersive(landscape)
         // The device has done what it was asked; let go of the lock so the
         // next turn of the phone is the viewer's to make.
         activity?.releaseOrientationLock()

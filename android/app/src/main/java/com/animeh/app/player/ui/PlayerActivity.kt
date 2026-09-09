@@ -6,6 +6,7 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.net.Uri
 import android.os.Bundle
+import android.view.OrientationEventListener
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -23,7 +24,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.viewinterop.AndroidView
@@ -63,6 +63,25 @@ class PlayerActivity : ComponentActivity() {
     /** The episode this screen has been asked to play, most recent last. */
     private val request = mutableStateOf(PlayRequest())
 
+    /**
+     * Whether the picture has the whole screen.
+     *
+     * The layout is decided by this and not by the window's shape. Those two
+     * are the same thing most of the time, but only this one survives the
+     * moment between asking for a rotation and getting it — and only this one
+     * knows the difference between "the window is portrait because the viewer
+     * left the theatre" and "the window is portrait because the system turned
+     * it back".
+     */
+    private val fullscreen = mutableStateOf(false)
+
+    /**
+     * Watches the phone itself, while the window is pinned to portrait.
+     *
+     * Null whenever nothing is pinned. See [setFullscreen].
+     */
+    private var uprightWatcher: OrientationEventListener? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -74,6 +93,7 @@ class PlayerActivity : ComponentActivity() {
         // Turning it — or pressing the fullscreen button — is what asks for
         // the picture to fill the screen.
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
+        fullscreen.value = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
         // The system's screen timeout does not know an episode is playing.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -87,35 +107,107 @@ class PlayerActivity : ComponentActivity() {
             AnimehTheme {
                 PlayerScreen(
                     request = request.value,
+                    fullscreen = fullscreen.value,
                     onBack = { finish() },
-                    onRequestLandscape = ::requestLandscape,
+                    onRequestLandscape = ::setFullscreen,
                 )
             }
         }
     }
 
     /**
-     * Ask for one orientation, then let go of it.
+     * Enter or leave the theatre, and turn the screen to match.
      *
-     * A lock that stays on is a phone that will not turn back, so it is
-     * released as soon as the device agrees with what was asked for — which is
-     * what [releaseOrientationLock] is called for, from the composition, once
-     * the configuration has actually changed. Pressing fullscreen therefore
-     * turns the screen, and turning the phone back afterwards still works.
+     * The lock is **held** for as long as fullscreen lasts. It used to be let
+     * go of the instant the window had turned, on the reasoning that a lock
+     * left on is a phone that will not turn back — but the thing it was handed
+     * back to is `SCREEN_ORIENTATION_USER`, and that means "whatever the
+     * viewer's rotation setting says". On a phone with auto-rotate switched
+     * off, which is most of them, that setting says portrait: the screen
+     * turned, the lock came off, and the system turned it straight back.
+     * Pressing fullscreen worked for about one frame and then undid itself.
+     *
+     * Leaving is pinned too, and for the mirror-image reason: hand rotation
+     * back while the phone is still being held sideways and the window returns
+     * to landscape, which is the thing that puts it back in the theatre — the
+     * back button would appear to do nothing at all. So the pin comes off when
+     * the phone itself is upright, which is what [uprightWatcher] waits for.
      */
-    fun requestLandscape(landscape: Boolean) {
-        requestedOrientation = if (landscape) {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+    fun setFullscreen(value: Boolean) {
+        fullscreen.value = value
+
+        if (value) {
+            stopUprightWatch()
+            // Either way up: a phone turned the "wrong" way is still a
+            // request for a landscape picture.
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         } else {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            startUprightWatch()
         }
     }
 
-    /** Hand orientation back to the sensor. */
-    fun releaseOrientationLock() {
+    /**
+     * Give rotation back once the phone is being held upright.
+     *
+     * Without a sensor to ask — an emulator, a television — there is nothing
+     * to wait for, so the pin comes off immediately; that device was never
+     * going to rotate underneath us anyway.
+     */
+    private fun startUprightWatch() {
+        if (uprightWatcher != null) return
+
+        val watcher = object : OrientationEventListener(this) {
+            override fun onOrientationChanged(orientation: Int) {
+                if (orientation == OrientationEventListener.ORIENTATION_UNKNOWN) return
+
+                // Within 30° of upright, either way up. Lying flat on a table
+                // reads as unknown and is ignored above, which is right: a
+                // phone on a table has no opinion about this.
+                val upright = orientation <= 30 || orientation >= 330 || orientation in 150..210
+                if (upright) releaseOrientationLock()
+            }
+        }
+
+        if (watcher.canDetectOrientation()) {
+            uprightWatcher = watcher
+            watcher.enable()
+        } else {
+            releaseOrientationLock()
+        }
+    }
+
+    private fun stopUprightWatch() {
+        uprightWatcher?.disable()
+        uprightWatcher = null
+    }
+
+    /** Hand orientation back to the viewer's own rotation setting. */
+    private fun releaseOrientationLock() {
+        stopUprightWatch()
         if (requestedOrientation != ActivityInfo.SCREEN_ORIENTATION_USER) {
             requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_USER
         }
+    }
+
+    /**
+     * The phone was turned by hand.
+     *
+     * Only counted while nothing is pinned — that is exactly the state in
+     * which a configuration change means the viewer turned the phone rather
+     * than us having asked for it.
+     */
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+
+        if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_USER) {
+            fullscreen.value = newConfig.orientation == Configuration.ORIENTATION_LANDSCAPE
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        stopUprightWatch()
     }
 
     /**
@@ -163,9 +255,18 @@ class PlayerActivity : ComponentActivity() {
         nonce = request.value.nonce + 1,
     )
 
+    override fun onStart() {
+        super.onStart()
+        // Picked back up where it left off: a pin that is still on is still
+        // waiting for the phone to be held upright.
+        if (requestedOrientation == ActivityInfo.SCREEN_ORIENTATION_PORTRAIT) startUprightWatch()
+    }
+
     override fun onStop() {
         super.onStop()
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        // Nothing to watch for while the screen is somebody else's.
+        stopUprightWatch()
     }
 
     companion object {
@@ -187,6 +288,7 @@ data class PlayRequest(val episodeId: Long = 0L, val nonce: Int = 0)
 @Composable
 fun PlayerScreen(
     request: PlayRequest,
+    fullscreen: Boolean,
     onBack: () -> Unit,
     onRequestLandscape: (Boolean) -> Unit = {},
     viewModel: PlayerViewModel = hiltViewModel(),
@@ -207,18 +309,18 @@ fun PlayerScreen(
     val context = LocalContext.current
     val activity = context as? PlayerActivity
 
-    // Which layout is showing is decided by the shape of the window, not by a
-    // flag somebody remembered to set. Rotating the phone, pressing the
-    // fullscreen button and coming back from another app all end up here.
-    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // Which layout is showing comes from the activity, which is the one place
+    // that can tell the two ways into landscape apart — the fullscreen button
+    // and the viewer turning the phone — and the one place that knows the
+    // window has been asked to turn before it has finished turning. Reading
+    // the window's shape here instead is what let a rotation the system
+    // undid look like a viewer leaving the theatre.
+    val landscape = fullscreen
 
     LaunchedEffect(landscape) {
         viewModel.setFullscreen(landscape)
         // The bars belong to the page, not to the picture.
         activity?.applyImmersive(landscape)
-        // The device has done what it was asked; let go of the lock so the
-        // next turn of the phone is the viewer's to make.
-        activity?.releaseOrientationLock()
     }
 
     // Keyed on the whole request, not just the episode: asking for the same
@@ -420,9 +522,13 @@ fun PlayerScreen(
     if (settingsOpen) {
         PlayerSettingsSheet(
             state = playerState,
+            subtitleScale = subtitleScale,
             onQuality = { viewModel.setQuality(it); settingsOpen = false },
             onSpeed = { viewModel.setSpeed(it); settingsOpen = false },
             onSubtitle = { viewModel.controller.setSubtitle(it); settingsOpen = false },
+            // The only control here that does not close the sheet: a size is
+            // found by moving it and looking, not by one decisive tap.
+            onSubtitleScale = viewModel::setSubtitleScale,
             onDismiss = { settingsOpen = false },
         )
     }

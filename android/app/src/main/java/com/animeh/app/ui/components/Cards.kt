@@ -179,16 +179,22 @@ fun EpisodeRowCard(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box {
+        // Sized here rather than on the image: the progress line fills the
+        // width it is given, so a box left to measure its children takes the
+        // whole row the moment an episode has been started, and the title
+        // beside it is squeezed to nothing.
+        Box(
+            Modifier
+                .width(132.dp)
+                .height(74.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(SurfaceCard),
+        ) {
             AsyncImage(
                 model = episode.thumbnailUrl.ifBlank { episode.workPoster },
                 contentDescription = episode.label,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(132.dp)
-                    .height(74.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(SurfaceCard),
+                modifier = Modifier.fillMaxSize(),
             )
 
             episode.progress?.let { progress ->

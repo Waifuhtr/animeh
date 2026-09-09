@@ -105,6 +105,19 @@ class PlayerViewModel @Inject constructor(
     fun setFullscreen(value: Boolean) = controller.setFullscreen(value)
 
     /**
+     * Resize the subtitles, from inside the player.
+     *
+     * The same preference the Settings screen writes, so a size chosen here
+     * is the size every episode gets afterwards. It has to be: a script that
+     * types at 80 units against a height of 1080 is asking for a line seven
+     * per cent of the screen tall, and a viewer who has decided that is too
+     * big has decided it for more than one episode.
+     */
+    fun setSubtitleScale(value: Float) {
+        viewModelScope.launch { settingsStore.setSubtitleScale(value) }
+    }
+
+    /**
      * Open a watch party on the episode being watched.
      *
      * @param onOpened called with the room's code, which is what the link into

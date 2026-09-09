@@ -184,6 +184,7 @@
     <string name="player_speed">Hız</string>
     <string name="player_subtitle">Altyazı</string>
     <string name="player_subtitle_off">Kapalı</string>
+    <string name="player_subtitle_sample">Örnek altyazı satırı</string>
     <string name="player_next_episode">Sonraki bölüm</string>
     <string name="player_previous_episode">Önceki bölüm</string>
     <string name="player_skip_intro">Jeneriği atla</string>

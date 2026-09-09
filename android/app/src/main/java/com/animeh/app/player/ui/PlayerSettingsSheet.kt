@@ -1,6 +1,8 @@
 package com.animeh.app.player.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -10,8 +12,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.animeh.app.R
 import com.animeh.app.player.PlayerUiState
 import com.animeh.app.player.QualityPolicy
@@ -30,9 +36,11 @@ import com.animeh.app.ui.theme.TextSecondary
 @Composable
 fun PlayerSettingsSheet(
     state: PlayerUiState,
+    subtitleScale: Float,
     onQuality: (QualitySelection) -> Unit,
     onSpeed: (Float) -> Unit,
     onSubtitle: (Long?) -> Unit,
+    onSubtitleScale: (Float) -> Unit,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -87,6 +95,67 @@ fun PlayerSettingsSheet(
                     detail = subtitle.language.takeIf { it.isNotBlank() }?.uppercase(),
                     selected = state.selectedSubtitleId == subtitle.id,
                     onClick = { onSubtitle(subtitle.id) },
+                )
+            }
+
+            // Here as well as in Settings, and for a plain reason: this is
+            // where the problem is noticed. A line that fills half the picture
+            // is something you want smaller now, in this episode, not after
+            // backing out to a settings screen and finding your way in again.
+            //
+            // Not hidden behind "subtitles are on" either — switching them off
+            // to escape a size that is unreadable is exactly the move this is
+            // meant to make unnecessary.
+            Spacer(Modifier.height(8.dp))
+
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    stringResource(R.string.settings_subtitle_size),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+                Text(
+                    "%d%%".format((subtitleScale * 100).toInt()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted,
+                )
+            }
+
+            Slider(
+                value = subtitleScale.coerceIn(SUBTITLE_SCALE_RANGE),
+                valueRange = SUBTITLE_SCALE_RANGE,
+                // Twenty-one stops of five percent. Continuous would write the
+                // preference on every frame of the drag for a difference
+                // nobody can see between one stop and the next.
+                steps = 19,
+                onValueChange = onSubtitleScale,
+            )
+
+            // A line to judge it by. The sheet covers the bottom of the
+            // picture, which is where subtitles live, so without this the
+            // slider changes something the person moving it cannot see. It
+            // tracks the setting rather than predicting the exact result —
+            // the real size also depends on what the script asked for — so it
+            // is labelled as a sample and not as a preview of this episode.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    stringResource(R.string.player_subtitle_sample),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontSize = SAMPLE_TEXT_SP * subtitleScale.coerceIn(SUBTITLE_SCALE_RANGE),
+                    lineHeight = SAMPLE_TEXT_SP * subtitleScale.coerceIn(SUBTITLE_SCALE_RANGE) * 1.25f,
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
                 )
             }
 
@@ -172,3 +241,9 @@ private fun StatRow(label: String, value: String) {
 }
 
 private val SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+/** Same range as the one in Settings: the two write the same preference. */
+private val SUBTITLE_SCALE_RANGE = 0.5f..1.5f
+
+/** The sample line at 100%. Roughly what a 1080p script asks for on a phone. */
+private val SAMPLE_TEXT_SP = 17.sp

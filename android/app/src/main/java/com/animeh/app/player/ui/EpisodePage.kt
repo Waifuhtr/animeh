@@ -132,10 +132,18 @@ fun EpisodePageBody(
         } else {
             item(contentType = "about") {
                 Text(
-                    // The episode's own words when it has any, the series' when
-                    // it does not: a blank tab is worse than a repeat.
-                    episode?.synopsis?.takeIf { it.isNotBlank() }
-                        ?: work?.synopsis?.takeIf { it.isNotBlank() }
+                    // The series' description first, the episode's only when
+                    // the series has none.
+                    //
+                    // The other way round is what it was, and it was wrong: an
+                    // episode synopsis is written by TMDB in English and is
+                    // never touched again, while the series description is the
+                    // one edited — and translated — by hand in the panel. So
+                    // this tab showed English on every anime whose description
+                    // had been carefully written in Turkish, which is the one
+                    // case it should have got right.
+                    work?.synopsis?.takeIf { it.isNotBlank() }
+                        ?: episode?.synopsis?.takeIf { it.isNotBlank() }
                         ?: stringResource(R.string.episode_no_synopsis),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextSecondary,
@@ -341,16 +349,23 @@ private fun EpisodeRow(episode: Episode, playing: Boolean, onClick: () -> Unit) 
             modifier = Modifier.width(26.dp),
         )
 
-        Box {
+        // The size is the box's, not the image's. A `Box` takes the width of
+        // its widest child, and the progress line fills whatever width it is
+        // offered — so with the size on the image, an episode that had been
+        // started stretched this box across the whole row and left the title
+        // no space at all. Every episode with progress lost its name.
+        Box(
+            Modifier
+                .width(96.dp)
+                .height(56.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(SurfaceOverlay),
+        ) {
             AsyncImage(
                 model = episode.thumbnailUrl.ifBlank { episode.workPoster },
                 contentDescription = episode.label,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .width(96.dp)
-                    .height(56.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(SurfaceOverlay),
+                modifier = Modifier.fillMaxSize(),
             )
 
             episode.progress?.let { ProgressLine(it.fraction, Modifier.align(Alignment.BottomCenter)) }

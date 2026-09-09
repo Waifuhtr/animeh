@@ -2,10 +2,12 @@ package com.animeh.app.ui.theme
 
 import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
@@ -90,8 +92,17 @@ fun AnimehTheme(
         colorScheme = AnimehColorScheme,
         typography = AnimehTypography,
         shapes = AnimehShapes,
-        content = content,
-    )
+    ) {
+        // Material's own default for `LocalContentColor` is black, and it
+        // only stops being black inside a `Surface` — which `Scaffold`
+        // happens to provide and a hand-built screen does not. On a dark
+        // product that means any `Text` written without a colour is
+        // invisible, on whichever screen forgot the wrapper, and nowhere
+        // else. Setting it here makes "no colour given" mean the theme's
+        // text colour everywhere; a `Surface` still overrides it for its
+        // own subtree, so nothing that reads correctly today changes.
+        CompositionLocalProvider(LocalContentColor provides TextPrimary, content = content)
+    }
 }
 
 /** Kept so a light platform theme is never silently substituted. */

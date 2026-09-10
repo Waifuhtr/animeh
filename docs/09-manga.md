@@ -308,6 +308,41 @@ Sonuç:
 
 ---
 
+## 6.9 Uygulamadaki manga arayüzleri
+
+**Yönetim Paneli** ikiye ayrıldı:
+
+- **Manga Kütüphanesi** — bütün mangalar. Yeni manga ekleyebilir, düzenleyebilir,
+  bölümlerine girebilirsin. Anime listesi artık yalnızca anime gösteriyor.
+- **Manga Kaynakları** — köprü, kopyalama ve iki veri kaynağı (eskiden "Manga"
+  diyen ekran).
+
+**Bölümler.** Bir bölüm bir anime bölümü değil: süresi, videosu, intro işareti
+yok ve numarası 10.5 olabiliyor. Kendi ekranı var. Bölüm satırındaki
+**Sayfalar** düğmesinden:
+
+- **Görseller** — çoklu seçim, telefondaki klasörden.
+- **Zip** — bölümün indirildiği arşivi olduğu gibi.
+
+İkisi de tek istekte gidiyor. **Sıra dosya adına göre**, sayı olarak: `1.jpg,
+2.jpg, 10.jpg` → 1, 2, 10. Seçim sırası ya da metin sıralaması değil.
+
+**Manga sayfası.** Ekteki konsept uygulandı: kapak, "Manga" rozeti, puan /
+bölüm sayısı / çizer satırı, tür rozetleri, "Hakkında", bölüm listesi ("Oku"
+düğmeleriyle), eleştiriler ve alttaki "Oku" çubuğu. Bölüm listesi varsayılan
+olarak **ilk bölümden** başlıyor; "Son önce" ile ters çevirebilirsin.
+
+**Arkadaşına öner.** Manga (ve anime) sayfasındaki uçak simgesi: arkadaş seç,
+istersen not yaz, gönder. Karşı tarafa **bildirim** olarak düşüyor ve dokununca
+eseri açıyor. Sadece arkadaşlara — sunucu bunu ekrana güvenmeden kendisi
+kontrol ediyor.
+
+**Türler.** Düzenleme formunda virgülle ayrılmış tür alanı var, hem anime hem
+manga için. Türün ekranda hangi isimle görüneceği eskisi gibi **Terimler**
+ekranından.
+
+---
+
 ## 7. Ekstra: çerçeveleri toplu yükleme
 
 Aynı sürümde: Yönetim Paneli → Çerçeveler → **+** artık **birden çok dosya**

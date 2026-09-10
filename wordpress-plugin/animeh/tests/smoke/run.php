@@ -526,6 +526,49 @@ step(
 );
 
 step(
+	'kopyalanamayan bir parti sonsuza kadar denenmiyor',
+	static function () use ( $wpdb ): void {
+		animeh_http_reset();
+
+		// Pages whose source will not answer: exactly the rows that used to
+		// come back copied: 0 with failures, which the app read as "keep
+		// asking" and looped on forever.
+		$wpdb->rows = array(
+			'sources' => array(
+				array(
+					'id'           => 1,
+					'episode_id'   => 1,
+					'external_url' => 'https://kaynak.test/1.jpg',
+					'label'        => '1.jpg',
+					'sort_order'   => 1,
+					'number'       => '1.00',
+					'slug'         => 'ornek-manga',
+				),
+			),
+		);
+
+		$response = ( new MangaController() )->mirror();
+
+		$wpdb->rows = array();
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		$data = $response->get_data();
+
+		if ( 0 !== $data['copied'] || array() === $data['failed'] ) {
+			throw new RuntimeException( wp_json_encode( $data ) );
+		}
+		// Not partial: the clock had nothing to do with it, so the app knows
+		// asking again would hand back the same rows.
+		if ( false !== $data['partial'] ) {
+			throw new RuntimeException( 'partial: ' . var_export( $data['partial'], true ) );
+		}
+	}
+);
+
+step(
 	'GET /admin/manga/search?source=gallery — kapalıyken sebebi söylüyor',
 	static function (): void {
 		animeh_http_reset();

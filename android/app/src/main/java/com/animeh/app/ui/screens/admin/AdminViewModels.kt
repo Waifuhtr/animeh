@@ -1257,8 +1257,20 @@ class AdminMangaViewModel @Inject constructor(
                     _message.value = data.failed.first().message
                 }
 
-                if (data.done || (data.copied == 0 && data.failed.isEmpty())) {
+                if (data.done) {
                     _message.value = "Kopyalama tamamlandı"
+                    break
+                }
+
+                // A batch that copied nothing and was not merely out of time
+                // has nothing left it can do: asking again would hand back the
+                // same rows and the same failures, forever.
+                if (data.copied == 0 && !data.partial) {
+                    val reason = data.failed.firstOrNull()?.message
+                    _message.value = reason?.let { "Kopyalanamıyor: $it" } ?: "Kopyalanacak sayfa kalmadı"
+                    if (reason != null) {
+                        _state.update { it.copy(lastError = reason) }
+                    }
                     break
                 }
             }

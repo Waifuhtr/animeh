@@ -7,6 +7,7 @@ import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.remote.AdminApi
 import com.animeh.app.data.remote.AuthInterceptor
 import com.animeh.app.data.remote.PublicApi
+import com.animeh.app.data.remote.SlowOperationInterceptor
 import com.animeh.app.data.remote.TokenAuthenticator
 import com.animeh.app.data.remote.UserApi
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
@@ -127,6 +128,10 @@ object NetworkModule {
         authenticator: TokenAuthenticator,
     ): OkHttpClient = base.newBuilder()
         .addInterceptor(authInterceptor)
+        // Copying and importing answer once for a whole batch of downloads and
+        // uploads; thirty seconds is the right patience for a catalogue page
+        // and the wrong one for those.
+        .addInterceptor(SlowOperationInterceptor())
         .authenticator(authenticator)
         .apply {
             if (BuildConfig.DEBUG) {

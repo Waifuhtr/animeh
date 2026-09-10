@@ -283,8 +283,21 @@ class FakeWpdb {
 		return $rows[0] ?? null;
 	}
 
-	/** Whichever fixture the query is asking for. */
+	/**
+	 * Whichever fixture the query is asking for.
+	 *
+	 * Decided by the FROM clause, not by any mention of a table: the page
+	 * query joins episodes and works onto sources, and matching on a mention
+	 * handed it the episode fixture instead.
+	 */
 	private function rows_for( string $sql ): array {
+		if ( 1 === preg_match( '/FROM\s+wp_animeh_(\w+)/i', $sql, $from ) ) {
+			$named = strtolower( $from[1] );
+			if ( isset( $this->rows[ $named ] ) ) {
+				return $this->rows[ $named ];
+			}
+		}
+
 		if ( str_contains( $sql, 'FROM wp_animeh_works' ) || str_contains( $sql, 'wp_animeh_works w' ) ) {
 			// A works query unless an episode join says otherwise.
 			if ( ! str_contains( $sql, 'wp_animeh_episodes' ) ) {
@@ -296,6 +309,9 @@ class FakeWpdb {
 		}
 		if ( str_contains( $sql, 'wp_animeh_history' ) ) {
 			return $this->rows['history'] ?? array();
+		}
+		if ( str_contains( $sql, 'wp_animeh_sources' ) ) {
+			return $this->rows['sources'] ?? array();
 		}
 		return array();
 	}

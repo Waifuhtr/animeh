@@ -60,7 +60,22 @@ final class MangaImporter {
 	/**
 	 * Longest a single page download may take.
 	 */
-	private const FETCH_TIMEOUT = 20;
+	private const FETCH_TIMEOUT = 15;
+
+	/**
+	 * How long one copy request may spend before answering.
+	 *
+	 * A batch of twenty-five images is twenty-five downloads and twenty-five
+	 * uploads, and on a slow source that is minutes. The app gave up waiting
+	 * long before the request finished — `SocketTimeoutException` — and its
+	 * copy loop stopped even though the server was still working.
+	 *
+	 * So the batch is bounded by the clock rather than only by a count: no new
+	 * image is started once this much has gone by, and whatever was copied is
+	 * reported straight away. The app's loop simply asks again, which is what
+	 * it already did between batches.
+	 */
+	private const MIRROR_BUDGET = 20.0;
 
 	/**
 	 * Largest page image accepted.
@@ -503,18 +518,30 @@ final class MangaImporter {
 			return array_merge(
 				self::mirror_progress(),
 				array(
-					'done'   => true,
-					'copied' => 0,
-					'failed' => array(),
+					'done'    => true,
+					'copied'  => 0,
+					'failed'  => array(),
+					'partial' => false,
 				)
 			);
 		}
 
-		$client = new B2Client( $settings );
-		$copied = 0;
-		$failed = array();
+		$client  = new B2Client( $settings );
+		$copied  = 0;
+		$failed  = array();
+		$started = microtime( true );
+		$left    = 0;
+		$budget  = self::budget();
 
-		foreach ( $rows as $row ) {
+		foreach ( $rows as $index => $row ) {
+			// Checked before starting, never in the middle: an image already
+			// being fetched is finished, so the row is either copied or
+			// recorded as failed rather than left half done.
+			if ( microtime( true ) - $started >= $budget ) {
+				$left = count( $rows ) - $index;
+				break;
+			}
+
 			$key = StorageKey::chapter_page(
 				(string) $row['slug'],
 				(float) $row['number'],
@@ -551,8 +578,35 @@ final class MangaImporter {
 				'done'   => false,
 				'copied' => $copied,
 				'failed' => $failed,
+				// True when the clock ran out rather than the batch: the app
+				// should ask again immediately, and nothing is wrong.
+				'partial' => $left > 0,
 			)
 		);
+	}
+
+	/**
+	 * How long this request may actually spend.
+	 *
+	 * Our own budget, unless the host's `max_execution_time` is tighter — on
+	 * shared hosting it is often thirty seconds, and being killed mid-batch
+	 * loses the answer along with the work. More room is asked for first,
+	 * which most hosts grant, and whatever is left is what we plan around.
+	 */
+	private static function budget(): float {
+		// Not fatal if the host forbids it; the reading below is what counts.
+		@set_time_limit( 0 ); // phpcs:ignore WordPress.PHP.NoSilencedErrors.Discouraged, WordPress.PHP.DiscouragedPHPFunctions.runtime_configuration_set_time_limit
+
+		$limit = (int) ini_get( 'max_execution_time' );
+
+		// Zero means no limit, which is the case this budget exists to bound.
+		if ( $limit <= 0 ) {
+			return self::MIRROR_BUDGET;
+		}
+
+		// Leave room for the image already in flight and for writing the
+		// answer, so the request ends by returning rather than by being cut.
+		return min( self::MIRROR_BUDGET, max( 3.0, $limit - self::FETCH_TIMEOUT - 5.0 ) );
 	}
 
 	/**

@@ -129,6 +129,14 @@ data class MirrorResultDto(
     val mirrored: Int = 0,
     val pending: Int = 0,
     val failed: List<MirrorFailureDto> = emptyList(),
+    /**
+     * The batch stopped on the clock rather than because it ran out of pages.
+     *
+     * Nothing is wrong; there is simply more to do. It separates "ask again"
+     * from "nothing here can be copied", which otherwise look identical: both
+     * come back having copied none.
+     */
+    @Serializable(with = LenientBoolean::class) val partial: Boolean = false,
 )
 
 @Serializable

@@ -242,6 +242,29 @@ kartın üstünde de duruyor. Muhtemel cümleler ve anlamları:
 
 ---
 
+### Kopyalarken "SocketTimeoutException / timeout"
+
+Bu telefonun zaman aşımıydı, sunucunun değil. Bir kopyalama isteği 25 sayfayı
+tek seferde indirip yüklüyordu; uygulamanın okuma zaman aşımı ise 30 saniye.
+Sunucu hâlâ çalışırken telefon vazgeçiyor, kopyalama döngüsü de duruyordu.
+
+Üç yerden birden düzeltildi:
+
+1. **Sunucu partiyi saate göre bölüyor.** 20 saniye geçtiyse yeni görsele
+   başlamıyor, o ana kadar kopyaladıklarını `partial: true` ile bildiriyor;
+   uygulama zaten aynı döngüde tekrar soruyor. Barındırmanın kendi
+   `max_execution_time` değeri daha darsa bütçe ona göre küçülüyor (30 sn'lik
+   bir hostta 10 sn), ve önce `set_time_limit(0)` denenip daha fazla yer
+   isteniyor.
+2. **Uygulama bu uçlarda daha sabırlı.** Kopyalama, içe aktarma ve sayfa
+   yükleme için okuma/yazma zaman aşımı 120 saniye. Katalog isteği için 30
+   saniye doğru, bunlar için değildi.
+3. **Kopyalanamayan parti sonsuza kadar denenmiyor.** Hiçbir sayfası
+   kopyalanamayan ve süresi de dolmamış bir parti, tekrar sorulunca aynı
+   satırları geri verir — döngü bitmezdi. Artık durup sebebini yazıyor.
+
+---
+
 ### DNS: ilk denemede "Resolving timed out"
 
 Sunucunun ilk dış isteği bazen isim çözerken 10 saniyede düşüyor, hemen

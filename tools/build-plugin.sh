@@ -36,6 +36,9 @@ php "$PLUGIN_DIR/tests/smoke/run.php" > /dev/null
 # every route it registers.
 BRIDGE_DIR="$ROOT/wordpress-plugin/animeh-manga-bridge"
 php "$ROOT/tools/php-call-check.php" "$PLUGIN_DIR/src" "$BRIDGE_DIR" > /dev/null
+# And the same question for methods: does the method exist, does the count
+# fit, do literal arguments match the declared types.
+php "$ROOT/tools/php-method-check.php" > /dev/null
 php "$BRIDGE_DIR/tests/smoke.php" > /dev/null
 
 # Everything the plugin needs at runtime, and nothing else: no tests, no

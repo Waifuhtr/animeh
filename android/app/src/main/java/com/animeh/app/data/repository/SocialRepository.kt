@@ -104,4 +104,17 @@ class SocialRepository @Inject constructor(
 
     suspend fun invite(code: String, userIds: List<Long>): AppResult<InviteResultDto> =
         ApiErrorMapper.call { userApi.invite(code, InviteRequest(userIds)) }
+
+    /**
+     * Recommend a work to friends.
+     *
+     * Friends only, and the server enforces it — a stranger able to push a
+     * notification onto somebody's phone is a spam problem, not a feature.
+     */
+    suspend fun recommend(
+        workId: Long,
+        userIds: List<Long>,
+        note: String = "",
+    ): AppResult<RecommendResultDto> =
+        ApiErrorMapper.call { userApi.recommend(RecommendRequest(workId, userIds, note.trim())) }
 }

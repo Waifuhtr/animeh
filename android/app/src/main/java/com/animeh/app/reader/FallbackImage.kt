@@ -53,6 +53,8 @@ fun FallbackImage(
     candidates: List<String>,
     contentDescription: String?,
     modifier: Modifier = Modifier,
+    /** Whether this page is in our own bucket, which changes what a failure means. */
+    mirrored: Boolean = true,
 ) {
     if (candidates.isEmpty()) {
         PagePlaceholder(modifier) { Text("Sayfa yok", color = TextMuted) }
@@ -78,7 +80,17 @@ fun FallbackImage(
             Icon(Icons.Filled.Refresh, null, tint = TextMuted, modifier = Modifier.size(28.dp))
             Spacer(Modifier.height(8.dp))
             Text(
-                "Sayfa yüklenemedi — dokunup tekrar dene",
+                if (mirrored) {
+                    "Sayfa yüklenemedi — dokunup tekrar dene"
+                } else {
+                    // The page is still on whoever we imported it from, and
+                    // those hosts refuse an app asking directly. Saying so
+                    // beats a spinner that never stops: the fix is a copy
+                    // run, and the person reading this is usually the admin.
+                    "Sayfa hâlâ kaynak sitede ve oradan açılmıyor.\n" +
+                        "Yönetim → Manga → \u201cGörselleri kovamıza kopyala\u201d\n" +
+                        "Dokunup tekrar deneyebilirsin."
+                },
                 style = MaterialTheme.typography.labelMedium,
                 color = TextMuted,
                 textAlign = TextAlign.Center,
@@ -87,7 +99,10 @@ fun FallbackImage(
         return
     }
 
-    var loading by remember(candidates) { mutableIntStateOf(1) }
+    // Reset when the address changes, or the spinner from the first attempt
+    // sits over the second one and a page that is loading looks identical to
+    // a page that is stuck.
+    var loading by remember(candidates, index, attempt) { mutableIntStateOf(1) }
 
     Box(modifier) {
         AsyncImage(

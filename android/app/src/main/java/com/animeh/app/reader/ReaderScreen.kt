@@ -180,6 +180,7 @@ private fun Pages(
                 candidates = page.candidates,
                 contentDescription = null,
                 modifier = Modifier.fillMaxWidth(),
+                mirrored = page.mirrored,
             )
         }
 

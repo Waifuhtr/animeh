@@ -2,12 +2,14 @@ package com.animeh.app.data.repository
 
 import android.content.ContentResolver
 import android.net.Uri
+import android.provider.OpenableColumns
 import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
 import com.animeh.app.data.remote.AdminApi
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.dto.*
 import com.animeh.app.domain.Episode
+import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.domain.Work
 import com.animeh.app.domain.toDomain
 import kotlinx.coroutines.Dispatchers
@@ -42,10 +44,102 @@ class AdminRepository @Inject constructor(
     suspend fun dashboard(): AppResult<DashboardDto> =
         ApiErrorMapper.call { api.dashboard() }
 
-    suspend fun works(search: String = "", page: Int = 1): AppResult<List<Work>> =
+    suspend fun works(
+        search: String = "",
+        kind: String = KIND_ANIME,
+        page: Int = 1,
+    ): AppResult<List<Work>> =
         ApiErrorMapper.call({ dto -> dto.items.map { it.toDomain() } }) {
-            api.works(search, page)
+            api.works(search, kind, page)
         }
+
+    /* ── Manga chapters and their pages ──────────────────────────────── */
+
+    suspend fun chapters(workId: Long): AppResult<AdminChaptersDto> =
+        ApiErrorMapper.call { api.adminChapters(workId) }
+
+    suspend fun saveChapter(
+        workId: Long,
+        number: Double,
+        title: String,
+        chapterId: Long = 0,
+        published: Boolean = true,
+    ): AppResult<Episode?> =
+        ApiErrorMapper.call({ it.chapter?.toDomain() }) {
+            api.saveChapter(workId, ChapterSaveRequest(number, chapterId, title, published))
+        }
+
+    suspend fun deleteChapter(chapterId: Long): AppResult<Unit> =
+        ApiErrorMapper.call({ }) { api.deleteChapter(chapterId) }
+
+    suspend fun chapterPages(chapterId: Long): AppResult<List<PageDto>> =
+        ApiErrorMapper.call({ it.pages }) { api.adminChapterPages(chapterId) }
+
+    /**
+     * Send a chapter's pages up in one request.
+     *
+     * Whatever was picked: a folder of images, or the zip the chapter was
+     * downloaded as. The server sorts them by file name — `1.jpg … 24.jpg`
+     * compared as numbers — so the order they were selected in does not
+     * decide the order they are read in.
+     */
+    suspend fun uploadPages(
+        chapterId: Long,
+        uris: List<Uri>,
+        replace: Boolean = false,
+    ): AppResult<PageUploadDto> {
+        if (uris.isEmpty()) return AppResult.Failure(AppError.Message("Dosya seçilmedi."))
+
+        val parts = withContext(Dispatchers.IO) {
+            uris.mapNotNull { uri ->
+                val bytes = runCatching {
+                    contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }.getOrNull()
+
+                if (bytes == null || bytes.isEmpty()) {
+                    null
+                } else {
+                    MultipartBody.Part.createFormData(
+                        "file[]",
+                        // The name carries the order. Losing it here would
+                        // leave the server sorting by upload order, which is
+                        // whatever the picker felt like.
+                        displayName(uri),
+                        bytes.toRequestBody(mediaType(contentResolver.getType(uri).orEmpty())),
+                    )
+                }
+            }
+        }
+
+        if (parts.isEmpty()) return AppResult.Failure(AppError.Message("Dosyalar okunamadı."))
+
+        return ApiErrorMapper.call {
+            api.uploadPages(chapterId, parts, mapOf("replace" to replace.toString().toPlainPart()))
+        }
+    }
+
+    suspend fun clearChapterPages(chapterId: Long): AppResult<Unit> =
+        ApiErrorMapper.call({ }) { api.clearChapterPages(chapterId) }
+
+    /**
+     * The file name behind a picked URI.
+     *
+     * `lastPathSegment` is a document id on modern pickers — `msf:1000000123`
+     * — which carries no order at all, so the display name is asked for first
+     * and only then is the path fallen back on.
+     */
+    private fun displayName(uri: Uri): String {
+        val queried = runCatching {
+            contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                }
+        }.getOrNull()
+
+        return queried?.takeIf { it.isNotBlank() }
+            ?: uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() }
+            ?: "sayfa"
+    }
 
     suspend fun saveWork(request: AdminWorkRequest): AppResult<Work> =
         ApiErrorMapper.call({ it.work?.toDomain() ?: throw IllegalStateException("no work in response") }) {

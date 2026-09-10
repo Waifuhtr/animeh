@@ -1,6 +1,7 @@
 package com.animeh.app.data.remote
 
 import com.animeh.app.data.remote.dto.*
+import com.animeh.app.domain.KIND_ANIME
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
 import retrofit2.Response
@@ -260,6 +261,15 @@ interface UserApi {
 
     @POST("me/profile-theme")
     suspend fun setProfileTheme(@Body body: ProfileThemeRequest): Response<ThemeDto>
+
+    /**
+     * Tell friends to look at something.
+     *
+     * Arrives as a notification that opens the work, rather than a message in
+     * a list nobody opens.
+     */
+    @POST("me/recommend")
+    suspend fun recommend(@Body body: RecommendRequest): Response<RecommendResultDto>
 }
 
 interface AdminApi {
@@ -270,6 +280,9 @@ interface AdminApi {
     @GET("admin/works")
     suspend fun works(
         @Query("search") search: String = "",
+        // Anime and manga share a table and are two different libraries to
+        // whoever is managing them.
+        @Query("kind") kind: String = KIND_ANIME,
         @Query("page") page: Int = 1,
         @Query("per_page") perPage: Int = 20,
     ): Response<WorkListDto>
@@ -476,6 +489,41 @@ interface AdminApi {
 
     @POST("admin/manga/import")
     suspend fun importManga(@Body body: MangaImportRequest): Response<MangaImportResultDto>
+
+    /* ── Manga, managed by hand ──────────────────────────────────────── */
+
+    @GET("admin/manga/works/{id}/chapters")
+    suspend fun adminChapters(@Path("id") workId: Long): Response<AdminChaptersDto>
+
+    @POST("admin/manga/works/{id}/chapters")
+    suspend fun saveChapter(
+        @Path("id") workId: Long,
+        @Body body: ChapterSaveRequest,
+    ): Response<ChapterSaveResultDto>
+
+    @DELETE("admin/manga/chapters/{id}")
+    suspend fun deleteChapter(@Path("id") chapterId: Long): Response<OkDto>
+
+    @GET("admin/manga/chapters/{id}/pages")
+    suspend fun adminChapterPages(@Path("id") chapterId: Long): Response<AdminPagesDto>
+
+    /**
+     * Pages for one chapter: loose images, a zip, or both.
+     *
+     * All parts are named `file[]` so a chapter of forty pages is one request,
+     * and the server puts them in order by their file names rather than by the
+     * order they happened to arrive in.
+     */
+    @Multipart
+    @POST("admin/manga/chapters/{id}/pages")
+    suspend fun uploadPages(
+        @Path("id") chapterId: Long,
+        @Part files: List<MultipartBody.Part>,
+        @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
+    ): Response<PageUploadDto>
+
+    @DELETE("admin/manga/chapters/{id}/pages")
+    suspend fun clearChapterPages(@Path("id") chapterId: Long): Response<OkDto>
 
     @GET("admin/manga/gallery")
     suspend fun gallerySource(): Response<GallerySourceDto>

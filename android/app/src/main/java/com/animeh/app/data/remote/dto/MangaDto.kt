@@ -174,6 +174,38 @@ data class GallerySourceDto(
     @SerialName("has_key") @Serializable(with = LenientBoolean::class) val hasKey: Boolean = false,
 )
 
+/* ── Chapters and pages, managed by hand ─────────────────────────────── */
+
+@Serializable
+data class AdminChaptersDto(
+    val work: WorkDto = WorkDto(),
+    val items: List<EpisodeDto> = emptyList(),
+)
+
+@Serializable
+data class ChapterSaveResultDto(
+    val chapter: EpisodeDto? = null,
+)
+
+@Serializable
+data class AdminPagesDto(
+    val pages: List<PageDto> = emptyList(),
+)
+
+@Serializable
+data class PageUploadDto(
+    /** How many of this batch landed in the bucket. */
+    val written: Int = 0,
+    val pages: Int = 0,
+    val failed: List<PageFailureDto> = emptyList(),
+)
+
+@Serializable
+data class PageFailureDto(
+    val name: String = "",
+    val message: String = "",
+)
+
 /* ── Requests ────────────────────────────────────────────────────────── */
 
 @Serializable
@@ -200,4 +232,26 @@ data class MangaImportRequest(
 data class GallerySourceRequest(
     val enabled: Boolean,
     val key: String = "",
+)
+
+@Serializable
+data class ChapterSaveRequest(
+    /** Decimal on purpose: 10.5 is a chapter of its own, not a rounding. */
+    val number: Double,
+    @SerialName("chapter_id") val chapterId: Long = 0,
+    val title: String = "",
+    val published: Boolean = true,
+)
+
+@Serializable
+data class RecommendRequest(
+    @SerialName("work_id") val workId: Long,
+    @SerialName("user_ids") val userIds: List<Long>,
+    val note: String = "",
+)
+
+@Serializable
+data class RecommendResultDto(
+    val sent: Int = 0,
+    val notified: Int = 0,
 )

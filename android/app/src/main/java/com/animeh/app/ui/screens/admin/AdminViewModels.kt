@@ -1212,6 +1212,14 @@ class AdminMangaViewModel @Inject constructor(
             }
 
             _state.update { it.copy(syncing = false) }
+
+            // Copying is not an extra step to remember: a page that is still
+            // on the source site does not open in the reader at all, because
+            // those hosts refuse an app asking for their images directly. So
+            // an import that worked runs straight into the copy.
+            if (_state.value.lastError.isBlank() && _state.value.mirrorTotal > _state.value.mirrored) {
+                mirror()
+            }
         }
     }
 
@@ -1295,6 +1303,14 @@ class AdminMangaViewModel @Inject constructor(
                         "${item.title} güncellendi"
                     }
                     load()
+
+                    // Its pages are still on the source, which will not serve
+                    // them to the app. Copying them is the difference between
+                    // a manga that opens and one that does not, so it is not
+                    // left as a button to remember.
+                    if (result.data.chapters > 0) {
+                        mirror()
+                    }
                 }
 
                 is AppResult.Failure -> _message.value = describe(result.error)

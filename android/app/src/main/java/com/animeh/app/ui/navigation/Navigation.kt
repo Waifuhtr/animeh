@@ -98,9 +98,9 @@ object Routes {
     const val ADMIN_CHAPTER_PAGES = "$ADMIN_PAGES_BASE/{chapterId}"
     fun adminChapterPages(chapterId: Long) = "$ADMIN_PAGES_BASE/$chapterId"
 
-    private const val MANGA_BASE = "manga"
-    const val MANGA = "$MANGA_BASE/{workId}"
-    fun manga(workId: Long) = "$MANGA_BASE/$workId"
+    private const val RECOMMEND_BASE = "recommend"
+    const val RECOMMEND = "$RECOMMEND_BASE/{workId}"
+    fun recommend(workId: Long) = "$RECOMMEND_BASE/$workId"
 }
 
 /**

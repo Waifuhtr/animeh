@@ -43,6 +43,8 @@ fun DetailScreen(
     onPlayEpisode: (id: Long, isChapter: Boolean) -> Unit,
     onSignIn: () -> Unit,
     onOpenRoom: () -> Unit = {},
+    /** Hand a work to a friend. Shown on the manga page; the id is the work. */
+    onRecommend: (Long) -> Unit = {},
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -89,6 +91,23 @@ fun DetailScreen(
             },
             onContinue = viewModel::acknowledgeAdult,
         )
+    }
+
+    // A manga's page is a different page, not this one with half its rows
+    // hidden: no seasons, no runtime, no studio, no trailer, and chapters that
+    // are read rather than played. The same view model serves both, so the
+    // branch costs nothing — everything behind the screen is identical.
+    if (state.work.dataOrNull?.isManga == true) {
+        MangaDetailScreen(
+            state = state,
+            signedIn = signedIn,
+            onBack = onBack,
+            onReadChapter = play,
+            onSignIn = onSignIn,
+            onRecommend = onRecommend,
+            viewModel = viewModel,
+        )
+        return
     }
 
     Box(Modifier.fillMaxSize()) {

@@ -239,8 +239,16 @@ fun AnimehApp(
                     onPlayEpisode = openEpisode,
                     onSignIn = { navController.navigate(Routes.LOGIN) },
                     onOpenRoom = { navController.navigate(Routes.ROOM) },
+                    onRecommend = { navController.navigate(Routes.recommend(it)) },
                     signedIn = authState is AuthState.SignedIn,
                 )
+            }
+
+            composable(
+                route = Routes.RECOMMEND,
+                arguments = listOf(navArgument("workId") { type = NavType.LongType }),
+            ) {
+                RecommendScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.SETTINGS) {

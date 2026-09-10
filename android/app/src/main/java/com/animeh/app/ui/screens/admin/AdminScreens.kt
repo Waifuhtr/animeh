@@ -388,6 +388,19 @@ fun AdminWorkEditScreen(
                 viewModel.update { it.copy(totalEpisodes = value.toIntOrNull()) }
             }
 
+            // Comma-separated, because that is how a list of four words is
+            // actually edited on a phone. What each one is *called* on the
+            // page is set under Terimler; this is which ones the work has.
+            Field("Türler (virgülle ayır)", form.genres.orEmpty().joinToString(", ")) { value ->
+                viewModel.update {
+                    it.copy(
+                        genres = value.split(',')
+                            .map(String::trim)
+                            .filter(String::isNotEmpty),
+                    )
+                }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(
                     checked = form.published == true,

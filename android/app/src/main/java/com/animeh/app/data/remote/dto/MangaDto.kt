@@ -163,7 +163,9 @@ data class MangaImportResultDto(
     @SerialName("work_id") val workId: Long = 0,
     @Serializable(with = LenientBoolean::class) val created: Boolean = false,
     val chapters: Int = 0,
-    val work: WorkDto = WorkDto(),
+    // Nullable because the server sends null when it could not read the row
+    // back: a non-null default does not save a property that arrives as null.
+    val work: WorkDto? = null,
 )
 
 @Serializable

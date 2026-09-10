@@ -1053,8 +1053,9 @@ class AdminFramesViewModel @Inject constructor(
         _message.value = null
     }
 
-    private fun describe(error: AppError): String = when (error) {
-        is AppError.Message -> error.text
+    private fun describe(error: AppError): String = error.reason() ?: when (error) {
+        is AppError.Network -> "İnternet bağlantısı yok."
+        is AppError.Timeout -> "Sunucu yanıt vermedi."
         else -> "Bir şeyler ters gitti."
     }
 }
@@ -1089,6 +1090,14 @@ data class AdminMangaState(
     val searching: Boolean = false,
     val results: List<MangaSearchItemDto> = emptyList(),
     val importingId: Long = 0,
+    /**
+     * Why the last import run stopped, as the server put it.
+     *
+     * Kept on screen rather than shown once: a snackbar is gone before the
+     * reason can be acted on, and "köprü anahtarı kabul edilmedi" is a thing
+     * to read while fixing the field right above it.
+     */
+    val lastError: String = "",
 )
 
 @HiltViewModel
@@ -1169,7 +1178,7 @@ class AdminMangaViewModel @Inject constructor(
         if (_state.value.syncing) return
 
         viewModelScope.launch {
-            _state.update { it.copy(syncing = true, syncProgress = "") }
+            _state.update { it.copy(syncing = true, syncProgress = "", lastError = "") }
 
             var first = true
             while (true) {
@@ -1177,7 +1186,9 @@ class AdminMangaViewModel @Inject constructor(
                 first = false
 
                 if (result !is AppResult.Success) {
-                    _message.value = describe((result as AppResult.Failure).error)
+                    val reason = describe((result as AppResult.Failure).error)
+                    _message.value = reason
+                    _state.update { it.copy(lastError = reason) }
                     break
                 }
 
@@ -1222,7 +1233,9 @@ class AdminMangaViewModel @Inject constructor(
                 val result = repository.mirrorManga()
 
                 if (result !is AppResult.Success) {
-                    _message.value = describe((result as AppResult.Failure).error)
+                    val reason = describe((result as AppResult.Failure).error)
+                    _message.value = reason
+                    _state.update { it.copy(lastError = reason) }
                     break
                 }
 
@@ -1294,7 +1307,21 @@ class AdminMangaViewModel @Inject constructor(
     fun setGalleryEnabled(enabled: Boolean) {
         _state.update { it.copy(galleryEnabled = enabled) }
 
-        viewModelScope.launch { repository.saveGallerySource(enabled, "") }
+        viewModelScope.launch {
+            // The switch moves first because that is what a switch should do,
+            // but a refused save has to be visible: leaving it flipped on a
+            // server that never stored it made the next search fail with
+            // "bu kaynak kapalı" over a control that plainly said it was open.
+            when (val result = repository.saveGallerySource(enabled, "")) {
+                is AppResult.Success ->
+                    _state.update { it.copy(galleryEnabled = result.data.enabled) }
+
+                is AppResult.Failure -> {
+                    _state.update { it.copy(galleryEnabled = !enabled) }
+                    _message.value = describe(result.error)
+                }
+            }
+        }
     }
 
     fun messageShown() {
@@ -1312,12 +1339,14 @@ class AdminMangaViewModel @Inject constructor(
                 pages = data.counts.pages,
                 mirrorTotal = data.mirror.total,
                 mirrored = data.mirror.mirrored,
+                lastError = data.sync.lastError,
             )
         }
     }
 
-    private fun describe(error: AppError): String = when (error) {
-        is AppError.Message -> error.text
+    private fun describe(error: AppError): String = error.reason() ?: when (error) {
+        is AppError.Network -> "İnternet bağlantısı yok."
+        is AppError.Timeout -> "Sunucu yanıt vermedi."
         else -> "Bir şeyler ters gitti."
     }
 }

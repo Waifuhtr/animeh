@@ -46,9 +46,9 @@ function get_current_user_id() { return 0; }
 function get_option( $k, $d = false ) { return $GLOBALS['__options'][ $k ] ?? $d; }
 function update_option( $k, $v, $a = null ) { $GLOBALS['__options'][ $k ] = $v; return true; }
 function delete_option( $k ) { unset( $GLOBALS['__options'][ $k ] ); return true; }
-function get_transient( $k ) { return false; }
-function set_transient( $k, $v, $t = 0 ) { return true; }
-function delete_transient( $k ) { return true; }
+function get_transient( $k ) { return $GLOBALS['__transients'][ $k ] ?? false; }
+function set_transient( $k, $v, $t = 0 ) { $GLOBALS['__transients'][ $k ] = $v; return true; }
+function delete_transient( $k ) { unset( $GLOBALS['__transients'][ $k ] ); return true; }
 function get_user_meta( $u, $k, $s = false ) { return ''; }
 function update_user_meta( $u, $k, $v ) { return true; }
 function delete_user_meta( $u, $k ) { return true; }
@@ -64,11 +64,69 @@ function wp_parse_url( $u, $c = -1 ) { return parse_url( $u, $c ); }
 function home_url( $p = '' ) { return 'https://site' . $p; }
 function rest_url( $p = '' ) { return 'https://site/wp-json/' . $p; }
 function get_bloginfo( $k ) { return 'site'; }
-function wp_remote_get( ...$a ) { return new WP_Error( 'offline', 'no network in the harness' ); }
-function wp_remote_post( ...$a ) { return new WP_Error( 'offline', 'no network in the harness' ); }
-function wp_remote_retrieve_body( $r ) { return ''; }
-function wp_remote_retrieve_response_code( $r ) { return 0; }
+function wp_remote_get( $url, $args = array() ) { return animeh_http( (string) $url, $args ); }
+function wp_remote_post( $url, $args = array() ) { return animeh_http( (string) $url, $args ); }
+function wp_remote_head( $url, $args = array() ) { return animeh_http( (string) $url, $args ); }
+function wp_remote_request( $url, $args = array() ) { return animeh_http( (string) $url, $args ); }
+function wp_remote_retrieve_body( $r ) { return is_array( $r ) ? (string) ( $r['body'] ?? '' ) : ''; }
+function wp_remote_retrieve_response_code( $r ) { return is_array( $r ) ? (int) ( $r['response']['code'] ?? 0 ) : 0; }
+function wp_remote_retrieve_header( $r, $k ) { return is_array( $r ) ? (string) ( $r['headers'][ strtolower( (string) $k ) ] ?? '' ) : ''; }
+function wp_remote_retrieve_headers( $r ) { return is_array( $r ) ? (array) ( $r['headers'] ?? array() ) : array(); }
 function is_wp_error( $t ) { return $t instanceof WP_Error; }
+
+/**
+ * Outbound HTTP, answered from a fixture table.
+ *
+ * The importer and both metadata sources spend their whole lives inside
+ * `wp_remote_get`, so with it stubbed to a flat failure the only line of
+ * theirs that ever ran was the one that gives up. A test registers the
+ * replies it wants by URL substring and the rest of the path runs for real.
+ *
+ * @param string $needle Substring of the URL this answers.
+ * @param int    $code   HTTP status.
+ * @param mixed  $body   String body, or anything JSON-encodable.
+ */
+function animeh_http_reply( string $needle, int $code, $body ): void {
+	$GLOBALS['__http'][ $needle ] = array(
+		'response' => array( 'code' => $code ),
+		'headers'  => array(),
+		'body'     => is_string( $body ) ? $body : (string) wp_json_encode( $body ),
+	);
+}
+
+/** Forget every registered reply, and the log of what was asked for. */
+function animeh_http_reset(): void {
+	$GLOBALS['__http']     = array();
+	$GLOBALS['__http_log'] = array();
+}
+
+/** Every URL asked for since the last reset. */
+function animeh_http_log(): array {
+	return $GLOBALS['__http_log'] ?? array();
+}
+
+/**
+ * Answer one request.
+ *
+ * An unregistered URL is a transport error rather than a 404: that is what a
+ * host with no route to it actually produces, and it keeps a test from
+ * passing on a request it never meant to allow.
+ *
+ * @param string $url  Address.
+ * @param mixed  $args Request arguments.
+ * @return array<string, mixed>|WP_Error
+ */
+function animeh_http( string $url, $args = array() ) {
+	$GLOBALS['__http_log'][] = $url;
+
+	foreach ( $GLOBALS['__http'] as $needle => $reply ) {
+		if ( str_contains( $url, (string) $needle ) ) {
+			return $reply;
+		}
+	}
+
+	return new WP_Error( 'http_request_failed', 'harness: fixture yok — ' . $url );
+}
 function current_user_can( $c ) { return false; }
 function user_can( $u, $c ) { return false; }
 function get_userdata( $id ) { return false; }
@@ -185,8 +243,19 @@ class FakeWpdb {
 	public function get_var( $sql = null ) { $this->queries[] = $sql; return null; }
 	public function get_col( $sql = null ) { $this->queries[] = $sql; return array(); }
 	public function query( $sql ) { $this->queries[] = $sql; return 0; }
-	public function insert( ...$a ) { return 1; }
-	public function update( ...$a ) { return 1; }
+	/** Writes are recorded and handed an id: the importer branches on it. */
+	public array $writes = array();
+
+	public function insert( $table, $data, $format = null ) {
+		$this->writes[] = array( 'insert', $table, $data );
+		$this->insert_id = ++$this->next_id;
+		return 1;
+	}
+	private int $next_id = 100;
+	public function update( $table, $data, $where, ...$rest ) {
+		$this->writes[] = array( 'update', $table, $data );
+		return 1;
+	}
 	public function delete( ...$a ) { return 1; }
 	public function suppress_errors( $s = true ) { return false; }
 	public function esc_like( $t ) { return $t; }
@@ -195,6 +264,9 @@ class FakeWpdb {
 $GLOBALS['wpdb'] = new FakeWpdb();
 $GLOBALS['__options'] = array();
 $GLOBALS['__routes'] = array();
+$GLOBALS['__transients'] = array();
+$GLOBALS['__http'] = array();
+$GLOBALS['__http_log'] = array();
 
 // --- Autoload the plugin ------------------------------------------------
 $root = dirname( __DIR__, 2 ) . '/src/';

@@ -25,6 +25,7 @@ declare( strict_types = 1 );
 
 namespace Animeh\Storage;
 
+use Animeh\Support\GalleryRef;
 use WP_Error;
 
 /**
@@ -145,33 +146,37 @@ final class GalleryClient {
 	}
 
 	/**
-	 * Search.
+	 * Find a gallery.
 	 *
-	 * @param string $query Search text.
-	 * @param int    $page  One-based.
+	 * The source publishes no search — `/galleries/{id}` and `/cdn` are the
+	 * whole of it, which is why the manga site's own importer only ever asked
+	 * for a gallery by number. Sending it a `search` request produced a
+	 * failure with nothing useful in it, so this asks the question the source
+	 * can answer and says plainly what it needs when the box holds something
+	 * else.
+	 *
+	 * @param string $query A gallery number, or an address containing one.
+	 * @param int    $page  Unused; kept so both sources share a signature.
 	 * @return array<int, array<string, mixed>>|WP_Error
 	 */
 	public function search( string $query, int $page = 1 ) {
-		$body = $this->get(
-			'/galleries/search',
-			array(
-				'query' => $query,
-				'page'  => max( 1, $page ),
-			)
-		);
+		$id = GalleryRef::id( $query );
 
-		if ( $body instanceof WP_Error ) {
-			return $body;
+		if ( $id <= 0 ) {
+			return new WP_Error(
+				'animeh_gallery_query',
+				__( 'Bu kaynakta arama yok. Galeri numarasını yaz (örnek: 177013) ya da galerinin adresini yapıştır.', 'animeh' ),
+				array( 'status' => 400 )
+			);
 		}
 
-		$results = array();
-		foreach ( (array) ( $body['result'] ?? $body['results'] ?? array() ) as $entry ) {
-			if ( is_array( $entry ) ) {
-				$results[] = $this->normalise( $entry );
-			}
+		$gallery = $this->gallery( $id );
+
+		if ( $gallery instanceof WP_Error ) {
+			return $gallery;
 		}
 
-		return $results;
+		return array( $gallery );
 	}
 
 	/**

@@ -91,6 +91,34 @@ sealed class AppError(
     class Unknown(technical: String? = null) :
         AppError(R.string.error_unknown, "UNKNOWN_ERROR", technical)
 
+    /**
+     * The server's own explanation, when it wrote one.
+     *
+     * [messageRes] is the sentence for a viewer, and it is deliberately vague:
+     * "bir şeyler ters gitti" is the right thing to tell someone watching an
+     * episode. It is the wrong thing to tell whoever is running the panel,
+     * where the server has usually said something precise — "Köprü anahtarı
+     * kabul edilmedi", "Manga sitesine ulaşılamadı: …", "Kaynak 403 döndürdü"
+     * — and that sentence is the entire content of the report.
+     *
+     * Only [Message] used to survive the trip: every other classified failure
+     * carried the server's words in [technical] and no screen ever read them,
+     * so a 401, a 404 and a 502 all arrived looking identical.
+     *
+     * Null when the only detail is a transport exception's English text, which
+     * names a socket and a class and helps nobody; the caller's own wording is
+     * better in that case.
+     */
+    fun reason(): String? = when (this) {
+        is Message -> text
+        // Exception text, not a sentence anybody wrote to be read.
+        is Network, is Timeout, is Unknown -> null
+        // A bare "403" is the placeholder the mapper falls back to on an empty
+        // body and says nothing the caller does not already know. "HTTP 502"
+        // is kept: when the body was empty, the number is the whole finding.
+        else -> technical?.trim()?.takeIf { detail -> detail.isNotEmpty() && !detail.all(Char::isDigit) }
+    }
+
     /** Whether retrying the same call could plausibly succeed. */
     val isRetryable: Boolean
         get() = this is Network || this is Timeout || this is Server || this is RateLimited

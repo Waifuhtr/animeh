@@ -44,6 +44,11 @@ final class MangaBridge {
 	private const HEADER = 'X-Animeh-Bridge-Key';
 
 	/**
+	 * The bridge plugin's REST namespace, as it registers it.
+	 */
+	private const NAMESPACE_URI = 'animeh-bridge/v1';
+
+	/**
 	 * Longest a single bridge request may take.
 	 *
 	 * Her host is shared, and its reverse proxy gives up somewhere around
@@ -62,7 +67,7 @@ final class MangaBridge {
 		$stored = is_array( $stored ) ? $stored : array();
 
 		return array(
-			'url'          => rtrim( (string) ( $stored['url'] ?? '' ), '/' ),
+			'url'          => self::normalise_url( (string) ( $stored['url'] ?? '' ) ),
 			'key'          => (string) ( $stored['key'] ?? '' ),
 			'connected_at' => (string) ( $stored['connected_at'] ?? '' ),
 			'site'         => (string) ( $stored['site'] ?? '' ),
@@ -72,6 +77,38 @@ final class MangaBridge {
 	/**
 	 * Whether there is something to talk to.
 	 */
+	/**
+	 * The bridge address, whichever half of it was pasted.
+	 *
+	 * The settings screen on the manga site shows the full REST address, but
+	 * the site's own address is the one people have in the clipboard, and
+	 * pasting it produced the worst possible failure: `https://site/manga`
+	 * is a real page, so WordPress answered 200 with HTML and this end could
+	 * only say the response was unreadable. Appending the namespace when it
+	 * is missing turns that into a working connection instead of a riddle.
+	 *
+	 * @param string $url Whatever was entered.
+	 */
+	private static function normalise_url( string $url ): string {
+		$url = rtrim( trim( $url ), '/' );
+
+		if ( '' === $url ) {
+			return '';
+		}
+
+		if ( str_contains( $url, self::NAMESPACE_URI ) ) {
+			return $url;
+		}
+
+		// `…/wp-json` on its own needs only the namespace; anything else is
+		// taken for the site root and gets both.
+		if ( str_ends_with( $url, '/wp-json' ) ) {
+			return $url . '/' . self::NAMESPACE_URI;
+		}
+
+		return $url . '/wp-json/' . self::NAMESPACE_URI;
+	}
+
 	public static function configured(): bool {
 		$settings = self::settings();
 
@@ -92,7 +129,7 @@ final class MangaBridge {
 		$current = self::settings();
 
 		$settings = array(
-			'url'          => rtrim( trim( $url ), '/' ),
+			'url'          => self::normalise_url( $url ),
 			'key'          => '' !== trim( $key ) ? trim( $key ) : $current['key'],
 			'connected_at' => $current['connected_at'],
 			'site'         => $current['site'],

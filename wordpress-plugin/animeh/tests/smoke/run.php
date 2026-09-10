@@ -25,6 +25,7 @@ require __DIR__ . '/rows.php';
 use Animeh\Rest\CatalogController;
 use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
+use Animeh\Storage\MangaBridge;
 
 $failures = 0;
 $passed   = 0;
@@ -193,6 +194,334 @@ step(
 		if ( 10 !== $rail[0]['number'] ) {
 			throw new RuntimeException( 'number: ' . var_export( $rail[0]['number'], true ) );
 		}
+	}
+);
+
+/* ── Manga: the paths that live inside wp_remote_get ─────────────────── */
+
+echo "\nManga içe aktarma ve kaynaklar\n";
+
+$wpdb->rows = array();
+
+// The bridge, as her site answers it.
+update_option(
+	'animeh_manga_bridge',
+	array(
+		'url'          => 'https://manga.test/wp-json/animeh-bridge/v1',
+		'key'          => 'bridge-key',
+		'connected_at' => '',
+		'site'         => 'Manga',
+	),
+	false
+);
+
+$bridge_manga = array(
+	'items' => array(
+		array(
+			'id'            => 41,
+			'slug'          => 'ornek-manga',
+			'title'         => 'Örnek Manga',
+			'synopsis'      => 'Bir açıklama.',
+			'permalink'     => 'https://manga.test/manga/ornek-manga/',
+			'cover'         => 'https://f004.backblazeb2.com/file/kova/kapak.jpg',
+			'modified_gmt'  => '2026-01-02 03:04:05',
+			'created_gmt'   => '2025-12-01 00:00:00',
+			'meta'          => array(
+				'alternative_titles' => 'Example Manga',
+				'year'               => 2024,
+				'score'              => 8.4,
+				'mal_id'             => 1234,
+				'author'             => 'Bir Yazar',
+				'nsfw'               => false,
+			),
+			'characters'    => array(),
+			'taxonomies'    => array(
+				'genre'  => array( 'Aksiyon', 'Dram' ),
+				'status' => array( 'Devam Ediyor' ),
+				'artist' => array( 'Bir Çizer' ),
+			),
+			'chapter_count' => 2,
+		),
+	),
+	'page'  => 1,
+	'pages' => 1,
+	'total' => 1,
+);
+
+$bridge_chapters = array(
+	'items' => array(
+		array(
+			'id'           => 501,
+			'manga_id'     => 41,
+			'number'       => '10.5',
+			'title'        => 'Bölüm 10.5',
+			'permalink'    => 'https://manga.test/bolum/501/',
+			'created_gmt'  => '2026-01-02 03:04:05',
+			'modified_gmt' => '2026-01-02 03:04:05',
+			'storage'      => 'b2',
+			'path'         => 'manga/41/10-5',
+			'pages'        => array(
+				array(
+					'position' => 1,
+					'file'     => '01.webp',
+					'url'      => 'https://f004.backblazeb2.com/file/kova/manga/41/10-5/01.webp',
+					'fallback' => 'https://kova.s3.eu-central-003.backblazeb2.com/manga/41/10-5/01.webp',
+				),
+			),
+		),
+	),
+	'page'  => 1,
+	'pages' => 1,
+	'total' => 1,
+);
+
+step(
+	'köprü adresi: sitenin kendi adresi de kabul ediliyor',
+	static function (): void {
+		$expected = 'https://manga.test/wp-json/animeh-bridge/v1';
+
+		foreach (
+			array(
+				'https://manga.test',
+				'https://manga.test/',
+				'https://manga.test/wp-json',
+				'https://manga.test/wp-json/animeh-bridge/v1',
+				'https://manga.test/wp-json/animeh-bridge/v1/',
+			) as $typed
+		) {
+			$stored = MangaBridge::save( $typed, 'bridge-key' );
+
+			if ( $expected !== $stored['url'] ) {
+				throw new RuntimeException( $typed . ' → ' . $stored['url'] );
+			}
+		}
+	}
+);
+
+step(
+	'köprü adresi yanlışsa istek nereye gidiyor',
+	static function (): void {
+		animeh_http_reset();
+		MangaBridge::save( 'https://manga.test', 'bridge-key' );
+		MangaBridge::manga( 1, 3 );
+
+		$asked = animeh_http_log()[0] ?? '';
+		if ( ! str_starts_with( $asked, 'https://manga.test/wp-json/animeh-bridge/v1/manga?' ) ) {
+			throw new RuntimeException( 'istek: ' . $asked );
+		}
+	}
+);
+
+step(
+	'POST /admin/manga/sync — köprü yanıt veriyor',
+	static function () use ( $bridge_manga, $bridge_chapters ): void {
+		animeh_http_reset();
+		animeh_http_reply( '/manga?', 200, $bridge_manga );
+		animeh_http_reply( '/manga/41/chapters', 200, $bridge_chapters );
+
+		$response = ( new MangaController() )->sync( new WP_REST_Request( array( 'page' => 1, 'reset' => true ) ) );
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		$data = $response->get_data();
+		if ( true !== $data['done'] ) {
+			throw new RuntimeException( 'done değil: ' . var_export( $data['done'], true ) );
+		}
+		if ( array() === $data['imported'] ) {
+			throw new RuntimeException( 'hiç manga aktarılmadı' );
+		}
+		if ( 1 !== $data['chapters'] ) {
+			throw new RuntimeException( 'bölüm sayısı: ' . var_export( $data['chapters'], true ) );
+		}
+	}
+);
+
+step(
+	'POST /admin/manga/sync — köprü ulaşılamıyor, sebebi yazıyor',
+	static function (): void {
+		animeh_http_reset();
+
+		$response = ( new MangaController() )->sync( new WP_REST_Request( array( 'page' => 1 ) ) );
+
+		if ( ! $response instanceof WP_Error ) {
+			throw new RuntimeException( 'hata bekleniyordu' );
+		}
+		if ( '' === $response->get_error_message() ) {
+			throw new RuntimeException( 'mesajsız hata' );
+		}
+	}
+);
+
+step(
+	'POST /admin/manga/mirror',
+	static function (): void {
+		animeh_http_reset();
+		update_option(
+			'animeh_storage',
+			array(
+				'region'        => 'eu-central-003',
+				'bucket'        => 'kova',
+				'endpoint'      => 'https://s3.eu-central-003.backblazeb2.com',
+				'key_id'        => 'anahtar',
+				'secret'        => '',
+				'public_bucket' => true,
+			),
+			false
+		);
+
+		$response = ( new MangaController() )->mirror();
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+	}
+);
+
+step(
+	'GET /admin/manga/search?source=gallery — kapalıyken sebebi söylüyor',
+	static function (): void {
+		animeh_http_reset();
+		update_option( 'animeh_gallery_source', array( 'enabled' => false, 'key' => '' ), false );
+
+		$response = ( new MangaController() )->search(
+			new WP_REST_Request( array( 'q' => '177013', 'source' => 'gallery', 'page' => 1 ) )
+		);
+
+		if ( ! $response instanceof WP_Error ) {
+			throw new RuntimeException( 'kapalı kaynak hata döndürmeli' );
+		}
+		if ( 400 !== (int) ( $response->get_error_data()['status'] ?? 0 ) ) {
+			throw new RuntimeException( 'durum: ' . var_export( $response->get_error_data(), true ) );
+		}
+	}
+);
+
+step(
+	'GET /admin/manga/search?source=gallery — numara ile',
+	static function (): void {
+		animeh_http_reset();
+		update_option( 'animeh_gallery_source', array( 'enabled' => true, 'key' => '' ), false );
+		delete_transient( 'animeh_gallery_cdn' );
+
+		animeh_http_reply( '/api/v2/cdn', 200, array( 'https://cdn1.test' ) );
+		animeh_http_reply(
+			'/api/v2/galleries/177013',
+			200,
+			array(
+				'id'        => 177013,
+				'media_id'  => '987654',
+				'title'     => array( 'english' => 'Example', 'pretty' => 'Example' ),
+				'num_pages' => 2,
+				'tags'      => array(
+					array( 'type' => 'artist', 'name' => 'Bir Çizer' ),
+					array( 'type' => 'tag', 'name' => 'Bir Etiket' ),
+				),
+				'images'    => array(
+					'cover' => array( 't' => 'j', 'w' => 350, 'h' => 500 ),
+					'pages' => array(
+						array( 't' => 'j', 'w' => 1200, 'h' => 1700 ),
+						array( 't' => 'w', 'w' => 1200, 'h' => 1700 ),
+					),
+				),
+			)
+		);
+
+		$response = ( new MangaController() )->search(
+			new WP_REST_Request( array( 'q' => '177013', 'source' => 'gallery', 'page' => 1 ) )
+		);
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		$items = $response->get_data()['items'];
+		if ( array() === $items ) {
+			throw new RuntimeException( 'numara aranınca sonuç gelmedi: ' . implode( ' , ', animeh_http_log() ) );
+		}
+		if ( 177013 !== (int) $items[0]['id'] ) {
+			throw new RuntimeException( 'id: ' . var_export( $items[0]['id'], true ) );
+		}
+	}
+);
+
+step(
+	'GET /admin/manga/search?source=gallery — isimle sorulunca ne istediğini söylüyor',
+	static function (): void {
+		animeh_http_reset();
+
+		$response = ( new MangaController() )->search(
+			new WP_REST_Request( array( 'q' => 'bir isim', 'source' => 'gallery', 'page' => 1 ) )
+		);
+
+		if ( ! $response instanceof WP_Error ) {
+			throw new RuntimeException( 'numara olmayan sorgu hata döndürmeli' );
+		}
+		if ( 400 !== (int) ( $response->get_error_data()['status'] ?? 0 ) ) {
+			throw new RuntimeException( 'durum: ' . var_export( $response->get_error_data(), true ) );
+		}
+		if ( array() !== animeh_http_log() ) {
+			throw new RuntimeException( 'kaynağa boşuna gidildi: ' . implode( ' , ', animeh_http_log() ) );
+		}
+	}
+);
+
+step(
+	'GET /admin/manga/search?source=gallery — adres yapıştırılınca',
+	static function (): void {
+		animeh_http_reset();
+		animeh_http_reply( '/api/v2/cdn', 200, array( 'https://cdn1.test' ) );
+		animeh_http_reply(
+			'/api/v2/galleries/177013',
+			200,
+			array( 'id' => 177013, 'media_id' => '9', 'title' => array( 'pretty' => 'Example' ), 'images' => array() )
+		);
+
+		$response = ( new MangaController() )->search(
+			new WP_REST_Request( array( 'q' => 'https://nhentai.net/g/177013/', 'source' => 'gallery', 'page' => 1 ) )
+		);
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+		if ( array() === $response->get_data()['items'] ) {
+			throw new RuntimeException( 'adresten numara çıkarılamadı' );
+		}
+	}
+);
+
+step(
+	'POST /admin/manga/import — galeriden',
+	static function (): void {
+		$response = ( new MangaController() )->import(
+			new WP_REST_Request( array( 'id' => 177013, 'source' => 'gallery', 'with_pages' => true ) )
+		);
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+		if ( ( $response->get_data()['work_id'] ?? 0 ) <= 0 ) {
+			throw new RuntimeException( 'work_id yok: ' . var_export( $response->get_data(), true ) );
+		}
+	}
+);
+
+step(
+	'GET /chapters/{id}/pages',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array(
+			'works'    => array( animeh_work_row( array( 'kind' => 'manga' ) ) ),
+			'episodes' => array( animeh_episode_row( array( 'number' => '10.50' ) ) ),
+		);
+
+		$response = ( new MangaController() )->pages( new WP_REST_Request( array( 'id' => 1 ) ) );
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		$wpdb->rows = array();
 	}
 );
 

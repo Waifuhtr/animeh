@@ -443,6 +443,9 @@
     <string name="admin_manga_source_gallery">Galeri kaynağı</string>
     <string name="admin_manga_gallery_enable">Galeri kaynağını aç</string>
     <string name="admin_manga_gallery_note">Bu kaynaktan gelen her eser +18 olarak işaretlenir.</string>
+    <string name="admin_manga_gallery_hint">Galeri numarası (örnek: 177013)</string>
+    <string name="admin_manga_gallery_id_note">Bu kaynakta isimle arama yok: numarayı yaz ya da galerinin adresini yapıştır.</string>
+    <string name="admin_manga_bridge_url_hint">Manga sitesinin adresi yeter, gerisini kendi tamamlar.</string>
 
     <!-- Puanlar, çerçeveler ve sıralama -->
     <string name="points_title">Animeh Puanı</string>

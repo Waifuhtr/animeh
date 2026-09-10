@@ -57,10 +57,11 @@ class PlayerStateTest {
 
     @Test
     fun `resume is only offered past the threshold`() {
-        assertFalse(Progress(10, 1400, false).isResumable)
-        assertTrue(Progress(400, 1400, false).isResumable)
-        // A finished episode resumes from the start, not from the credits.
-        assertFalse(Progress(1390, 1400, true).isResumable)
+        assertFalse(Progress(10, 1400, completed = false).isResumable)
+        assertTrue(Progress(400, 1400, completed = false).isResumable)
+        // Ten seconds from the end there is nothing to continue into, whether
+        // or not the episode was ever marked finished.
+        assertFalse(Progress(1390, 1400, completed = true).isResumable)
     }
 
     @Test

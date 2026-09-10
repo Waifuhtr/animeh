@@ -143,6 +143,11 @@ sınırı.
 
 Tenrai dışındaki ikinci araç **galeri kaynağı** (nhentai v2). Portlandı ve:
 
+- **İsimle aranmıyor, numarayla bulunuyor.** Kaynağın v2 API'sinde arama ucu
+  yok — senin kendi sınıfın da yalnızca `/galleries/{id}` ve `/cdn` çağırıyor.
+  İlk sürüm olmayan bir `search` ucuna gidiyordu ve bu yüzden her denemede
+  hata veriyordu. Artık kutuya **galeri numarasını** (`177013`) ya da
+  **galerinin adresini** (`https://nhentai.net/g/177013/`) yazıyorsun.
 - **Varsayılan olarak kapalı.** Yalnızca yetişkin içerik veren bir kaynağın
   kurulumla birlikte açık gelmesi doğru değil.
 - Görsel sunucusunu API'den soruyor ve 12 saat önbellekliyor (servis
@@ -171,7 +176,8 @@ Sonra manga sitende **Ayarlar → Animeh Köprüsü**. İki değer var:
 - **Köprü adresi** (`https://manga-siten.com/wp-json/animeh-bridge/v1`)
 - **Anahtar**
 
-İkisini de kopyala.
+İkisini de kopyala. Adres kısmında **sitenin kendi adresi de yeter**
+(`https://manga-siten.com`): sunucu gerisini kendi tamamlıyor.
 
 ### c) Uygulamada bağla
 
@@ -191,12 +197,37 @@ Uygulama → **Yönetim Paneli → Manga**
 ### d) İsteğe bağlı: galeri kaynağı
 
 Yönetim Paneli → Manga → arama bölümünde kaynağı **Galeri** yap ve anahtarı aç.
-Kapalıyken arama yapmaz.
+Kapalıyken sormaz, "bu kaynak kapalı" der.
+
+Arama kutusuna **numara** yaz (`177013`) ya da galerinin adresini yapıştır.
+İsim yazarsan kaynağa boşuna gidilmez; ekran ne istediğini söyler.
 
 ### e) Uygulamayı derle
 
 Space'te **Derle**. Okuyucu, manga sekmesi, "Yeni Manga Bölümleri" rayı ve
 manga yönetim ekranı o derlemeyle gelir.
+
+---
+
+## 6.5 Bir şey olmazsa: artık sebebini yazıyor
+
+İlk sürümde manga ekranındaki her hata "Bir şeyler ters gitti." diye
+görünüyordu. Sebep sunucuda yazılıyordu ama uygulama onu atıyordu: yalnızca
+400'lük yanıtların cümlesi ekrana geliyordu, 401 / 404 / 502 hepsi aynı
+görünüyordu. Artık sunucunun kendi cümlesi geliyor ve içe aktarma hatası
+kartın üstünde de duruyor. Muhtemel cümleler ve anlamları:
+
+| Ekranda | Anlamı |
+| --- | --- |
+| Manga köprüsü henüz ayarlanmadı | Adres/anahtar boş. |
+| Köprü adresi yanıt vermiyor. Manga sitesinde eklenti etkin mi? | Köprü eklentisi kurulu/etkin değil ya da adres yanlış. |
+| Köprü anahtarı kabul edilmedi | Anahtar eşleşmiyor. Manga sitesindeki ekrandan tekrar kopyala. |
+| Manga sitesine ulaşılamadı: … | Sunucun o siteye çıkamıyor (DNS, güvenlik duvarı, SSL). |
+| Manga sitesi 5xx döndürdü | Sorun o taraftaki sitede. |
+| Manga sitesinden gelen yanıt okunamadı | Gelen şey JSON değil — genelde adres REST ucu değil. |
+| Bu kaynakta arama yok… | Galeri kaynağına isim yazılmış; numara ya da adres yaz. |
+| Bu kaynak kapalı | Galeri anahtarı kapalı. |
+| Depolama ayarlanmadan kopyalama yapılamaz | Backblaze ayarları eksik. |
 
 ---
 
@@ -218,9 +249,15 @@ Tek dosya seçersen isim alanı yine çıkıyor; çokta çıkmıyor, çünkü k�
 
 - `B2Url` (iki adres arası dönüşüm, kodlama, sorgu dizesi, eksik parça),
   `ChapterNumber` (10.5 ≠ 10, virgüllü yazım, başlık içinden sayı),
-  `MangaMapper` (iki kaynağın da aynı şekle çevrilmesi, +18 bayrağı) — 195
+  `MangaMapper` (iki kaynağın da aynı şekle çevrilmesi, +18 bayrağı),
+  `GalleryRef` (numara, `#numara`, yapıştırılan adres, isim → 0) — 199
   birim testi geçiyor.
 - Her PHP dosyası `php -l`.
+- **Manga uçları gerçekten çalıştırıldı.** `tests/smoke/` içindeki koşucu artık
+  `wp_remote_get`'i de karşılıyor, yani içe aktarma, kopyalama, iki kaynakta
+  arama ve okuyucu ucu sahte bir köprü/kaynak yanıtıyla baştan sona koşuyor —
+  105 kontrol. Galeri aramasının olmayan bir uca gitmesi tam olarak burada
+  yakalandı; ilk sürümde bu yollardan hiçbiri hiç çalıştırılmamıştı.
 - Kotlin: sınıf yolu olmadan derleyici taraması (üç bilinen artefakt), alt
   paket import taraması, Activity metot çakışması taraması, XML.
 - Yeni model alanları (`isManga`, `isChapter`, `numberLabel`, `pageCount`)
@@ -235,6 +272,8 @@ Tek dosya seçersen isim alanı yine çıkıyor; çokta çıkmıyor, çünkü k�
 - Köprünün senin sitendeki gerçek `chapter_image_list` verisiyle davranışı.
 - Kopyalamanın gerçek B2 hesabına yazması.
 - Galeri kaynağının şu anki API şeması (servis şemasını değiştirebiliyor;
-  mapper iki şekli de kabul edecek şekilde yazıldı).
+  mapper iki şekli de kabul edecek şekilde yazıldı). Uçlar senin kendi
+  `class-api-nhentai.php` dosyandan alındı — çalıştığını bildiğimiz tek
+  referans o.
 
 İlk gerçek çalıştırma sende. Bir şey patlarsa hatayı bana ilet.

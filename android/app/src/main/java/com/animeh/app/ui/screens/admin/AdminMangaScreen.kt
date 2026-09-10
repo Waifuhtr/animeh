@@ -31,6 +31,7 @@ import com.animeh.app.data.remote.dto.MangaSearchItemDto
 import com.animeh.app.ui.theme.AccentBright
 import com.animeh.app.ui.theme.AccentPrimary
 import com.animeh.app.ui.theme.PosterShape
+import com.animeh.app.ui.theme.StatusError
 import com.animeh.app.ui.theme.StatusWarning
 import com.animeh.app.ui.theme.SurfaceCard
 import com.animeh.app.ui.theme.TextMuted
@@ -88,6 +89,7 @@ fun AdminMangaScreen(
                         pages = state.pages,
                         syncing = state.syncing,
                         progressText = state.syncProgress,
+                        errorText = state.lastError,
                         onSync = { viewModel.sync(reset = false) },
                         onRestart = { viewModel.sync(reset = true) },
                     )
@@ -161,7 +163,14 @@ private fun BridgeCard(
                 value = url,
                 onValueChange = onUrl,
                 label = { Text(stringResource(R.string.admin_manga_bridge_url)) },
-                placeholder = { Text("https://manga-siten.com/wp-json/animeh-bridge/v1") },
+                placeholder = { Text("https://manga-siten.com") },
+                // The site's own address is the one people have to hand, and
+                // the server completes it, so saying so avoids the failure
+                // where WordPress answers a normal page and this end can only
+                // report that the response was unreadable.
+                supportingText = {
+                    Text(stringResource(R.string.admin_manga_bridge_url_hint))
+                },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -217,6 +226,7 @@ private fun SyncCard(
     pages: Int,
     syncing: Boolean,
     progressText: String,
+    errorText: String,
     onSync: () -> Unit,
     onRestart: () -> Unit,
 ) {
@@ -243,6 +253,17 @@ private fun SyncCard(
             if (progressText.isNotBlank()) {
                 Spacer(Modifier.height(4.dp))
                 Text(progressText, style = MaterialTheme.typography.labelSmall, color = TextMuted)
+            }
+
+            // The reason the last run stopped, kept where it can be read while
+            // the address and key fields above are being corrected.
+            if (errorText.isNotBlank()) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    errorText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = StatusError,
+                )
             }
 
             Spacer(Modifier.height(12.dp))
@@ -388,10 +409,28 @@ private fun SearchCard(
 
             Spacer(Modifier.height(10.dp))
 
+            // The two sources are asked different questions. Tenrai is
+            // searched by name; the gallery source publishes no search at all
+            // and is addressed by number, so the field says which one it wants
+            // rather than letting a title be typed into something that can
+            // only answer "bulunamadı".
+            val galleryLookup = source == "gallery"
+
             OutlinedTextField(
                 value = query,
                 onValueChange = onQuery,
-                placeholder = { Text(stringResource(R.string.search)) },
+                placeholder = {
+                    Text(
+                        stringResource(
+                            if (galleryLookup) R.string.admin_manga_gallery_hint else R.string.search
+                        )
+                    )
+                },
+                supportingText = if (galleryLookup) {
+                    { Text(stringResource(R.string.admin_manga_gallery_id_note)) }
+                } else {
+                    null
+                },
                 leadingIcon = { Icon(Icons.Filled.Search, null) },
                 trailingIcon = {
                     if (searching) {

@@ -143,8 +143,9 @@ class FrameShopViewModel @Inject constructor(
      * this class could assemble from a status code, and it is already
      * translated.
      */
-    private fun describe(error: AppError): String = when (error) {
-        is AppError.Message -> error.text
+    private fun describe(error: AppError): String = error.reason() ?: when (error) {
+        is AppError.Network -> "İnternet bağlantısı yok."
+        is AppError.Timeout -> "Sunucu yanıt vermedi."
         else -> "Bir şeyler ters gitti."
     }
 }

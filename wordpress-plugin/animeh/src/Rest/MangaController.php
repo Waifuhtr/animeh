@@ -494,12 +494,19 @@ final class MangaController {
 			$chapters = $this->write_gallery_chapter( $repo, $work_id, $mapped['pages'] );
 		}
 
+		// Read back rather than echo what was sent: the row is what the app
+		// will see everywhere else. If it cannot be read the import still
+		// happened, so the id is reported and the payload is simply absent —
+		// formatting an empty row would fill the response with warnings and,
+		// on a host that prints them, break the JSON around it.
+		$saved_row = $repo->work( $work_id );
+
 		return new WP_REST_Response(
 			array(
 				'work_id'  => $work_id,
 				'created'  => null === $existing,
 				'chapters' => $chapters,
-				'work'     => CatalogController::work_payload( (array) $repo->work( $work_id ) ),
+				'work'     => null !== $saved_row ? CatalogController::work_payload( $saved_row ) : null,
 			)
 		);
 	}

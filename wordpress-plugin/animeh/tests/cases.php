@@ -2091,6 +2091,33 @@ describe( 'ChapterNumber', function (): void {
 	} );
 } );
 
+describe( 'GalleryRef', function (): void {
+	it( 'numarayı okur', function (): void {
+		same( 177013, \Animeh\Support\GalleryRef::id( '177013' ) );
+		same( 177013, \Animeh\Support\GalleryRef::id( ' 177013 ' ) );
+		same( 177013, \Animeh\Support\GalleryRef::id( '#177013' ) );
+	} );
+
+	it( 'yapıştırılan adresten çıkarır', function (): void {
+		same( 177013, \Animeh\Support\GalleryRef::id( 'https://nhentai.net/g/177013/' ) );
+		same( 177013, \Animeh\Support\GalleryRef::id( 'https://nhentai.net/g/177013/12/' ) );
+		same( 177013, \Animeh\Support\GalleryRef::id( 'g/177013' ) );
+	} );
+
+	it( 'isim numara değildir', function (): void {
+		same( 0, \Animeh\Support\GalleryRef::id( 'bir manga adı' ) );
+		same( 0, \Animeh\Support\GalleryRef::id( '' ) );
+		// Bir kelimenin içindeki sayı bir referans değil.
+		same( 0, \Animeh\Support\GalleryRef::id( 'chapter12' ) );
+		same( 0, \Animeh\Support\GalleryRef::id( 'https://nhentai.net/search/?q=aaa' ) );
+	} );
+
+	it( 'numara mı diye sorulabilir', function (): void {
+		ok( \Animeh\Support\GalleryRef::looks_like_id( '177013' ) );
+		ok( ! \Animeh\Support\GalleryRef::looks_like_id( 'bir isim' ) );
+	} );
+} );
+
 describe( 'MangaMapper', function (): void {
 	it( 'Jikan/Tenrai mangasını katalog şekline çevirir', function (): void {
 		$mapped = \Animeh\Support\MangaMapper::from_jikan(

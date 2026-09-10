@@ -27,7 +27,7 @@ final class CatalogSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '9';
+	public const VERSION = '10';
 
 	/**
 	 * Option holding the installed catalog version.
@@ -697,10 +697,118 @@ final class CatalogSchema {
 		);
 
 		foreach ( $tables as $sql ) {
-			dbDelta( $sql );
+			$statement = self::for_delta( $sql );
+
+			dbDelta( $statement );
+
+			// And then check, because dbDelta does not report what it missed.
+			self::reconcile( $statement );
 		}
 
 		update_option( self::VERSION_OPTION, self::VERSION, false );
+	}
+
+	/**
+	 * The statement as dbDelta needs to see it.
+	 *
+	 * dbDelta does not parse SQL. It splits its input on `;` and reads the
+	 * field list with a single regex, so a table is only as long as its first
+	 * semicolon. The comment above `author` read "makes a manga; the two do
+	 * not fit in one column" — and that semicolon cut the works table in half.
+	 * Every column after it was invisible, `author` among them, so it was
+	 * never added and every manga insert failed with `Unknown column
+	 * 'author'`. The upgrade still marked itself done.
+	 *
+	 * An `--` line is a hazard even without a semicolon: dbDelta reads it as a
+	 * column called `--` and emits an ALTER that cannot parse.
+	 *
+	 * The comments belong next to the columns they explain, so they are
+	 * removed on the way out rather than deleted.
+	 *
+	 * @param string $sql Statement as written.
+	 */
+	private static function for_delta( string $sql ): string {
+		$lines = array();
+
+		foreach ( explode( "\n", $sql ) as $line ) {
+			if ( 1 === preg_match( '/^\s*--/', $line ) ) {
+				continue;
+			}
+
+			$lines[] = $line;
+		}
+
+		return implode( "\n", $lines );
+	}
+
+	/**
+	 * Add any column the statement declares and the table does not have.
+	 *
+	 * dbDelta is asked to do this and usually does. When it does not it says
+	 * nothing, the version option is written anyway, and the mismatch surfaces
+	 * later as a failed insert on a site that believes it is up to date. This
+	 * costs one `SHOW COLUMNS` per table per upgrade and removes that whole
+	 * class of half-migrated install.
+	 *
+	 * Only additions: a column that exists is left exactly as it is, because
+	 * changing a type is not something to do behind anyone's back.
+	 *
+	 * @param string $statement Comment-free statement.
+	 */
+	private static function reconcile( string $statement ): void {
+		global $wpdb;
+
+		if ( 1 !== preg_match( '/CREATE TABLE\s+(\S+)\s*\((.*)\)[^)]*$/ms', $statement, $parts ) ) {
+			return;
+		}
+
+		$table = $parts[1];
+
+		// Table names come from $wpdb->prefix, never from input.
+		$present = $wpdb->get_col( 'SHOW COLUMNS FROM ' . $table ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+		if ( ! is_array( $present ) || array() === $present ) {
+			return;
+		}
+
+		$present = array_map( 'strtolower', $present );
+
+		foreach ( self::columns_in( $parts[2] ) as $name => $definition ) {
+			if ( in_array( $name, $present, true ) ) {
+				continue;
+			}
+
+			$wpdb->query( 'ALTER TABLE ' . $table . ' ADD COLUMN ' . $definition ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+		}
+	}
+
+	/**
+	 * The columns a field list declares, as name => definition.
+	 *
+	 * Keys and constraints are not columns and are left to dbDelta.
+	 *
+	 * @param string $body Everything between the table's parentheses.
+	 * @return array<string, string>
+	 */
+	public static function columns_in( string $body ): array {
+		$columns = array();
+
+		foreach ( explode( "\n", $body ) as $line ) {
+			$line = trim( $line, " \t\n\r\0\x0B," );
+
+			if ( '' === $line || 1 !== preg_match( '/^`?([a-z_][a-z0-9_]*)`?\s+\S/i', $line, $field ) ) {
+				continue;
+			}
+
+			$name = strtolower( $field[1] );
+
+			if ( in_array( $name, array( 'primary', 'unique', 'key', 'index', 'fulltext', 'spatial', 'constraint' ), true ) ) {
+				continue;
+			}
+
+			$columns[ $name ] = $line;
+		}
+
+		return $columns;
 	}
 
 	/**

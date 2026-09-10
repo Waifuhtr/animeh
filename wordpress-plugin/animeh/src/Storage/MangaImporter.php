@@ -131,6 +131,16 @@ final class MangaImporter {
 			}
 
 			$work_id = self::upsert_manga( $repo, $item );
+
+			if ( $work_id instanceof WP_Error ) {
+				$state['last_error'] = $work_id->get_error_message();
+				update_option( self::STATE_OPTION, $state, false );
+
+				return $work_id;
+			}
+
+			// Zero is the one thing worth passing over: an entry with no id on
+			// the other side is not something this end can do anything about.
 			if ( $work_id <= 0 ) {
 				continue;
 			}
@@ -183,9 +193,10 @@ final class MangaImporter {
 	 *
 	 * @param CatalogRepository    $repo Catalogue.
 	 * @param array<string, mixed> $item Bridge payload.
-	 * @return int Work id, or 0.
+	 * @return int|WP_Error Work id, 0 when the entry has no id, or the
+	 *                      database's refusal.
 	 */
-	private static function upsert_manga( CatalogRepository $repo, array $item ): int {
+	private static function upsert_manga( CatalogRepository $repo, array $item ) {
 		$remote_id = (int) ( $item['id'] ?? 0 );
 		if ( $remote_id <= 0 ) {
 			return 0;
@@ -230,7 +241,11 @@ final class MangaImporter {
 
 			$id = $repo->save_work( $data );
 			if ( $id instanceof WP_Error ) {
-				return 0;
+				// Handed back rather than counted as a skip. A row that will
+				// not write is not one bad manga, it is the database refusing,
+				// and the run that swallowed it spent nine pages reporting
+				// success while importing nothing.
+				return $id;
 			}
 
 			self::remember_remote( (int) $id, $remote_id );
@@ -249,7 +264,10 @@ final class MangaImporter {
 			unset( $data['synopsis'] );
 		}
 
-		$repo->save_work( $data, (int) $existing['id'] );
+		$saved = $repo->save_work( $data, (int) $existing['id'] );
+		if ( $saved instanceof WP_Error ) {
+			return $saved;
+		}
 
 		return (int) $existing['id'];
 	}

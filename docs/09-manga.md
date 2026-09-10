@@ -163,8 +163,14 @@ Tenrai dışındaki ikinci araç **galeri kaynağı** (nhentai v2). Portlandı v
 
 ### a) Animeh eklentisini güncelle
 
-Yeni sürümü kur. Şema 9'a çıkıyor; sütunlar ve tablolar kendiliğinden
+Yeni sürümü kur. Şema 10'a çıkıyor; sütunlar ve tablolar kendiliğinden
 oluşuyor.
+
+> **9'da kalmış kurulumlar için:** o sürümde `works` tablosuna `author`
+> sütunu eklenmiyordu (aşağıda anlatılan `dbDelta` hatası). Sürüm 10 hem
+> sütunu ekliyor hem de bundan sonra her yükseltmede eksik sütun kalıp
+> kalmadığını kontrol ediyor. Elle bir şey yapman gerekmiyor; eklentiyi
+> güncellemen yeterli. Sonra manga ekranında **Baştan başlat** de.
 
 ### b) Köprüyü manga sitesine kur
 
@@ -232,6 +238,7 @@ kartın üstünde de duruyor. Muhtemel cümleler ve anlamları:
 | Bu kaynakta arama yok… | Galeri kaynağına isim yazılmış; numara ya da adres yaz. |
 | Bu kaynak kapalı | Galeri anahtarı kapalı. |
 | Depolama ayarlanmadan kopyalama yapılamaz | Backblaze ayarları eksik. |
+| Unknown column '…' in 'INSERT INTO' | Şema yarım kalmış. Eklentiyi 0.3.4+ sürümüne güncelle; yükseltme eksik sütunları kendisi ekler. |
 
 ---
 
@@ -244,6 +251,37 @@ Gelen bir yanıt (500 dâhil) bilgidir, ikinci kez sorulmaz.
 
 Bu tekrar tekrar oluyorsa sorun barındırmanda: sunucunun dışarı çıkışı ya da
 DNS'i yavaş. Hosting'e "outbound HTTP/DNS" diye sorman gerekir.
+
+---
+
+### `Unknown column 'author'` — ve içe aktarmanın boş "tamamlandı"sı
+
+Aynı sebebin iki yüzüydü. `dbDelta()` SQL'i ayrıştırmaz: girdiyi **`;`
+karakterinden böler** ve sütun listesini tek bir regex ile okur. `author`
+sütununun üstündeki yorum satırında *"makes a manga; the two do not fit in one
+column"* yazıyordu — oradaki noktalı virgül tabloyu ikiye biçti. O noktadan
+sonraki dokuz sütun (`genres`, `author`, `total_episodes`, `duration_seconds`,
+`published`, `adult`, `created_by`, `created_at`, `updated_at`) dbDelta için
+hiç var olmadı, `author` eklenmedi — ama yükseltme kendini "tamamlandı" diye
+işaretledi.
+
+Sonuç:
+
+- Galeriden **Ekle** → `Unknown column 'author' in 'INSERT INTO'` → 500.
+- **Mangaları içe aktar** → her satır aynı sebeple reddedildi, importer bunu
+  sessizce atladı, dokuz sayfa dönüp "tamamlandı" dedi, 0 manga.
+
+Üç şey değişti:
+
+1. dbDelta'ya giden ifadeden SQL yorumları çıkarılıyor. Yorumlar kodda
+   sütunların yanında duruyor; yalnızca gönderirken siliniyorlar. (Bir `--`
+   satırı noktalı virgül içermese bile zararlı: dbDelta onu `--` adlı bir
+   sütun sanıp ayrıştırılamayan bir ALTER üretiyor.)
+2. Her yükseltmeden sonra **sütunlar sayılıyor**: tabloda olmayan her sütun
+   doğrudan `ALTER TABLE … ADD COLUMN` ile ekleniyor. dbDelta'nın sessizce
+   atladığı hiçbir şey artık yarım kalmıyor.
+3. İçe aktarma artık yazamadığında duruyor ve sebebini söylüyor. Boş bir
+   "tamamlandı" bir daha çıkmayacak.
 
 ---
 
@@ -269,10 +307,17 @@ Tek dosya seçersen isim alanı yine çıkıyor; çokta çıkmıyor, çünkü k�
   `GalleryRef` (numara, `#numara`, yapıştırılan adres, isim → 0) — 199
   birim testi geçiyor.
 - Her PHP dosyası `php -l`.
+- **Şema, dbDelta'nın gözünden doğrulanıyor.** Koşucu `install()`'ı çalıştırıp
+  dbDelta'ya giden her ifadeyi yakalıyor ve "yazdığım sütunlar" ile "dbDelta'nın
+  gördüğü sütunlar" kümelerini karşılaştırıyor. Hatayı geri koyunca tam olarak
+  şunu diyor: `wp_animeh_works: dbDelta görmüyor — genres, author,
+  total_episodes, …`. Ayrıca WordPress'in **gerçek** `dbDelta()` fonksiyonu
+  indirilip bu ifadeye karşı koşuldu; düzeltmeden önce `ADD COLUMN author`
+  üretmiyordu, sonra üretiyor.
 - **Manga uçları gerçekten çalıştırıldı.** `tests/smoke/` içindeki koşucu artık
   `wp_remote_get`'i de karşılıyor, yani içe aktarma, kopyalama, iki kaynakta
   arama ve okuyucu ucu sahte bir köprü/kaynak yanıtıyla baştan sona koşuyor —
-  107 kontrol. Galeri aramasının olmayan bir uca gitmesi tam olarak burada
+  112 kontrol. Galeri aramasının olmayan bir uca gitmesi tam olarak burada
   yakalandı; ilk sürümde bu yollardan hiçbiri hiç çalıştırılmamıştı.
 - **Köprü eklentisi de çalıştırıldı.** Kendi koşucusu var
   (`animeh-manga-bridge/tests/smoke.php`, 12 kontrol): rotalar kaydoluyor mu,

@@ -15,7 +15,17 @@
 declare( strict_types = 1 );
 
 // --- WordPress constants ------------------------------------------------
-define( 'ABSPATH', '/tmp/wp/' );
+define( 'ABSPATH', sys_get_temp_dir() . '/animeh-smoke-wp/' );
+
+// The installer does what WordPress asks and requires wp-admin's upgrade.php
+// before calling dbDelta(). There is no wp-admin here and dbDelta is defined
+// below, so an empty file is enough to let that require succeed.
+if ( ! is_dir( ABSPATH . 'wp-admin/includes' ) ) {
+	mkdir( ABSPATH . 'wp-admin/includes', 0777, true );
+}
+if ( ! file_exists( ABSPATH . 'wp-admin/includes/upgrade.php' ) ) {
+	file_put_contents( ABSPATH . 'wp-admin/includes/upgrade.php', "<?php\n" );
+}
 define( 'HOUR_IN_SECONDS', 3600 );
 define( 'MINUTE_IN_SECONDS', 60 );
 define( 'DAY_IN_SECONDS', 86400 );
@@ -72,6 +82,54 @@ function wp_remote_retrieve_body( $r ) { return is_array( $r ) ? (string) ( $r['
 function wp_remote_retrieve_response_code( $r ) { return is_array( $r ) ? (int) ( $r['response']['code'] ?? 0 ) : 0; }
 function wp_remote_retrieve_header( $r, $k ) { return is_array( $r ) ? (string) ( $r['headers'][ strtolower( (string) $k ) ] ?? '' ) : ''; }
 function wp_remote_retrieve_headers( $r ) { return is_array( $r ) ? (array) ( $r['headers'] ?? array() ) : array(); }
+/**
+ * dbDelta, recorded rather than run.
+ *
+ * The real one is in wp-admin and needs a database. What matters here is what
+ * it is *handed*: it splits its input on `;` and reads the field list with one
+ * regex, so a statement can be well-formed SQL and still be half-invisible to
+ * it. The checks read these back.
+ */
+function dbDelta( $queries = '', $execute = true ) {
+	$GLOBALS['__delta'][] = (string) $queries;
+	return array();
+}
+
+/**
+ * The columns dbDelta would actually see in a statement.
+ *
+ * A faithful copy of its parsing, and only its parsing: split on `;`, take the
+ * first fragment, grab everything between the outermost parentheses, then read
+ * the first token of each line.
+ *
+ * @param string $statement CREATE TABLE statement.
+ * @return array<int, string>
+ */
+function animeh_delta_columns( string $statement ): array {
+	$first = explode( ';', $statement )[0];
+
+	if ( 1 !== preg_match( '|\((.*)\)|ms', $first, $body ) ) {
+		return array();
+	}
+
+	$columns = array();
+
+	foreach ( explode( "\n", $body[1] ) as $line ) {
+		$line = trim( $line, " \t\n\r\0\x0B," );
+
+		preg_match( '|^([^ ]*)|', $line, $field );
+		$name = strtolower( trim( $field[1], '`' ) );
+
+		if ( in_array( $name, array( '', 'primary', 'index', 'fulltext', 'unique', 'key', 'spatial' ), true ) ) {
+			continue;
+		}
+
+		$columns[] = $name;
+	}
+
+	return $columns;
+}
+
 function is_wp_error( $t ) { return $t instanceof WP_Error; }
 
 /**
@@ -98,6 +156,7 @@ function animeh_http_reply( string $needle, int $code, $body ): void {
 function animeh_http_reset(): void {
 	$GLOBALS['__http']     = array();
 	$GLOBALS['__http_log'] = array();
+$GLOBALS['__delta'] = array();
 }
 
 /** Every URL asked for since the last reset. */
@@ -246,9 +305,18 @@ class FakeWpdb {
 	/** Writes are recorded and handed an id: the importer branches on it. */
 	public array $writes = array();
 
+	/** Set to a message to make every write fail, as a real one can. */
+	public string $fail_insert = '';
+
 	public function insert( $table, $data, $format = null ) {
-		$this->writes[] = array( 'insert', $table, $data );
-		$this->insert_id = ++$this->next_id;
+		if ( '' !== $this->fail_insert ) {
+			$this->last_error = $this->fail_insert;
+			return false;
+		}
+
+		$this->last_error = '';
+		$this->writes[]   = array( 'insert', $table, $data );
+		$this->insert_id  = ++$this->next_id;
 		return 1;
 	}
 	private int $next_id = 100;

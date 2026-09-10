@@ -25,6 +25,7 @@ require __DIR__ . '/rows.php';
 use Animeh\Rest\CatalogController;
 use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
+use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\MangaBridge;
 
 $failures = 0;
@@ -197,6 +198,92 @@ step(
 	}
 );
 
+/* ── The schema, as dbDelta will read it ─────────────────────────────── */
+
+echo "\nŞema\n";
+
+$GLOBALS['__delta'] = array();
+CatalogSchema::install();
+
+step(
+	'her tablo dbDelta\'ya gidiyor',
+	static function (): void {
+		if ( count( $GLOBALS['__delta'] ) < 20 ) {
+			throw new RuntimeException( 'tablo sayısı: ' . count( $GLOBALS['__delta'] ) );
+		}
+	}
+);
+
+step(
+	'yazdığım her sütunu dbDelta da görüyor',
+	static function (): void {
+		foreach ( $GLOBALS['__delta'] as $statement ) {
+			preg_match( '|CREATE TABLE ([^ ]+)|', $statement, $named );
+			$table = $named[1] ?? '?';
+
+			if ( 1 !== preg_match( '/CREATE TABLE\s+\S+\s*\((.*)\)[^)]*$/ms', $statement, $parts ) ) {
+				throw new RuntimeException( $table . ': ifade ayrıştırılamadı' );
+			}
+
+			$declared = array_keys( CatalogSchema::columns_in( $parts[1] ) );
+			$visible  = animeh_delta_columns( $statement );
+
+			// This is the check that was missing. `author` was declared and
+			// invisible, because a semicolon inside the comment above it cut
+			// the statement in half where dbDelta splits.
+			$lost = array_diff( $declared, $visible );
+			if ( array() !== $lost ) {
+				throw new RuntimeException( $table . ': dbDelta görmüyor — ' . implode( ', ', $lost ) );
+			}
+
+			// And nothing invented: a comment line read as a column produces
+			// an ALTER that cannot parse.
+			$extra = array_diff( $visible, $declared );
+			if ( array() !== $extra ) {
+				throw new RuntimeException( $table . ': sütun olmayan şey sütun sanılıyor — ' . implode( ', ', $extra ) );
+			}
+		}
+	}
+);
+
+step(
+	'dbDelta\'ya giden ifadede yorum ve iç noktalı virgül yok',
+	static function (): void {
+		foreach ( $GLOBALS['__delta'] as $statement ) {
+			preg_match( '|CREATE TABLE ([^ ]+)|', $statement, $named );
+			$table = $named[1] ?? '?';
+
+			if ( 1 === preg_match( '/^\s*--/m', $statement ) ) {
+				throw new RuntimeException( $table . ': SQL yorumu kaldı' );
+			}
+			if ( substr_count( rtrim( $statement, "; \n" ), ';' ) > 0 ) {
+				throw new RuntimeException( $table . ': ifadenin içinde noktalı virgül var' );
+			}
+		}
+	}
+);
+
+step(
+	'manga sütunları şemada',
+	static function (): void {
+		foreach ( $GLOBALS['__delta'] as $statement ) {
+			if ( ! str_contains( $statement, 'animeh_works' ) ) {
+				continue;
+			}
+
+			foreach ( array( 'author', 'nh_id', 'kind' ) as $column ) {
+				if ( ! in_array( $column, animeh_delta_columns( $statement ), true ) ) {
+					throw new RuntimeException( 'works tablosunda ' . $column . ' yok' );
+				}
+			}
+
+			return;
+		}
+
+		throw new RuntimeException( 'works tablosu hiç gitmedi' );
+	}
+);
+
 /* ── Manga: the paths that live inside wp_remote_get ─────────────────── */
 
 echo "\nManga içe aktarma ve kaynaklar\n";
@@ -350,6 +437,33 @@ step(
 		}
 		if ( '' === $response->get_error_message() ) {
 			throw new RuntimeException( 'mesajsız hata' );
+		}
+	}
+);
+
+step(
+	'yazamayan içe aktarma "tamamlandı" demiyor',
+	static function () use ( $wpdb, $bridge_manga, $bridge_chapters ): void {
+		animeh_http_reset();
+		animeh_http_reply( '/manga?', 200, $bridge_manga );
+		animeh_http_reply( '/manga/41/chapters', 200, $bridge_chapters );
+
+		// What her site actually did: the works table had no `author` column,
+		// so every insert was refused. The run reported nine pages and
+		// "tamamlandı" while importing nothing.
+		$wpdb->fail_insert = "Unknown column 'author' in 'INSERT INTO'";
+
+		$response = ( new MangaController() )->sync( new WP_REST_Request( array( 'page' => 1, 'reset' => true ) ) );
+
+		$wpdb->fail_insert = '';
+
+		if ( ! $response instanceof WP_Error ) {
+			throw new RuntimeException(
+				'başarı bildirildi: ' . wp_json_encode( $response->get_data() )
+			);
+		}
+		if ( ! str_contains( $response->get_error_message(), 'author' ) ) {
+			throw new RuntimeException( 'sebep kayboldu: ' . $response->get_error_message() );
 		}
 	}
 );

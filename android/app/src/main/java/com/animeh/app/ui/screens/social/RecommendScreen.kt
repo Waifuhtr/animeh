@@ -104,7 +104,7 @@ fun RecommendScreen(
                         },
                         leadingContent = {
                             AvatarWithFrame(
-                                avatarUrl = friend.avatarUrl,
+                                avatarUrl = friend.avatar,
                                 frame = null,
                                 size = 40.dp,
                             )

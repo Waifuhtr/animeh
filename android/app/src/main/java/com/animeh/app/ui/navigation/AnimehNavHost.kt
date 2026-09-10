@@ -27,6 +27,7 @@ import com.animeh.app.data.prefs.isAdmin
 import com.animeh.app.data.prefs.isModerator
 import com.animeh.app.data.prefs.user
 import com.animeh.app.player.ui.PlayerActivity
+import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.domain.KIND_MANGA
 import com.animeh.app.ui.screens.admin.*
 import com.animeh.app.ui.screens.auth.*

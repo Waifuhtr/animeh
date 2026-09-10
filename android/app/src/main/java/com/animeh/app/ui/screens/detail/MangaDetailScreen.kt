@@ -269,7 +269,10 @@ private fun MangaHero(
                 IconButton(onClick = onBookmark) {
                     Icon(
                         if (bookmarked) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                        stringResource(R.string.add_to_list),
+                        stringResource(
+                            if (bookmarked) R.string.detail_watchlist_remove
+                            else R.string.detail_watchlist_add
+                        ),
                         tint = Color.White,
                     )
                 }

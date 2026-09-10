@@ -12,6 +12,8 @@ import com.animeh.app.data.remote.dto.FriendsDto
 import com.animeh.app.data.remote.dto.InviteRequest
 import com.animeh.app.data.remote.dto.InviteResultDto
 import com.animeh.app.data.remote.dto.PublicProfileDto
+import com.animeh.app.data.remote.dto.RecommendRequest
+import com.animeh.app.data.remote.dto.RecommendResultDto
 import com.animeh.app.data.remote.dto.ProfileWorkDto
 import com.animeh.app.data.remote.dto.RoomDto
 import com.animeh.app.data.remote.dto.VisibilityRequest

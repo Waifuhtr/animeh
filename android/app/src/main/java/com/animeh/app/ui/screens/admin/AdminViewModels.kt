@@ -11,6 +11,7 @@ import com.animeh.app.core.UiState
 import com.animeh.app.data.remote.dto.*
 import com.animeh.app.data.repository.AdminRepository
 import com.animeh.app.domain.Episode
+import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.domain.Work
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -81,9 +82,24 @@ class AdminWorksViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /**
+     * Which library is being managed.
+     *
+     * Anime and manga share a table and are two different shelves to whoever
+     * is looking after them, so the screen says which one it is showing and
+     * the same list serves both.
+     */
+    private var kind: String = KIND_ANIME
+
     private var searchJob: Job? = null
 
     init {
+        load()
+    }
+
+    fun setKind(value: String) {
+        if (kind == value) return
+        kind = value
         load()
     }
 
@@ -99,7 +115,7 @@ class AdminWorksViewModel @Inject constructor(
     fun load() {
         viewModelScope.launch {
             _state.value = UiState.Loading
-            _state.value = when (val result = repository.works(_query.value)) {
+            _state.value = when (val result = repository.works(_query.value, kind)) {
                 is AppResult.Success ->
                     if (result.data.isEmpty()) UiState.Empty else UiState.Success(result.data)
                 is AppResult.Failure -> UiState.Error(result.error)
@@ -123,7 +139,18 @@ class AdminWorkEditViewModel @Inject constructor(
 
     private val workId: Long = savedStateHandle["workId"] ?: 0L
 
-    private val _form = MutableStateFlow(AdminWorkRequest(id = workId.takeIf { it > 0 }))
+    /**
+     * Which shelf a new work goes on.
+     *
+     * Only meaningful while creating: an existing work carries its own kind
+     * and [load] overwrites this with it. Without it every work made here was
+     * an anime, so a manga could not be added from the panel at all.
+     */
+    private val startingKind: String = savedStateHandle["kind"] ?: KIND_ANIME
+
+    private val _form = MutableStateFlow(
+        AdminWorkRequest(id = workId.takeIf { it > 0 }, kind = startingKind)
+    )
     val form: StateFlow<AdminWorkRequest> = _form.asStateFlow()
 
     private val _saving = MutableStateFlow(false)
@@ -143,9 +170,13 @@ class AdminWorkEditViewModel @Inject constructor(
 
     private fun load() {
         viewModelScope.launch {
-            when (val result = repository.works("")) {
+            // Asked for by id. It used to search the first page of anime and
+            // pick the matching row out of it, so a manga — or anything past
+            // page one — opened a blank form and saving it wiped the fields
+            // that never arrived.
+            when (val result = repository.work(workId)) {
                 is AppResult.Success -> {
-                    result.data.firstOrNull { it.id == workId }?.let { work ->
+                    result.data?.let { work ->
                         _form.value = AdminWorkRequest(
                             id = work.id,
                             title = work.title,
@@ -159,6 +190,8 @@ class AdminWorkEditViewModel @Inject constructor(
                             status = work.status.name.lowercase(),
                             format = work.format,
                             studio = work.studio,
+                            author = work.author,
+                            kind = work.kind,
                             genres = work.genres,
                             totalEpisodes = work.totalEpisodes,
                             published = work.published,
@@ -624,9 +657,24 @@ class AdminUsersViewModel @Inject constructor(
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    /**
+     * Which library is being managed.
+     *
+     * Anime and manga share a table and are two different shelves to whoever
+     * is looking after them, so the screen says which one it is showing and
+     * the same list serves both.
+     */
+    private var kind: String = KIND_ANIME
+
     private var searchJob: Job? = null
 
     init {
+        load()
+    }
+
+    fun setKind(value: String) {
+        if (kind == value) return
+        kind = value
         load()
     }
 
@@ -1377,4 +1425,233 @@ class AdminMangaViewModel @Inject constructor(
         is AppError.Timeout -> "Sunucu yanıt vermedi."
         else -> "Bir şeyler ters gitti."
     }
+}
+
+/* ── Manga chapters and their pages ──────────────────────────────────── */
+
+/** One chapter, as the list shows it. */
+@Immutable
+data class ChapterRow(
+    val id: Long,
+    val number: String,
+    val title: String,
+    val pageCount: Int,
+) {
+    /** "Bölüm 10.5", or the chapter's own title when it has one. */
+    val label: String get() = title.ifBlank { "Bölüm $number" }
+}
+
+@Immutable
+data class AdminChaptersState(
+    val title: String = "",
+    val chapters: List<ChapterRow> = emptyList(),
+    val loading: Boolean = true,
+    val saving: Boolean = false,
+    val lastError: String = "",
+) {
+    /**
+     * What to put in the box when adding one.
+     *
+     * The next whole number after the highest chapter, because that is what
+     * is being added almost every time.
+     */
+    fun nextNumber(): String {
+        val highest = chapters.mapNotNull { it.number.toDoubleOrNull() }.maxOrNull() ?: 0.0
+        return (highest.toInt() + 1).toString()
+    }
+}
+
+@HiltViewModel
+class AdminChaptersViewModel @Inject constructor(
+    private val repository: AdminRepository,
+    savedStateHandle: SavedStateHandle,
+) : ViewModel() {
+
+    private val workId: Long = savedStateHandle["workId"] ?: 0L
+
+    private val _state = MutableStateFlow(AdminChaptersState())
+    val state: StateFlow<AdminChaptersState> = _state.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            _state.update { it.copy(loading = true) }
+
+            when (val result = repository.chapters(workId)) {
+                is AppResult.Success -> _state.update {
+                    it.copy(
+                        title = result.data.work.title,
+                        chapters = result.data.items.map { row ->
+                            ChapterRow(
+                                id = row.id,
+                                number = row.numberLabel.ifBlank { row.number.toString() },
+                                title = row.title,
+                                pageCount = row.pageCount,
+                            )
+                        },
+                        loading = false,
+                        lastError = "",
+                    )
+                }
+
+                is AppResult.Failure -> {
+                    val reason = describeAdmin(result.error)
+                    _message.value = reason
+                    _state.update { it.copy(loading = false, lastError = reason) }
+                }
+            }
+        }
+    }
+
+    /**
+     * Add a chapter or rename one.
+     *
+     * The number is read leniently — `10,5` is how it is typed on a Turkish
+     * keyboard — and a number already in use lands on that chapter rather
+     * than making a second one with the same name.
+     */
+    fun save(chapterId: Long, number: String, title: String) {
+        val parsed = number.trim().replace(',', '.').toDoubleOrNull()
+
+        if (parsed == null || parsed <= 0.0) {
+            _message.value = "Bölüm numarası bir sayı olmalı."
+            return
+        }
+
+        viewModelScope.launch {
+            _state.update { it.copy(saving = true) }
+
+            when (val result = repository.saveChapter(workId, parsed, title.trim(), chapterId)) {
+                is AppResult.Success -> {
+                    _message.value = if (chapterId > 0) "Bölüm güncellendi" else "Bölüm eklendi"
+                    load()
+                }
+
+                is AppResult.Failure -> {
+                    val reason = describeAdmin(result.error)
+                    _message.value = reason
+                    _state.update { it.copy(lastError = reason) }
+                }
+            }
+
+            _state.update { it.copy(saving = false) }
+        }
+    }
+
+    fun delete(chapterId: Long) {
+        viewModelScope.launch {
+            when (val result = repository.deleteChapter(chapterId)) {
+                is AppResult.Success -> {
+                    _message.value = "Bölüm silindi"
+                    load()
+                }
+
+                is AppResult.Failure -> _message.value = describeAdmin(result.error)
+            }
+        }
+    }
+
+    fun messageShown() {
+        _message.value = null
+    }
+}
+
+@Immutable
+data class AdminChapterPagesState(
+    val pages: Int = 0,
+    val uploading: Boolean = false,
+    val failed: List<PageFailureDto> = emptyList(),
+)
+
+@HiltViewModel
+class AdminChapterPagesViewModel @Inject constructor(
+    private val repository: AdminRepository,
+    savedStateHandle: SavedStateHandle,
+) : ViewModel() {
+
+    private val chapterId: Long = savedStateHandle["chapterId"] ?: 0L
+
+    private val _state = MutableStateFlow(AdminChapterPagesState())
+    val state: StateFlow<AdminChapterPagesState> = _state.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun load() {
+        viewModelScope.launch {
+            (repository.chapterPages(chapterId) as? AppResult.Success)?.let { result ->
+                _state.update { it.copy(pages = result.data.size) }
+            }
+        }
+    }
+
+    /**
+     * Send whatever was picked.
+     *
+     * Loose images or a zip, in one request either way. The order is settled
+     * by the file names on the server, not by the order the picker returned.
+     */
+    fun upload(uris: List<Uri>) {
+        if (_state.value.uploading) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(uploading = true, failed = emptyList()) }
+
+            when (val result = repository.uploadPages(chapterId, uris)) {
+                is AppResult.Success -> {
+                    val data = result.data
+                    _state.update { it.copy(pages = data.pages, failed = data.failed) }
+                    _message.value = when {
+                        data.failed.isEmpty() -> "${data.written} sayfa yüklendi"
+                        data.written == 0 -> "Hiçbir sayfa yüklenemedi"
+                        else -> "${data.written} sayfa yüklendi, ${data.failed.size} tanesi olmadı"
+                    }
+                }
+
+                is AppResult.Failure -> _message.value = describeAdmin(result.error)
+            }
+
+            _state.update { it.copy(uploading = false) }
+        }
+    }
+
+    fun clear() {
+        viewModelScope.launch {
+            when (val result = repository.clearChapterPages(chapterId)) {
+                is AppResult.Success -> {
+                    _state.update { it.copy(pages = 0, failed = emptyList()) }
+                    _message.value = "Sayfalar silindi"
+                }
+
+                is AppResult.Failure -> _message.value = describeAdmin(result.error)
+            }
+        }
+    }
+
+    fun messageShown() {
+        _message.value = null
+    }
+}
+
+/**
+ * The sentence an admin screen shows for a failure.
+ *
+ * The server's own words when it wrote any — "Bölüm bulunamadı", "Önce
+ * depolama ayarlarını yap" — because on this side of the app the person
+ * reading is the one who can act on them.
+ */
+internal fun describeAdmin(error: AppError): String = error.reason() ?: when (error) {
+    is AppError.Network -> "İnternet bağlantısı yok."
+    is AppError.Timeout -> "Sunucu yanıt vermedi."
+    else -> "Bir şeyler ters gitti."
 }

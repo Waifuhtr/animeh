@@ -14,8 +14,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +35,8 @@ import com.animeh.app.R
 import com.animeh.app.core.UiState
 import com.animeh.app.data.remote.dto.AdminEpisodeRequest
 import com.animeh.app.data.remote.dto.AdminWorkRequest
+import com.animeh.app.domain.KIND_ANIME
+import com.animeh.app.domain.KIND_MANGA
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.components.ErrorState
 import com.animeh.app.ui.navigation.Routes
@@ -208,13 +212,18 @@ fun AdminWorksScreen(
     onEpisodes: (Long) -> Unit,
     onNew: () -> Unit,
     onImport: () -> Unit,
+    /** Which shelf: anime and manga share a table and nothing else. */
+    kind: String = KIND_ANIME,
     viewModel: AdminWorksViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val query by viewModel.query.collectAsStateWithLifecycle()
+    val manga = kind == KIND_MANGA
+
+    LaunchedEffect(kind) { viewModel.setKind(kind) }
 
     AdminScaffold(
-        title = stringResource(R.string.admin_anime),
+        title = stringResource(if (manga) R.string.admin_manga else R.string.admin_anime),
         onBack = onBack,
         actions = {
             IconButton(onClick = onImport) {
@@ -240,7 +249,10 @@ fun AdminWorksScreen(
                     CircularProgressIndicator()
                 }
                 is UiState.Error -> ErrorState(current.error, onRetry = viewModel::load)
-                is UiState.Empty -> EmptyState("Henüz anime eklenmemiş.", Icons.Filled.MovieFilter)
+                is UiState.Empty -> EmptyState(
+                    if (manga) "Henüz manga eklenmemiş." else "Henüz anime eklenmemiş.",
+                    if (manga) Icons.Filled.MenuBook else Icons.Filled.MovieFilter,
+                )
                 is UiState.Success -> LazyColumn {
                     items(current.data, key = { it.id }) { work ->
                         ListItem(
@@ -353,11 +365,26 @@ fun AdminWorkEditScreen(
                     }
                 }
             }
-            Field("Stüdyo", form.studio.orEmpty()) { value -> viewModel.update { it.copy(studio = value) } }
+            // A studio makes an anime and a person makes a manga; asking for
+            // the wrong one is how a field ends up holding a lie.
+            if (form.kind == KIND_MANGA) {
+                Field("Yazar / çizer", form.author.orEmpty()) { value ->
+                    viewModel.update { it.copy(author = value) }
+                }
+            } else {
+                Field("Stüdyo", form.studio.orEmpty()) { value ->
+                    viewModel.update { it.copy(studio = value) }
+                }
+            }
+
             Field("Yıl", form.year?.toString().orEmpty(), numeric = true) { value ->
                 viewModel.update { it.copy(year = value.toIntOrNull()) }
             }
-            Field("Toplam bölüm", form.totalEpisodes?.toString().orEmpty(), numeric = true) { value ->
+            Field(
+                if (form.kind == KIND_MANGA) "Toplam bölüm (chapter)" else "Toplam bölüm",
+                form.totalEpisodes?.toString().orEmpty(),
+                numeric = true,
+            ) { value ->
                 viewModel.update { it.copy(totalEpisodes = value.toIntOrNull()) }
             }
 
@@ -539,7 +566,10 @@ private val SECTIONS = listOf(
     // A moderator reaches it: importing chapters and copying images is
     // catalogue work, and the two things here that are not — the bridge
     // key and the second source's switch — are refused server-side.
-    Triple(Routes.ADMIN_MANGA, R.string.admin_manga, Icons.Filled.MenuBook),
+    // The shelf: every manga, editable, with its chapters and their pages.
+    Triple(Routes.ADMIN_MANGA_LIBRARY, R.string.admin_manga_library, Icons.Filled.MenuBook),
+    // And where they come from: the bridge, the copy run and the two sources.
+    Triple(Routes.ADMIN_MANGA, R.string.admin_manga_sources, Icons.Filled.CloudSync),
     Triple(Routes.ADMIN_FONTS, R.string.admin_fonts, Icons.Filled.FontDownload),
     Triple(Routes.ADMIN_TERMS, R.string.admin_terms, Icons.Filled.Translate),
     Triple(Routes.ADMIN_USERS, R.string.admin_users, Icons.Filled.People),
@@ -564,6 +594,7 @@ private val SECTIONS = listOf(
  */
 private val MODERATOR_SECTIONS = setOf(
     Routes.ADMIN_WORKS,
+    Routes.ADMIN_MANGA_LIBRARY,
     Routes.ADMIN_TENRAI,
     Routes.ADMIN_TMDB,
     Routes.ADMIN_MANGA,

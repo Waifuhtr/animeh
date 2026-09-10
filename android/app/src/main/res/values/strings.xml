@@ -429,6 +429,8 @@
     <string name="nav_home_anime">Anime</string>
     <string name="manga">Manga</string>
     <string name="admin_manga">Manga</string>
+    <string name="admin_manga_library">Manga Kütüphanesi</string>
+    <string name="admin_manga_sources">Manga Kaynakları</string>
     <string name="admin_manga_bridge">Manga Sitesi Köprüsü</string>
     <string name="admin_manga_bridge_url">Köprü adresi</string>
     <string name="admin_manga_bridge_key">Köprü anahtarı</string>

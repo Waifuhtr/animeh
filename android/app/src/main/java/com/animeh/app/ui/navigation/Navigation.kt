@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.vector.ImageVector
 import com.animeh.app.R
+import com.animeh.app.domain.KIND_ANIME
 
 /**
  * Every destination, as data.
@@ -66,8 +67,17 @@ object Routes {
     const val ADMIN_MANGA = "admin/manga"
 
     private const val ADMIN_WORK_BASE = "admin/work"
-    const val ADMIN_WORK_EDIT = "$ADMIN_WORK_BASE/{workId}"
-    fun adminWork(workId: Long) = "$ADMIN_WORK_BASE/$workId"
+    const val ADMIN_WORK_EDIT = "$ADMIN_WORK_BASE/{workId}?kind={kind}"
+
+    /**
+     * The edit form, told which shelf it is on.
+     *
+     * A new work needs it: without a kind every one created here is an anime,
+     * which is why a manga could not be added from the panel at all. An
+     * existing work ignores it and uses its own.
+     */
+    fun adminWork(workId: Long, kind: String = KIND_ANIME) =
+        "$ADMIN_WORK_BASE/$workId?kind=$kind"
 
     private const val ADMIN_EPISODES_BASE = "admin/episodes"
     const val ADMIN_EPISODES = "$ADMIN_EPISODES_BASE/{workId}"
@@ -76,6 +86,21 @@ object Routes {
     private const val ADMIN_EPISODE_BASE = "admin/episode"
     const val ADMIN_EPISODE_EDIT = "$ADMIN_EPISODE_BASE/{workId}/{episodeId}"
     fun adminEpisode(workId: Long, episodeId: Long) = "$ADMIN_EPISODE_BASE/$workId/$episodeId"
+
+    /** The manga shelf: the same list as anime, asked for the other kind. */
+    const val ADMIN_MANGA_LIBRARY = "admin/manga/library"
+
+    private const val ADMIN_CHAPTERS_BASE = "admin/manga/chapters"
+    const val ADMIN_CHAPTERS = "$ADMIN_CHAPTERS_BASE/{workId}"
+    fun adminChapters(workId: Long) = "$ADMIN_CHAPTERS_BASE/$workId"
+
+    private const val ADMIN_PAGES_BASE = "admin/manga/pages"
+    const val ADMIN_CHAPTER_PAGES = "$ADMIN_PAGES_BASE/{chapterId}"
+    fun adminChapterPages(chapterId: Long) = "$ADMIN_PAGES_BASE/$chapterId"
+
+    private const val MANGA_BASE = "manga"
+    const val MANGA = "$MANGA_BASE/{workId}"
+    fun manga(workId: Long) = "$MANGA_BASE/$workId"
 }
 
 /**

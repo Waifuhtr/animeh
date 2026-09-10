@@ -53,6 +53,15 @@ class AdminRepository @Inject constructor(
             api.works(search, kind, page)
         }
 
+    /**
+     * One work, by id.
+     *
+     * The edit form used to search the works list and pick its row out of the
+     * first page, which found nothing for a manga and nothing past page one.
+     */
+    suspend fun work(id: Long): AppResult<Work?> =
+        ApiErrorMapper.call({ it.work?.toDomain() }) { api.work(id) }
+
     /* ── Manga chapters and their pages ──────────────────────────────── */
 
     suspend fun chapters(workId: Long): AppResult<AdminChaptersDto> =

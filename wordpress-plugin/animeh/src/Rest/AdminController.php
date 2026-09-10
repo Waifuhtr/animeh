@@ -97,6 +97,15 @@ final class AdminController {
 			'/admin/works/(?P<id>\d+)',
 			array(
 				array(
+					// Read by id, unpublished included: the edit form used to
+					// hunt for its row in the first page of the anime list,
+					// which found nothing for a manga and nothing past page
+					// one, and then saved a form full of blanks.
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'work' ),
+					'permission_callback' => $moderate,
+				),
+				array(
 					'methods'             => WP_REST_Server::EDITABLE,
 					'callback'            => array( $this, 'save_work' ),
 					'permission_callback' => $moderate,
@@ -560,6 +569,22 @@ final class AdminController {
 	 *
 	 * @param WP_REST_Request $request Request.
 	 */
+	/**
+	 * One work, whether or not it is published.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function work( WP_REST_Request $request ) {
+		$work = ( new CatalogRepository() )->work( (int) $request->get_param( 'id' ) );
+
+		if ( null === $work ) {
+			return new WP_Error( 'animeh_work_missing', __( 'Eser bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		return new WP_REST_Response( array( 'work' => CatalogController::work_payload( $work ) ) );
+	}
+
 	public function works( WP_REST_Request $request ): WP_REST_Response {
 		$result = ( new CatalogRepository() )->works(
 			array(

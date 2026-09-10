@@ -290,6 +290,9 @@ interface AdminApi {
     @POST("admin/works")
     suspend fun createWork(@Body body: AdminWorkRequest): Response<AdminWorkEnvelopeDto>
 
+    @GET("admin/works/{id}")
+    suspend fun work(@Path("id") id: Long): Response<AdminWorkEnvelopeDto>
+
     @PUT("admin/works/{id}")
     suspend fun updateWork(@Path("id") id: Long, @Body body: AdminWorkRequest): Response<AdminWorkEnvelopeDto>
 

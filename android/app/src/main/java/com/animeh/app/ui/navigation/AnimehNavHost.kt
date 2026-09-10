@@ -27,6 +27,7 @@ import com.animeh.app.data.prefs.isAdmin
 import com.animeh.app.data.prefs.isModerator
 import com.animeh.app.data.prefs.user
 import com.animeh.app.player.ui.PlayerActivity
+import com.animeh.app.domain.KIND_MANGA
 import com.animeh.app.ui.screens.admin.*
 import com.animeh.app.ui.screens.auth.*
 import com.animeh.app.ui.screens.detail.DetailScreen
@@ -327,9 +328,47 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
         )
     }
 
+    // The same screen asked for the other library. A manga's chapters are not
+    // episodes — no runtime, no video, and a number that may be 10.5 — so the
+    // row leads somewhere else, and "import" means the bridge rather than
+    // Tenrai.
+    composable(Routes.ADMIN_MANGA_LIBRARY) {
+        AdminWorksScreen(
+            kind = KIND_MANGA,
+            onBack = { navController.popBackStack() },
+            onEdit = { navController.navigate(Routes.adminWork(it, KIND_MANGA)) },
+            onEpisodes = { navController.navigate(Routes.adminChapters(it)) },
+            onNew = { navController.navigate(Routes.adminWork(0L, KIND_MANGA)) },
+            onImport = { navController.navigate(Routes.ADMIN_MANGA) },
+        )
+    }
+
+    composable(
+        route = Routes.ADMIN_CHAPTERS,
+        arguments = listOf(navArgument("workId") { type = NavType.LongType }),
+    ) {
+        AdminChaptersScreen(
+            onBack = { navController.popBackStack() },
+            onPages = { chapterId -> navController.navigate(Routes.adminChapterPages(chapterId)) },
+        )
+    }
+
+    composable(
+        route = Routes.ADMIN_CHAPTER_PAGES,
+        arguments = listOf(navArgument("chapterId") { type = NavType.LongType }),
+    ) {
+        AdminChapterPagesScreen(onBack = { navController.popBackStack() })
+    }
+
     composable(
         route = Routes.ADMIN_WORK_EDIT,
-        arguments = listOf(navArgument("workId") { type = NavType.LongType }),
+        arguments = listOf(
+            navArgument("workId") { type = NavType.LongType },
+            navArgument("kind") {
+                type = NavType.StringType
+                defaultValue = KIND_ANIME
+            },
+        ),
     ) { entry ->
         AdminWorkEditScreen(
             workId = entry.arguments?.getLong("workId") ?: 0L,

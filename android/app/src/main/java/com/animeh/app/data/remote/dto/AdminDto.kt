@@ -94,6 +94,15 @@ data class AdminWorkRequest(
     val status: String? = null,
     val format: String? = null,
     val studio: String? = null,
+    /** A studio makes an anime; a person makes a manga. */
+    val author: String? = null,
+    /**
+     * Which library this belongs to.
+     *
+     * Sent only when creating: without it every new work is an anime, which
+     * is why a manga could not be added from the panel at all.
+     */
+    val kind: String? = null,
     val genres: List<String>? = null,
     @SerialName("total_episodes") val totalEpisodes: Int? = null,
     val published: Boolean? = null,

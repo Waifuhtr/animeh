@@ -15,9 +15,18 @@
  * decidable without running anything: the tokeniser says what is being called
  * with how many arguments, and reflection says what the function takes.
  *
- * It deliberately checks only PHP's own functions. A project function that a
- * file defines itself is resolved by the namespace and is the *right* call;
- * anything the checker cannot resolve is left alone rather than guessed at.
+ * It checks two things:
+ *
+ * **PHP's own functions**, by argument count. A project function that a file
+ * defines itself is resolved by the namespace and is the right call; anything
+ * unresolvable is left alone rather than guessed at.
+ *
+ * **The plugin's own methods**, by name and argument count, wherever the
+ * receiver's class can be read off the line that made it — `new Foo()->bar()`,
+ * `Foo::bar()`, or a variable assigned from `new Foo(...)` in the same
+ * function. That is narrow on purpose: a wrong guess about a receiver would
+ * cry wolf, and this only has to catch the case that actually happens, which
+ * is calling a method that does not exist or handing it the wrong arguments.
  *
  * @package Animeh
  */

@@ -28,6 +28,8 @@ use Animeh\Storage\UserDataRepository;
 use Animeh\Support\B2Url;
 use Animeh\Support\ChapterNumber;
 use Animeh\Support\MangaMapper;
+use Animeh\Support\PageOrder;
+use Animeh\Support\StorageKey;
 use WP_Error;
 use WP_REST_Request;
 use WP_REST_Response;
@@ -146,6 +148,84 @@ final class MangaController {
 					// A gallery is also a chapter: its pages are the thing.
 					// A metadata-only import leaves the chapters to the sync.
 					'with_pages' => array( 'type' => 'boolean', 'default' => true ),
+				),
+			)
+		);
+
+		// Chapters, added and edited here rather than only arriving from
+		// somewhere else: a manga that was typed in by hand needs the same
+		// surface as one that was imported.
+		register_rest_route(
+			$namespace,
+			'/admin/manga/works/(?P<id>\d+)/chapters',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'admin_chapters' ),
+					'permission_callback' => $moderate,
+					'args'                => array(
+						'id' => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+					),
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'save_chapter' ),
+					'permission_callback' => $moderate,
+					'args'                => array(
+						'id'         => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+						// Decimal on purpose: 10.5 is a chapter of its own.
+						'number'     => array( 'type' => 'number', 'required' => true ),
+						'chapter_id' => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
+						'title'      => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
+						'published'  => array( 'type' => 'boolean', 'default' => true ),
+					),
+				),
+			)
+		);
+
+		register_rest_route(
+			$namespace,
+			'/admin/manga/chapters/(?P<id>\d+)',
+			array(
+				'methods'             => WP_REST_Server::DELETABLE,
+				'callback'            => array( $this, 'delete_chapter' ),
+				'permission_callback' => $moderate,
+				'args'                => array(
+					'id' => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$namespace,
+			'/admin/manga/chapters/(?P<id>\d+)/pages',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'admin_pages' ),
+					'permission_callback' => $moderate,
+					'args'                => array(
+						'id' => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+					),
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'upload_pages' ),
+					'permission_callback' => $moderate,
+					'args'                => array(
+						'id'      => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+						// Off by default: adding a second batch to a chapter
+						// that already has pages is the normal case.
+						'replace' => array( 'type' => 'boolean', 'default' => false ),
+					),
+				),
+				array(
+					'methods'             => WP_REST_Server::DELETABLE,
+					'callback'            => array( $this, 'clear_pages' ),
+					'permission_callback' => $moderate,
+					'args'                => array(
+						'id' => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),
+					),
 				),
 			)
 		);
@@ -276,12 +356,482 @@ final class MangaController {
 			'url'           => $urls[0] ?? '',
 			'fallback_urls' => array_values( array_slice( $urls, 1 ) ),
 			'mime'          => (string) $page['mime'],
-			'width'         => (int) $page['height'],
+			'height'        => (int) $page['height'],
 			'size_bytes'    => (int) $page['size_bytes'],
 			// True once the file is ours. The panel shows it; the reader does
 			// not care which one it got, only that one of them opened.
 			'mirrored'      => '' !== (string) $page['storage_key'],
 		);
+	}
+
+	/* ── Chapters, by hand ───────────────────────────────────────────── */
+
+	/**
+	 * Largest page a single upload may carry.
+	 *
+	 * A manga page is a few hundred kilobytes. Twenty megabytes is far past
+	 * anything legitimate and stops one bad file filling the bucket.
+	 */
+	private const MAX_PAGE_BYTES = 20971520;
+
+	/**
+	 * Most pages one chapter may hold.
+	 */
+	private const MAX_PAGES = 400;
+
+	/**
+	 * Every chapter of one manga, for the panel.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function admin_chapters( WP_REST_Request $request ) {
+		$repo = new CatalogRepository();
+		$work = $repo->work( (int) $request->get_param( 'id' ) );
+
+		if ( null === $work ) {
+			return new WP_Error( 'animeh_work_missing', __( 'Manga bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$items = array();
+		foreach ( $repo->episodes( (int) $work['id'], 0, true ) as $chapter ) {
+			$items[] = CatalogController::episode_payload( $chapter );
+		}
+
+		return new WP_REST_Response(
+			array(
+				'work'  => CatalogController::work_payload( $work ),
+				'items' => $items,
+			)
+		);
+	}
+
+	/**
+	 * Create or rename one chapter.
+	 *
+	 * Its cover is the manga's, always. A chapter thumbnail that has to be
+	 * chosen is a field nobody fills in, and a reader full of grey rectangles
+	 * is worse than one where every chapter wears the cover it belongs to.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function save_chapter( WP_REST_Request $request ) {
+		$repo = new CatalogRepository();
+		$work = $repo->work( (int) $request->get_param( 'id' ) );
+
+		if ( null === $work ) {
+			return new WP_Error( 'animeh_work_missing', __( 'Manga bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$number = ChapterNumber::parse( $request->get_param( 'number' ) );
+		if ( $number <= 0 ) {
+			return new WP_Error( 'animeh_chapter_number', __( 'Bölüm numarası gerekli.', 'animeh' ), array( 'status' => 400 ) );
+		}
+
+		$chapter_id = (int) $request->get_param( 'chapter_id' );
+
+		// A number already in use is the same chapter, not a second one: the
+		// panel sends a number and expects to land on the chapter it names.
+		if ( $chapter_id <= 0 ) {
+			$chapter_id = self::chapter_by_number( (int) $work['id'], $number );
+		}
+
+		$data = array(
+			'season_number' => 1,
+			'number'        => $number,
+			'title'         => (string) $request->get_param( 'title' ),
+			'thumbnail_url' => (string) $work['poster_url'],
+			'published'     => $request->get_param( 'published' ) ? 1 : 0,
+			'published_at'  => current_time( 'mysql', true ),
+		);
+
+		$saved = $repo->save_episode( (int) $work['id'], $data, $chapter_id );
+
+		if ( $saved instanceof WP_Error ) {
+			return $saved;
+		}
+
+		$chapter = $repo->episode( (int) $saved );
+
+		return new WP_REST_Response(
+			array(
+				'chapter' => null !== $chapter ? CatalogController::episode_payload( $chapter ) : null,
+			),
+			$chapter_id > 0 ? 200 : 201
+		);
+	}
+
+	/**
+	 * Remove a chapter and the page rows under it.
+	 *
+	 * The objects in the bucket are left where they are. Deleting a chapter in
+	 * the panel is routine and undoing it is not, so the row goes and the
+	 * bytes stay until somebody clears the bucket deliberately.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function delete_chapter( WP_REST_Request $request ) {
+		$repo    = new CatalogRepository();
+		$chapter = $repo->episode( (int) $request->get_param( 'id' ) );
+
+		if ( null === $chapter ) {
+			return new WP_Error( 'animeh_chapter_missing', __( 'Bölüm bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$repo->delete_episode( (int) $chapter['id'] );
+
+		return new WP_REST_Response( array( 'deleted' => true ) );
+	}
+
+	/**
+	 * The pages of a chapter, as the panel lists them.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function admin_pages( WP_REST_Request $request ) {
+		$repo    = new CatalogRepository();
+		$chapter = $repo->episode( (int) $request->get_param( 'id' ) );
+
+		if ( null === $chapter ) {
+			return new WP_Error( 'animeh_chapter_missing', __( 'Bölüm bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$settings = StorageSettings::load();
+		$client   = '' !== $settings->bucket && '' !== $settings->key_id ? new B2Client( $settings ) : null;
+		$remote   = self::remote_endpoint();
+
+		$pages = array();
+		foreach ( $repo->pages( (int) $chapter['id'] ) as $page ) {
+			$pages[] = self::page_payload( $page, $settings, $client, $remote );
+		}
+
+		return new WP_REST_Response( array( 'pages' => $pages ) );
+	}
+
+	/**
+	 * Add pages to a chapter, from loose images or from a zip.
+	 *
+	 * Both shapes land in the same place because both are how a chapter
+	 * actually arrives: a folder of images picked from the phone, or the zip
+	 * it was downloaded as. The order is the file names — `1.jpg … 24.jpg` —
+	 * compared as numbers, because sorted as text page 10 comes before page 2
+	 * and the chapter is silently shuffled.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function upload_pages( WP_REST_Request $request ) {
+		$repo    = new CatalogRepository();
+		$chapter = $repo->episode( (int) $request->get_param( 'id' ) );
+
+		if ( null === $chapter ) {
+			return new WP_Error( 'animeh_chapter_missing', __( 'Bölüm bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$work = $repo->work( (int) $chapter['work_id'] );
+		if ( null === $work ) {
+			return new WP_Error( 'animeh_work_missing', __( 'Manga bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$settings = StorageSettings::load();
+		if ( ! $settings->is_configured() ) {
+			return new WP_Error(
+				'animeh_storage_unset',
+				__( 'Önce depolama ayarlarını yap: sayfalar kendi kovamıza yükleniyor.', 'animeh' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$files = $request->get_file_params();
+		$named = self::collect_pages( $files );
+
+		if ( $named instanceof WP_Error ) {
+			return $named;
+		}
+		if ( array() === $named ) {
+			return new WP_Error(
+				'animeh_no_pages',
+				__( 'Görsel bulunamadı. Sayfaları seç ya da bir zip yükle.', 'animeh' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		if ( $request->get_param( 'replace' ) ) {
+			$repo->delete_pages( (int) $chapter['id'] );
+		}
+
+		$slug   = (string) $work['slug'];
+		$number = ChapterNumber::parse( $chapter['number'] ?? 1 );
+		$client = new B2Client( $settings );
+		$start  = count( $repo->pages( (int) $chapter['id'] ) );
+
+		if ( $start + count( $named ) > self::MAX_PAGES ) {
+			return new WP_Error(
+				'animeh_too_many_pages',
+				sprintf(
+					/* translators: %d: page limit */
+					__( 'Bir bölümde en fazla %d sayfa olabilir.', 'animeh' ),
+					self::MAX_PAGES
+				),
+				array( 'status' => 400 )
+			);
+		}
+
+		$written = 0;
+		$failed  = array();
+		$now     = current_time( 'mysql', true );
+
+		foreach ( array_values( $named ) as $index => $page ) {
+			$position = $start + $index + 1;
+			$key      = StorageKey::chapter_page( $slug, $number, $position, $page['name'] );
+
+			$put = $client->put_object( $key, $page['body'], self::mime_for( $page['name'] ) );
+
+			if ( $put instanceof WP_Error ) {
+				$failed[] = array(
+					'name'    => $page['name'],
+					'message' => $put->get_error_message(),
+				);
+				continue;
+			}
+
+			$repo->save_source(
+				array(
+					'episode_id'  => (int) $chapter['id'],
+					'work_id'     => (int) $work['id'],
+					'kind'        => 'page',
+					'label'       => $page['name'],
+					'storage_key' => $key,
+					'size_bytes'  => strlen( $page['body'] ),
+					'sort_order'  => $position,
+					'created_at'  => $now,
+				)
+			);
+
+			++$written;
+		}
+
+		// The chapter wears the manga's cover, and gains a count.
+		$repo->save_episode(
+			(int) $work['id'],
+			array( 'thumbnail_url' => (string) $work['poster_url'] ),
+			(int) $chapter['id']
+		);
+
+		return new WP_REST_Response(
+			array(
+				'written' => $written,
+				'failed'  => $failed,
+				'pages'   => count( $repo->pages( (int) $chapter['id'] ) ),
+			)
+		);
+	}
+
+	/**
+	 * Drop every page of a chapter.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function clear_pages( WP_REST_Request $request ) {
+		$repo    = new CatalogRepository();
+		$chapter = $repo->episode( (int) $request->get_param( 'id' ) );
+
+		if ( null === $chapter ) {
+			return new WP_Error( 'animeh_chapter_missing', __( 'Bölüm bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$repo->delete_pages( (int) $chapter['id'] );
+
+		return new WP_REST_Response( array( 'cleared' => true ) );
+	}
+
+	/**
+	 * Every page in the request, named and in reading order.
+	 *
+	 * @param array<string, mixed> $files `$_FILES`, as REST hands it over.
+	 * @return array<int, array{name: string, body: string}>|WP_Error
+	 */
+	private static function collect_pages( array $files ) {
+		$loose = array();
+
+		foreach ( array( 'file', 'files', 'page', 'pages' ) as $field ) {
+			foreach ( self::normalise_uploads( $files[ $field ] ?? null ) as $upload ) {
+				$name = (string) ( $upload['name'] ?? '' );
+
+				if ( 'zip' === strtolower( (string) pathinfo( $name, PATHINFO_EXTENSION ) ) ) {
+					$unpacked = self::unzip_pages( (string) $upload['tmp_name'] );
+
+					if ( $unpacked instanceof WP_Error ) {
+						return $unpacked;
+					}
+
+					$loose = array_merge( $loose, $unpacked );
+					continue;
+				}
+
+				if ( ! PageOrder::is_image( $name ) ) {
+					continue;
+				}
+
+				$body = self::read_upload( (string) $upload['tmp_name'] );
+				if ( '' === $body ) {
+					continue;
+				}
+
+				$loose[ $name ] = $body;
+			}
+		}
+
+		$ordered = array();
+		foreach ( PageOrder::sort( array_keys( $loose ) ) as $name ) {
+			$ordered[] = array(
+				'name' => $name,
+				'body' => $loose[ $name ],
+			);
+		}
+
+		return $ordered;
+	}
+
+	/**
+	 * The images inside a zip, by name.
+	 *
+	 * @param string $path Uploaded archive.
+	 * @return array<string, string>|WP_Error
+	 */
+	private static function unzip_pages( string $path ) {
+		if ( ! class_exists( '\\ZipArchive' ) ) {
+			return new WP_Error(
+				'animeh_no_zip',
+				__( 'Sunucuda zip desteği yok. Sayfaları tek tek seçerek yükleyebilirsin.', 'animeh' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$zip = new \ZipArchive();
+		if ( true !== $zip->open( $path ) ) {
+			return new WP_Error( 'animeh_bad_zip', __( 'Zip açılamadı.', 'animeh' ), array( 'status' => 400 ) );
+		}
+
+		$found = array();
+
+		for ( $index = 0; $index < $zip->numFiles; ++$index ) {
+			$name = (string) $zip->getNameIndex( $index );
+
+			if ( ! PageOrder::is_image( $name ) ) {
+				continue;
+			}
+
+			$stat = $zip->statIndex( $index );
+			if ( ! is_array( $stat ) || (int) $stat['size'] > self::MAX_PAGE_BYTES ) {
+				continue;
+			}
+
+			$body = $zip->getFromIndex( $index );
+			if ( ! is_string( $body ) || '' === $body ) {
+				continue;
+			}
+
+			// Keyed by the name inside the archive, so two folders holding a
+			// `1.jpg` each do not overwrite one another.
+			$found[ $name ] = $body;
+		}
+
+		$zip->close();
+
+		return $found;
+	}
+
+	/**
+	 * One uploaded file's bytes, or an empty string.
+	 *
+	 * @param string $path Temporary path.
+	 */
+	private static function read_upload( string $path ): string {
+		if ( '' === $path || ! is_readable( $path ) ) {
+			return '';
+		}
+		if ( ! is_uploaded_file( $path ) && ! defined( 'ANIMEH_TESTING' ) ) {
+			return '';
+		}
+		if ( filesize( $path ) > self::MAX_PAGE_BYTES ) {
+			return '';
+		}
+
+		$body = file_get_contents( $path ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+
+		return is_string( $body ) ? $body : '';
+	}
+
+	/**
+	 * One or many uploads under a field, flattened.
+	 *
+	 * @param mixed $field One `$_FILES` entry.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function normalise_uploads( $field ): array {
+		if ( ! is_array( $field ) || ! isset( $field['tmp_name'] ) ) {
+			return array();
+		}
+
+		if ( ! is_array( $field['tmp_name'] ) ) {
+			return UPLOAD_ERR_OK === (int) ( $field['error'] ?? UPLOAD_ERR_NO_FILE )
+				? array( $field )
+				: array();
+		}
+
+		$uploads = array();
+		foreach ( array_keys( $field['tmp_name'] ) as $index ) {
+			if ( UPLOAD_ERR_OK !== (int) ( $field['error'][ $index ] ?? UPLOAD_ERR_NO_FILE ) ) {
+				continue;
+			}
+
+			$uploads[] = array(
+				'name'     => (string) ( $field['name'][ $index ] ?? '' ),
+				'tmp_name' => (string) $field['tmp_name'][ $index ],
+				'error'    => UPLOAD_ERR_OK,
+			);
+		}
+
+		return $uploads;
+	}
+
+	/**
+	 * A chapter of this manga with this number, if there is one.
+	 *
+	 * @param int   $work_id Manga.
+	 * @param float $number  Chapter number.
+	 */
+	private static function chapter_by_number( int $work_id, float $number ): int {
+		global $wpdb;
+
+		return (int) $wpdb->get_var(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+				'SELECT id FROM ' . CatalogSchema::episodes() . ' WHERE work_id = %d AND number = %f LIMIT 1',
+				$work_id,
+				$number
+			)
+		);
+	}
+
+	/**
+	 * Content type from a file name.
+	 *
+	 * @param string $name File name.
+	 */
+	private static function mime_for( string $name ): string {
+		return match ( strtolower( (string) pathinfo( $name, PATHINFO_EXTENSION ) ) ) {
+			'png'  => 'image/png',
+			'gif'  => 'image/gif',
+			'webp' => 'image/webp',
+			'avif' => 'image/avif',
+			'bmp'  => 'image/bmp',
+			default => 'image/jpeg',
+		};
 	}
 
 	/* ── The bridge ──────────────────────────────────────────────────── */
@@ -580,11 +1130,16 @@ final class MangaController {
 			ARRAY_A
 		);
 
+		// The chapter's cover is the manga's. A first page is whatever the
+		// artist put there — a title card, a blank, a warning — and a shelf of
+		// those reads as broken next to a shelf of covers.
+		$work = $repo->work( $work_id );
+
 		$data = array(
 			'season_number' => 1,
 			'number'        => 1,
 			'title'         => '',
-			'thumbnail_url' => (string) ( $pages[0]['url'] ?? '' ),
+			'thumbnail_url' => null !== $work ? (string) $work['poster_url'] : '',
 			'published'     => 1,
 			'published_at'  => current_time( 'mysql', true ),
 		);

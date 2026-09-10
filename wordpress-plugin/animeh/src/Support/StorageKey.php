@@ -32,6 +32,15 @@ final class StorageKey {
 	public const ROOT = 'anime';
 
 	/**
+	 * Where manga live.
+	 *
+	 * Their own root rather than a folder under `anime/`: a manga is not a
+	 * season of anything, and mixing the two makes the bucket unreadable in
+	 * the console — which is where somebody looks when a page will not open.
+	 */
+	public const MANGA_ROOT = 'manga';
+
+	/**
 	 * Prefix for the plugin's own bookkeeping, kept away from media.
 	 */
 	public const SYSTEM_ROOT = '_animeh';
@@ -136,26 +145,39 @@ final class StorageKey {
 	}
 
 	/**
-	 * Folder for one manga chapter.
+	 * Folder for one manga.
 	 *
-	 * Under the same root as everything else, on purpose: manga are works in
-	 * the same catalogue, and a second tree would mean a second set of
-	 * lifecycle rules for the same kind of file.
+	 * @param string $slug Slug from {@see self::slug()}.
+	 */
+	public static function manga_prefix( string $slug ): string {
+		return self::MANGA_ROOT . '/' . $slug;
+	}
+
+	/**
+	 * Folder for one chapter.
 	 *
-	 * The chapter number is padded to four digits and multiplied by ten, so
-	 * chapter 10.5 lands between 10 and 11 rather than after 105 — the
-	 * console sorts keys as strings, and a long-running series really does
-	 * reach four figures.
+	 * `manga/<manga>/bolum-0010/`, and `bolum-0010.5` for the half chapters
+	 * that manga actually have. Zero-padded because Backblaze's console sorts
+	 * keys as strings, and readable because the point of a folder layout is
+	 * that a person can find a page in it.
 	 *
 	 * @param string $slug   Manga slug.
 	 * @param float  $number Chapter number, possibly fractional.
 	 */
 	public static function chapter_prefix( string $slug, float $number ): string {
-		return sprintf(
-			'%s/chapter-%05d',
-			self::anime_prefix( $slug ),
-			(int) round( max( 0.0, $number ) * 10 )
-		);
+		$number = max( 0.0, $number );
+		$whole  = (int) floor( $number );
+		$folder = sprintf( 'bolum-%04d', $whole );
+
+		// A fraction is kept as it reads: 10.5 is a chapter of its own, not a
+		// rounding of 10. Only the digits after the point are appended, so the
+		// folder is `bolum-0010.5` rather than `bolum-0010.0.5`.
+		$digits = rtrim( substr( number_format( $number - $whole, 2, '.', '' ), 2 ), '0' );
+		if ( '' !== $digits ) {
+			$folder .= '.' . $digits;
+		}
+
+		return self::manga_prefix( $slug ) . '/' . $folder;
 	}
 
 	/**

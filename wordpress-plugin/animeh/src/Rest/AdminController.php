@@ -72,6 +72,13 @@ final class AdminController {
 					'permission_callback' => $moderate,
 					'args'                => array(
 						'search'   => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
+						// Anime and manga are different libraries to whoever
+						// is managing them, even though they share a table.
+						'kind'     => array(
+							'type'    => 'string',
+							'default' => CatalogSchema::KIND_ANIME,
+							'enum'    => array( CatalogSchema::KIND_ANIME, CatalogSchema::KIND_MANGA ),
+						),
 						'page'     => array( 'type' => 'integer', 'default' => 1, 'sanitize_callback' => 'absint' ),
 						'per_page' => array( 'type' => 'integer', 'default' => 20, 'sanitize_callback' => 'absint' ),
 					),
@@ -557,6 +564,7 @@ final class AdminController {
 		$result = ( new CatalogRepository() )->works(
 			array(
 				'search'              => $request->get_param( 'search' ),
+				'kind'                => (string) $request->get_param( 'kind' ),
 				'page'                => $request->get_param( 'page' ),
 				'per_page'            => $request->get_param( 'per_page' ),
 				'include_unpublished' => true,
@@ -2221,6 +2229,13 @@ final class AdminController {
 			'format'           => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 			'rating'           => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
 			'studio'           => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
+			// A studio makes an anime and a person makes a manga; both are
+			// editable here because both are typed in by hand.
+			'author'           => array( 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
+			'kind'             => array(
+				'type' => 'string',
+				'enum' => array( CatalogSchema::KIND_ANIME, CatalogSchema::KIND_MANGA ),
+			),
 			'genres'           => array( 'type' => array( 'array', 'string' ) ),
 			'synonyms'         => array( 'type' => array( 'array', 'string' ) ),
 			'total_episodes'   => array( 'type' => 'integer', 'sanitize_callback' => 'absint' ),

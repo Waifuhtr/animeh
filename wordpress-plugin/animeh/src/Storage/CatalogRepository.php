@@ -715,6 +715,29 @@ final class CatalogRepository {
 	 * @param int $episode_id Chapter.
 	 * @return array<int, array<string, mixed>>
 	 */
+	/**
+	 * Remove every page of a chapter.
+	 *
+	 * The objects stay in the bucket. Clearing a chapter to re-upload it is
+	 * routine and a delete is not undoable, so the rows go and the bytes wait
+	 * for a deliberate cleanup.
+	 *
+	 * @param int $episode_id Chapter.
+	 * @return int Rows removed.
+	 */
+	public function delete_pages( int $episode_id ): int {
+		global $wpdb;
+
+		$table = CatalogSchema::sources();
+
+		return (int) $wpdb->query(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+				"DELETE FROM {$table} WHERE episode_id = %d AND kind = 'page'",
+				$episode_id
+			)
+		);
+	}
+
 	public function pages( int $episode_id ): array {
 		global $wpdb;
 

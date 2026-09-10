@@ -2091,6 +2091,90 @@ describe( 'ChapterNumber', function (): void {
 	} );
 } );
 
+describe( 'PageOrder', function (): void {
+	it( 'sayfaları isimdeki sayıya göre sıralar', function (): void {
+		same(
+			array( '1.jpg', '2.jpg', '10.jpg' ),
+			\Animeh\Support\PageOrder::pages( array( '10.jpg', '1.jpg', '2.jpg' ) )
+		);
+	} );
+
+	it( 'metin sıralaması olsaydı 10 ikinci gelirdi', function (): void {
+		$names = array( '1.jpg', '10.jpg', '2.jpg' );
+		sort( $names );
+		same( array( '1.jpg', '10.jpg', '2.jpg' ), $names );
+		same(
+			array( '1.jpg', '2.jpg', '10.jpg' ),
+			\Animeh\Support\PageOrder::pages( $names )
+		);
+	} );
+
+	it( 'sıfırlı ve önekli adlar da aynı yere düşer', function (): void {
+		same(
+			array( '01.webp', 'page_2.webp', 'sayfa-10.webp' ),
+			\Animeh\Support\PageOrder::pages( array( 'sayfa-10.webp', '01.webp', 'page_2.webp' ) )
+		);
+	} );
+
+	it( 'zip içindeki çöpü almaz', function (): void {
+		same(
+			array( '1.jpg' ),
+			\Animeh\Support\PageOrder::pages(
+				array( '1.jpg', 'notes.txt', '__MACOSX/._1.jpg', '.DS_Store', 'bolum/' )
+			)
+		);
+	} );
+
+	it( 'numarasız adlar sona gider', function (): void {
+		same(
+			array( '1.jpg', '2.jpg', 'kapak.jpg' ),
+			\Animeh\Support\PageOrder::pages( array( 'kapak.jpg', '2.jpg', '1.jpg' ) )
+		);
+	} );
+
+	it( 'klasör adındaki sayı sayfanın sırasını belirlemez', function (): void {
+		same(
+			array( 'bolum-12/1.jpg', 'bolum-12/2.jpg' ),
+			\Animeh\Support\PageOrder::pages( array( 'bolum-12/2.jpg', 'bolum-12/1.jpg' ) )
+		);
+	} );
+} );
+
+describe( 'StorageKey manga düzeni', function (): void {
+	it( 'manga kendi kökünde', function (): void {
+		same( 'manga/amai-tsuyu', \Animeh\Support\StorageKey::manga_prefix( 'amai-tsuyu' ) );
+		same( 'manga/amai-tsuyu/bolum-0001', \Animeh\Support\StorageKey::chapter_prefix( 'amai-tsuyu', 1.0 ) );
+	} );
+
+	it( 'yarım bölüm okunur kalıyor', function (): void {
+		same( 'manga/x/bolum-0010.5', \Animeh\Support\StorageKey::chapter_prefix( 'x', 10.5 ) );
+		same( 'manga/x/bolum-0010.25', \Animeh\Support\StorageKey::chapter_prefix( 'x', 10.25 ) );
+	} );
+
+	it( 'konsolda 10 ile 2 arasında sıra bozulmuyor', function (): void {
+		$keys = array(
+			\Animeh\Support\StorageKey::chapter_prefix( 'x', 10.0 ),
+			\Animeh\Support\StorageKey::chapter_prefix( 'x', 2.0 ),
+			\Animeh\Support\StorageKey::chapter_prefix( 'x', 1.0 ),
+		);
+		sort( $keys );
+		same(
+			array( 'manga/x/bolum-0001', 'manga/x/bolum-0002', 'manga/x/bolum-0010' ),
+			$keys
+		);
+	} );
+
+	it( 'sayfa adı sırayı taşıyor, uzantı korunuyor', function (): void {
+		same( 'manga/x/bolum-0001/007.webp', \Animeh\Support\StorageKey::chapter_page( 'x', 1.0, 7, 'page_7.WEBP' ) );
+		same( 'manga/x/bolum-0001/001.jpg', \Animeh\Support\StorageKey::chapter_page( 'x', 1.0, 1, 'nosuffix' ) );
+	} );
+
+	it( 'anime kökü karışmıyor', function (): void {
+		ok( ! str_starts_with( \Animeh\Support\StorageKey::chapter_prefix( 'x', 1.0 ), 'anime/' ) );
+		ok( str_starts_with( \Animeh\Support\StorageKey::episode_prefix( 'x', 1, 1 ), 'anime/' ) );
+	} );
+} );
+
 describe( 'GalleryRef', function (): void {
 	it( 'numarayı okur', function (): void {
 		same( 177013, \Animeh\Support\GalleryRef::id( '177013' ) );

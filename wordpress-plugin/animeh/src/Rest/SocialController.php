@@ -17,6 +17,7 @@ declare( strict_types = 1 );
 namespace Animeh\Rest;
 
 use Animeh\Storage\CatalogRepository;
+use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\FirebaseClient;
 use Animeh\Storage\FrameRepository;
 use Animeh\Storage\LeaderboardRepository;
@@ -176,6 +177,24 @@ final class SocialController {
 		);
 
 		/* ── Rooms ───────────────────────────────────────────────────── */
+
+		// Recommending something to a friend. The same shape as a room invite
+		// on purpose: it is one person telling another to look at one thing,
+		// and it arrives on their phone rather than in a list nobody opens.
+		register_rest_route(
+			$namespace,
+			'/me/recommend',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'recommend' ),
+				'permission_callback' => $signed_in,
+				'args'                => array(
+					'work_id'  => array( 'type' => 'integer', 'required' => true, 'sanitize_callback' => 'absint' ),
+					'user_ids' => array( 'type' => 'array', 'required' => true, 'items' => array( 'type' => 'integer' ) ),
+					'note'     => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
+				),
+			)
+		);
 
 		register_rest_route(
 			$namespace,
@@ -781,6 +800,89 @@ final class SocialController {
 		return new WP_REST_Response(
 			array(
 				'invited'  => count( $invited ),
+				'notified' => $notified,
+			)
+		);
+	}
+
+	/**
+	 * Tell friends to look at something.
+	 *
+	 * Friends only, exactly as invites are: an app where a stranger can push a
+	 * notification onto your phone is an app with a spam problem, and the
+	 * friend list is already the answer to who may.
+	 *
+	 * The notification carries the work id, so tapping it opens the manga or
+	 * the anime rather than the app's front page.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function recommend( WP_REST_Request $request ) {
+		$work = ( new CatalogRepository() )->work( (int) $request->get_param( 'work_id' ) );
+
+		if ( null === $work || ! (int) $work['published'] ) {
+			return new WP_Error( 'NOT_FOUND', __( 'Eser bulunamadı.', 'animeh' ), array( 'status' => 404 ) );
+		}
+
+		$repo = new SocialRepository();
+		$me   = wp_get_current_user();
+		$to   = array();
+
+		foreach ( (array) $request->get_param( 'user_ids' ) as $raw ) {
+			$candidate = (int) $raw;
+
+			if ( $candidate > 0 && $candidate !== (int) $me->ID && $repo->are_friends( (int) $me->ID, $candidate ) ) {
+				$to[] = $candidate;
+			}
+		}
+
+		$to = array_values( array_unique( $to ) );
+
+		if ( array() === $to ) {
+			return new WP_Error(
+				'VALIDATION_ERROR',
+				__( 'Sadece arkadaşlarına öneri gönderebilirsin.', 'animeh' ),
+				array( 'status' => 400 )
+			);
+		}
+
+		$manga = CatalogSchema::KIND_MANGA === (string) $work['kind'];
+		$note  = trim( (string) $request->get_param( 'note' ) );
+
+		$body = '' !== $note
+			? sprintf(
+				/* translators: 1: sender's display name, 2: title, 3: their note. */
+				__( '%1$s "%2$s" önerdi: %3$s', 'animeh' ),
+				$me->display_name,
+				(string) $work['title'],
+				$note
+			)
+			: sprintf(
+				/* translators: 1: sender's display name, 2: title. */
+				$manga
+					? __( '%1$s sana "%2$s" mangasını önerdi.', 'animeh' )
+					: __( '%1$s sana "%2$s" animesini önerdi.', 'animeh' ),
+				$me->display_name,
+				(string) $work['title']
+			);
+
+		$notified = $this->notify(
+			$to,
+			$manga ? __( 'Manga önerisi', 'animeh' ) : __( 'Anime önerisi', 'animeh' ),
+			$body,
+			array(
+				'type'      => 'recommendation',
+				'work_id'   => (string) $work['id'],
+				'work_kind' => (string) $work['kind'],
+				'from_id'   => (string) $me->ID,
+				'from_name' => (string) $me->display_name,
+			)
+		);
+
+		return new WP_REST_Response(
+			array(
+				'sent'     => count( $to ),
 				'notified' => $notified,
 			)
 		);

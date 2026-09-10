@@ -343,11 +343,16 @@ final class MangaImporter {
 			ARRAY_A
 		);
 
+		// Every chapter wears the manga's cover. A first page is whatever the
+		// artist put there — a title card, a blank, a content warning — and a
+		// list of those reads as broken next to a list of covers.
+		$work = $repo->work( $work_id );
+
 		$data = array(
 			'season_number' => 1,
 			'number'        => $number,
 			'title'         => self::chapter_title( (string) ( $chapter['title'] ?? '' ), $number ),
-			'thumbnail_url' => (string) ( $pages[0]['url'] ?? '' ),
+			'thumbnail_url' => null !== $work ? (string) $work['poster_url'] : '',
 			'published'     => 1,
 			'published_at'  => self::datetime( (string) ( $chapter['created_gmt'] ?? '' ) ),
 		);

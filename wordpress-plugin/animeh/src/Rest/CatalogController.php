@@ -22,6 +22,7 @@ use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\FontRepository;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\UserDataRepository;
+use Animeh\Support\ChapterNumber;
 use Animeh\Storage\B2Client;
 use Animeh\Storage\StorageSettings;
 use WP_Error;

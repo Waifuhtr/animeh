@@ -24,6 +24,11 @@ echo "==> building the player bundle"
 echo "==> checking the plugin"
 find "$PLUGIN_DIR" -name '*.php' -print0 | xargs -0 -n1 php -l > /dev/null
 php "$PLUGIN_DIR/tests/run.php" > /dev/null
+# Not the same check: run.php proves the pure logic, this one proves the
+# WordPress layer loads, registers and executes against rows. A `use` that an
+# edit failed to add parses fine, passes every unit test, and 500s the site on
+# the first request that has data to format.
+php "$PLUGIN_DIR/tests/smoke/run.php" > /dev/null
 
 # Everything the plugin needs at runtime, and nothing else: no tests, no
 # development state, no editor leftovers.

@@ -355,6 +355,38 @@ step(
 );
 
 step(
+	'ulaşılamayan köprü bir kez daha deneniyor',
+	static function (): void {
+		animeh_http_reset();
+		MangaBridge::save( 'https://manga.test', 'bridge-key' );
+
+		$result = MangaBridge::manga( 1, 3 );
+
+		if ( ! $result instanceof WP_Error ) {
+			throw new RuntimeException( 'hata bekleniyordu' );
+		}
+		if ( 2 !== count( animeh_http_log() ) ) {
+			throw new RuntimeException( 'deneme sayısı: ' . count( animeh_http_log() ) );
+		}
+	}
+);
+
+step(
+	'yanıt veren köprü ikinci kez sorulmuyor',
+	static function () use ( $bridge_manga ): void {
+		animeh_http_reset();
+		// A 500 is an answer: asking again would only double the wait.
+		animeh_http_reply( '/manga?', 500, '' );
+
+		MangaBridge::manga( 1, 3 );
+
+		if ( 1 !== count( animeh_http_log() ) ) {
+			throw new RuntimeException( 'deneme sayısı: ' . count( animeh_http_log() ) );
+		}
+	}
+);
+
+step(
 	'POST /admin/manga/mirror',
 	static function (): void {
 		animeh_http_reset();

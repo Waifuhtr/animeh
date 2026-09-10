@@ -30,6 +30,14 @@ php "$PLUGIN_DIR/tests/run.php" > /dev/null
 # the first request that has data to format.
 php "$PLUGIN_DIR/tests/smoke/run.php" > /dev/null
 
+# And the bridge, which installs on a different site and so is easy to forget:
+# its own 500 was a rename that landed on a definition and not on its call
+# site. The call check finds that shape statically; the smoke run executes
+# every route it registers.
+BRIDGE_DIR="$ROOT/wordpress-plugin/animeh-manga-bridge"
+php "$ROOT/tools/php-call-check.php" "$PLUGIN_DIR/src" "$BRIDGE_DIR" > /dev/null
+php "$BRIDGE_DIR/tests/smoke.php" > /dev/null
+
 # Everything the plugin needs at runtime, and nothing else: no tests, no
 # development state, no editor leftovers.
 REQUIRED=(
@@ -68,6 +76,18 @@ ARCHIVE="$DIST/animeh-$VERSION.zip"
 rm -f "$ARCHIVE"
 ( cd "$STAGE" && zip -qr "$ARCHIVE" animeh )
 
+# The bridge, packaged here too rather than by hand: it is a separate plugin
+# for a separate site, and the one built separately is the one that goes stale.
+BRIDGE_VERSION="$(grep -oE "^const VERSION\s*=\s*'[^']+'" "$BRIDGE_DIR/animeh-manga-bridge.php" | grep -oE "'[^']+'" | tr -d "'")"
+BRIDGE_ARCHIVE="$DIST/animeh-manga-bridge-$BRIDGE_VERSION.zip"
+
+rm -f "$BRIDGE_ARCHIVE"
+mkdir -p "$STAGE/animeh-manga-bridge"
+cp "$BRIDGE_DIR/animeh-manga-bridge.php" "$STAGE/animeh-manga-bridge/"
+( cd "$STAGE" && zip -qr "$BRIDGE_ARCHIVE" animeh-manga-bridge )
+
 echo
 echo "$ARCHIVE"
 unzip -l "$ARCHIVE" | tail -1
+echo "$BRIDGE_ARCHIVE"
+unzip -l "$BRIDGE_ARCHIVE" | tail -1

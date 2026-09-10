@@ -78,6 +78,29 @@ final class MangaBridge {
 	 * Whether there is something to talk to.
 	 */
 	/**
+	 * One request, with a second attempt when the first never connected.
+	 *
+	 * Her host's first call of the day dies on `cURL error 28: Resolving timed
+	 * out` and the next one, a few seconds later, resolves the same name
+	 * instantly — a cold DNS cache, not a site that is down. A transport error
+	 * is the only thing retried: an answer of any kind, including a 500, is
+	 * information and asking twice for it would only double the wait.
+	 *
+	 * @param string               $url  Address.
+	 * @param array<string, mixed> $args Request arguments.
+	 * @return array<string, mixed>|\WP_Error
+	 */
+	private static function fetch( string $url, array $args ) {
+		$response = wp_remote_get( $url, $args );
+
+		if ( ! is_wp_error( $response ) ) {
+			return $response;
+		}
+
+		return wp_remote_get( $url, $args );
+	}
+
+	/**
 	 * The bridge address, whichever half of it was pasted.
 	 *
 	 * The settings screen on the manga site shows the full REST address, but
@@ -220,7 +243,7 @@ final class MangaBridge {
 			$url = add_query_arg( array_filter( $query, static fn( $value ): bool => '' !== $value && null !== $value ), $url );
 		}
 
-		$response = wp_remote_get(
+		$response = self::fetch(
 			$url,
 			array(
 				'timeout' => self::TIMEOUT,

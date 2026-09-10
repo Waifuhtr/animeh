@@ -303,13 +303,18 @@ final class GalleryClient {
 			$headers['Authorization'] = 'Bearer ' . $settings['key'];
 		}
 
-		$response = wp_remote_get(
-			$url,
-			array(
-				'timeout' => 20,
-				'headers' => $headers,
-			)
+		$args = array(
+			'timeout' => 20,
+			'headers' => $headers,
 		);
+
+		// A second attempt only when nothing answered: her host's first call
+		// out can die resolving the name while the next one is instant. Any
+		// real answer, 429 included, is taken at its word.
+		$response = wp_remote_get( $url, $args );
+		if ( is_wp_error( $response ) ) {
+			$response = wp_remote_get( $url, $args );
+		}
 
 		if ( is_wp_error( $response ) ) {
 			return new WP_Error(

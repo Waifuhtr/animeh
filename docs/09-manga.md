@@ -168,8 +168,12 @@ oluşuyor.
 
 ### b) Köprüyü manga sitesine kur
 
-`animeh-manga-bridge-1.0.0.zip` → **manga sitende** Eklentiler → Yeni Ekle →
+`animeh-manga-bridge-1.0.1.zip` → **manga sitende** Eklentiler → Yeni Ekle →
 Eklenti Yükle → Etkinleştir.
+
+> **1.0.0 kuruluysa mutlaka güncelle.** O sürüm her isteğe 500 dönüyordu:
+> anahtar kontrolü `bridge_key()` yerine PHP'nin kendi `key()` fonksiyonunu
+> çağırıyordu. Uygulamada `Manga sitesi 500 döndürdü.` diye görünen şey buydu.
 
 Sonra manga sitende **Ayarlar → Animeh Köprüsü**. İki değer var:
 
@@ -223,11 +227,23 @@ kartın üstünde de duruyor. Muhtemel cümleler ve anlamları:
 | Köprü adresi yanıt vermiyor. Manga sitesinde eklenti etkin mi? | Köprü eklentisi kurulu/etkin değil ya da adres yanlış. |
 | Köprü anahtarı kabul edilmedi | Anahtar eşleşmiyor. Manga sitesindeki ekrandan tekrar kopyala. |
 | Manga sitesine ulaşılamadı: … | Sunucun o siteye çıkamıyor (DNS, güvenlik duvarı, SSL). |
-| Manga sitesi 5xx döndürdü | Sorun o taraftaki sitede. |
+| Manga sitesi 500 döndürdü | Köprü eklentisi 1.0.0 ise **onu güncelle** — o sürümün anahtar kontrolü fatal veriyordu. Güncelse sorun o taraftaki sitede. |
 | Manga sitesinden gelen yanıt okunamadı | Gelen şey JSON değil — genelde adres REST ucu değil. |
 | Bu kaynakta arama yok… | Galeri kaynağına isim yazılmış; numara ya da adres yaz. |
 | Bu kaynak kapalı | Galeri anahtarı kapalı. |
 | Depolama ayarlanmadan kopyalama yapılamaz | Backblaze ayarları eksik. |
+
+---
+
+### DNS: ilk denemede "Resolving timed out"
+
+Sunucunun ilk dış isteği bazen isim çözerken 10 saniyede düşüyor, hemen
+sonraki aynı ismi anında çözüyor — soğuk DNS önbelleği. Hem köprü hem galeri
+istemcisi artık **yalnızca hiç yanıt gelmediğinde** bir kez daha deniyor.
+Gelen bir yanıt (500 dâhil) bilgidir, ikinci kez sorulmaz.
+
+Bu tekrar tekrar oluyorsa sorun barındırmanda: sunucunun dışarı çıkışı ya da
+DNS'i yavaş. Hosting'e "outbound HTTP/DNS" diye sorman gerekir.
 
 ---
 
@@ -256,8 +272,19 @@ Tek dosya seçersen isim alanı yine çıkıyor; çokta çıkmıyor, çünkü k�
 - **Manga uçları gerçekten çalıştırıldı.** `tests/smoke/` içindeki koşucu artık
   `wp_remote_get`'i de karşılıyor, yani içe aktarma, kopyalama, iki kaynakta
   arama ve okuyucu ucu sahte bir köprü/kaynak yanıtıyla baştan sona koşuyor —
-  105 kontrol. Galeri aramasının olmayan bir uca gitmesi tam olarak burada
+  107 kontrol. Galeri aramasının olmayan bir uca gitmesi tam olarak burada
   yakalandı; ilk sürümde bu yollardan hiçbiri hiç çalıştırılmamıştı.
+- **Köprü eklentisi de çalıştırıldı.** Kendi koşucusu var
+  (`animeh-manga-bridge/tests/smoke.php`, 12 kontrol): rotalar kaydoluyor mu,
+  doğru anahtar kabul mü ediliyor, `/ping`, `/manga` ve `/manga/{id}/chapters`
+  gerçek gövde üretiyor mu, sayfa sıralaması doğal mı (`1, 2, 10`), b2/bunny
+  bayrakları hangi sırayla kazanıyor. 500'ü bu yakaladı — ve hatayı geri koyup
+  koşucunun gerçekten düştüğü doğrulandı.
+- **`tools/php-call-check.php`**: her PHP dosyasında, çağrılan yerleşik
+  fonksiyona verilen argüman sayısı imzasıyla karşılaştırılıyor. `key()`
+  hatası tam olarak bu şekilde görünür oluyor (`en az 1 argüman ister, 0
+  verilmiş`). İkisi de `tools/build-plugin.sh` içinde koşuyor, yani paket
+  ancak bunlar geçerse çıkıyor.
 - Kotlin: sınıf yolu olmadan derleyici taraması (üç bilinen artefakt), alt
   paket import taraması, Activity metot çakışması taraması, XML.
 - Yeni model alanları (`isManga`, `isChapter`, `numberLabel`, `pageCount`)

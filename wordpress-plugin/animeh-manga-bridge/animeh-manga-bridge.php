@@ -3,7 +3,7 @@
  * Plugin Name:       Animeh Manga Köprüsü
  * Plugin URI:        https://github.com/Waifuhtr/animeh
  * Description:       Manga Core ile kurulmuş bir siteyi Animeh uygulamasına açar. Mangaları, bölümleri ve sayfa görsellerinin tam adreslerini anahtar korumalı bir REST ucundan verir; Animeh eklentisi buradan okuyup kendi katalogunu doldurur ve görselleri kendi kovasına kopyalar.
- * Version:           1.0.0
+ * Version:           1.0.1
  * Requires at least: 6.0
  * Requires PHP:      8.0
  * Author:            Animeh
@@ -26,7 +26,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-const VERSION       = '1.0.0';
+const VERSION       = '1.0.1';
 const NAMESPACE_URI = 'animeh-bridge/v1';
 const KEY_OPTION    = 'animeh_bridge_key';
 const HEADER        = 'X-Animeh-Bridge-Key';
@@ -68,7 +68,7 @@ function authorised( \WP_REST_Request $request ): bool {
 		$given = (string) $request->get_param( 'key' );
 	}
 
-	return '' !== $given && hash_equals( key(), $given );
+	return '' !== $given && hash_equals( bridge_key(), $given );
 }
 
 /**
@@ -134,6 +134,22 @@ add_action(
 );
 
 /**
+ * How many of a post type are published.
+ *
+ * Guarded rather than read straight off the object: `wp_count_posts()` is
+ * asked about a type this plugin does not itself register, and a handshake
+ * that fatals because a type is missing tells the other end nothing about
+ * what is actually wrong.
+ *
+ * @param string $type Post type.
+ */
+function published( string $type ): int {
+	$counts = wp_count_posts( $type );
+
+	return is_object( $counts ) ? (int) ( $counts->publish ?? 0 ) : 0;
+}
+
+/**
  * A handshake, so the other end can say "connected" before it starts.
  */
 function ping(): \WP_REST_Response {
@@ -143,8 +159,8 @@ function ping(): \WP_REST_Response {
 			'version'  => VERSION,
 			'site'     => get_bloginfo( 'name' ),
 			'home'     => home_url(),
-			'manga'    => (int) wp_count_posts( 'manga' )->publish,
-			'chapters' => (int) wp_count_posts( 'chapter' )->publish,
+			'manga'    => published( 'manga' ),
+			'chapters' => published( 'chapter' ),
 			'storage'  => array(
 				'b2_bucket'      => (string) get_option( 'b2_bucket_name', '' ),
 				'b2_download'    => (string) get_option( 'b2_download_url', '' ),

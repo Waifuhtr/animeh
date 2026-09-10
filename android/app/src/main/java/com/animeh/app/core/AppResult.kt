@@ -47,3 +47,12 @@ sealed interface UiState<out T> {
     data class Error(val error: AppError) : UiState<Nothing>
     data object Empty : UiState<Nothing>
 }
+
+/**
+ * The value, when there is one.
+ *
+ * For the places that want to read one field out of a loaded state without
+ * writing a `when` over four branches to get at it — a callback deciding
+ * where a tap goes, say, where the other three branches all mean "not yet".
+ */
+val <T> UiState<T>.dataOrNull: T? get() = (this as? UiState.Success)?.data

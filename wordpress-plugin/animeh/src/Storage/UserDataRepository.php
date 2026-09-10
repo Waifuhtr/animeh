@@ -154,7 +154,7 @@ final class UserDataRepository {
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT h.*, e.number AS episode_number, e.season_number, e.title AS episode_title,
-					e.thumbnail_url, w.title AS work_title, w.slug AS work_slug, w.poster_url
+					e.thumbnail_url, w.kind AS work_kind, w.title AS work_title, w.slug AS work_slug, w.poster_url
 				 FROM {$history} h
 				 INNER JOIN {$episodes} e ON e.id = h.episode_id
 				 INNER JOIN {$works} w ON w.id = h.work_id
@@ -238,7 +238,7 @@ final class UserDataRepository {
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT h.*, e.number AS episode_number, e.season_number, e.title AS episode_title,
-					e.thumbnail_url, w.title AS work_title, w.slug AS work_slug, w.poster_url
+					e.thumbnail_url, w.kind AS work_kind, w.title AS work_title, w.slug AS work_slug, w.poster_url
 				 FROM {$history} h
 				 INNER JOIN {$episodes} e ON e.id = h.episode_id
 				 INNER JOIN {$works} w ON w.id = h.work_id

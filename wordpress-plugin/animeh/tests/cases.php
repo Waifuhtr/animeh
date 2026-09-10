@@ -1979,3 +1979,219 @@ describe( 'Leaderboard', function (): void {
 		ok( ! \Animeh\Storage\LeaderboardRepository::valid( '' ) );
 	} );
 } );
+
+describe( 'B2Url', function (): void {
+	it( 'iki adresi de kurar', function (): void {
+		same(
+			'https://f005.backblazeb2.com/file/animeh/anime/naruto/chapter-00105/001.webp',
+			\Animeh\Support\B2Url::friendly( 'https://f005.backblazeb2.com', 'animeh', 'anime/naruto/chapter-00105/001.webp' )
+		);
+		same(
+			'https://animeh.s3.us-west-004.backblazeb2.com/anime/naruto/chapter-00105/001.webp',
+			\Animeh\Support\B2Url::s3( 's3.us-west-004.backblazeb2.com', 'animeh', 'anime/naruto/chapter-00105/001.webp' )
+		);
+	} );
+
+	it( 'S3 endpointinde şema varsa temizler', function (): void {
+		same(
+			'https://kova.s3.eu-central-003.backblazeb2.com/a/b.jpg',
+			\Animeh\Support\B2Url::s3( 'https://s3.eu-central-003.backblazeb2.com/', 'kova', 'a/b.jpg' )
+		);
+	} );
+
+	it( 'eğik çizgileri kodlamaz, boşluğu kodlar', function (): void {
+		$url = \Animeh\Support\B2Url::friendly( 'https://f005.backblazeb2.com', 'k', 'a b/c d.jpg' );
+		// Klasör ayracı ayraç kalmalı; olmazsa adı içinde eğik çizgi olan
+		// bambaşka bir nesne adreslenir.
+		ok( str_contains( $url, '/a%20b/c%20d.jpg' ), $url );
+		ok( ! str_contains( $url, '%2F' ), $url );
+	} );
+
+	it( 'friendly adresi parçalarına ayırır', function (): void {
+		$parts = \Animeh\Support\B2Url::parse_friendly(
+			'https://f004.backblazeb2.com/file/manga-images/manga/12/chapter_1_abc/003.webp'
+		);
+		same( 'manga-images', $parts['bucket'] );
+		same( 'manga/12/chapter_1_abc/003.webp', $parts['key'] );
+	} );
+
+	it( 'sorgu dizesini anahtarın parçası saymaz', function (): void {
+		$parts = \Animeh\Support\B2Url::parse_friendly(
+			'https://f004.backblazeb2.com/file/kova/a/b.jpg?Authorization=xyz'
+		);
+		same( 'a/b.jpg', $parts['key'] );
+	} );
+
+	it( 'friendly olmayanı ayrıştırmaz', function (): void {
+		same( null, \Animeh\Support\B2Url::parse_friendly( 'https://kova.s3.x.backblazeb2.com/a/b.jpg' ) );
+		same( null, \Animeh\Support\B2Url::parse_friendly( 'https://site.com/wp-content/uploads/a.jpg' ) );
+	} );
+
+	it( 'friendly bozulursa S3 karşılığını verir', function (): void {
+		same(
+			'https://manga-images.s3.us-east-005.backblazeb2.com/manga/12/ch1/003.webp',
+			\Animeh\Support\B2Url::alternate(
+				'https://f004.backblazeb2.com/file/manga-images/manga/12/ch1/003.webp',
+				's3.us-east-005.backblazeb2.com'
+			)
+		);
+		// Endpoint bilinmiyorsa uydurmaz.
+		same( '', \Animeh\Support\B2Url::alternate( 'https://f004.backblazeb2.com/file/k/a.jpg', '' ) );
+		// Zaten S3 ise verilecek ikinci adres yok — friendly host hesaba özel
+		// ve adreste yazmıyor.
+		same( '', \Animeh\Support\B2Url::alternate( 'https://k.s3.x.backblazeb2.com/a.jpg', 's3.x.backblazeb2.com' ) );
+	} );
+
+	it( 'eksik parçayla adres kurmaz', function (): void {
+		same( '', \Animeh\Support\B2Url::friendly( '', 'k', 'a.jpg' ) );
+		same( '', \Animeh\Support\B2Url::friendly( 'https://h', '', 'a.jpg' ) );
+		same( '', \Animeh\Support\B2Url::s3( 's3.x', 'k', '' ) );
+	} );
+} );
+
+describe( 'ChapterNumber', function (): void {
+	it( 'sayıyı olduğu gibi okur', function (): void {
+		same( 10.0, \Animeh\Support\ChapterNumber::parse( 10 ) );
+		same( 10.5, \Animeh\Support\ChapterNumber::parse( 10.5 ) );
+		same( 10.5, \Animeh\Support\ChapterNumber::parse( '10.5' ) );
+	} );
+
+	it( 'virgüllü yazımı da kabul eder', function (): void {
+		same( 10.5, \Animeh\Support\ChapterNumber::parse( '10,5' ) );
+	} );
+
+	it( 'başlığın içindeki sayıyı bulur', function (): void {
+		same( 12.0, \Animeh\Support\ChapterNumber::parse( 'Bölüm 12' ) );
+		same( 10.5, \Animeh\Support\ChapterNumber::parse( 'Chapter 10.5 - Ekstra' ) );
+	} );
+
+	it( 'sayı yoksa sıfır', function (): void {
+		same( 0.0, \Animeh\Support\ChapterNumber::parse( 'Son Bölüm' ) );
+		same( 0.0, \Animeh\Support\ChapterNumber::parse( '' ) );
+		same( 0.0, \Animeh\Support\ChapterNumber::parse( null ) );
+	} );
+
+	it( 'etiket gereksiz sıfır taşımaz', function (): void {
+		same( '10', \Animeh\Support\ChapterNumber::label( 10 ) );
+		same( '10', \Animeh\Support\ChapterNumber::label( 10.0 ) );
+		same( '10.5', \Animeh\Support\ChapterNumber::label( 10.5 ) );
+		same( '10.25', \Animeh\Support\ChapterNumber::label( 10.25 ) );
+	} );
+
+	it( 'tam kısım eski istemciler için bozulmaz', function (): void {
+		same( 10, \Animeh\Support\ChapterNumber::whole( 10.5 ) );
+		same( 10, \Animeh\Support\ChapterNumber::whole( '10' ) );
+	} );
+
+	it( '10.5 ile 10 aynı bölüm değil', function (): void {
+		ok( \Animeh\Support\ChapterNumber::parse( '10.5' ) !== \Animeh\Support\ChapterNumber::parse( '10' ) );
+		same( 1, \Animeh\Support\ChapterNumber::compare( '10.5', '10' ) );
+		same( -1, \Animeh\Support\ChapterNumber::compare( '9.9', '10' ) );
+		same( 0, \Animeh\Support\ChapterNumber::compare( '10', 10.0 ) );
+	} );
+} );
+
+describe( 'MangaMapper', function (): void {
+	it( 'Jikan/Tenrai mangasını katalog şekline çevirir', function (): void {
+		$mapped = \Animeh\Support\MangaMapper::from_jikan(
+			array(
+				'mal_id'         => 13,
+				'title'          => 'One Piece',
+				'title_english'  => 'One Piece',
+				'title_japanese' => 'ONE PIECE',
+				'title_synonyms' => array( 'OP' ),
+				'synopsis'       => 'Deniz.',
+				'images'         => array( 'webp' => array( 'large_image_url' => 'https://cdn/op.webp' ) ),
+				'score'          => 9.22,
+				'members'        => 500000,
+				'status'         => 'Publishing',
+				'type'           => 'Manga',
+				'chapters'       => 1100,
+				'published'      => array( 'from' => '1997-07-22T00:00:00+00:00' ),
+				'authors'        => array( array( 'name' => 'Oda, Eiichiro' ) ),
+				'serializations' => array( array( 'name' => 'Shounen Jump (Weekly)' ) ),
+				'genres'         => array( array( 'name' => 'Action' ), array( 'name' => 'Adventure' ) ),
+			)
+		);
+
+		same( 'manga', $mapped['kind'] );
+		same( 13, $mapped['mal_id'] );
+		same( 'One Piece', $mapped['title'] );
+		same( 1997, $mapped['year'] );
+		same( 'airing', $mapped['status'] );
+		same( 'Oda, Eiichiro', $mapped['author'] );
+		same( 'Shounen Jump (Weekly)', $mapped['studio'] );
+		same( array( 'Action', 'Adventure' ), $mapped['genres'] );
+		same( 1100, $mapped['total_episodes'] );
+		same( false, $mapped['adult'] );
+	} );
+
+	it( 'açık içerik türü yetişkin bayrağını kaldırır', function (): void {
+		$mapped = \Animeh\Support\MangaMapper::from_jikan(
+			array( 'mal_id' => 1, 'title' => 'X', 'genres' => array( array( 'name' => 'Hentai' ) ) )
+		);
+		same( true, $mapped['adult'] );
+	} );
+
+	it( 'galeri kaynağından geleni her zaman yetişkin sayar', function (): void {
+		$mapped = \Animeh\Support\MangaMapper::from_gallery(
+			array(
+				'id'          => 177013,
+				'title'       => array( 'english' => '[Circle] Ad', 'japanese' => 'タイトル', 'pretty' => 'Ad' ),
+				'cover_image' => 'https://cdn/1/cover.jpg',
+				'num_pages'   => 20,
+				'upload_date' => 1500000000,
+				'tags'        => array(
+					array( 'type' => 'artist', 'name' => 'çizer' ),
+					array( 'type' => 'group', 'name' => 'grup' ),
+					array( 'type' => 'tag', 'name' => 'etiket' ),
+					array( 'type' => 'language', 'name' => 'japanese' ),
+				),
+			)
+		);
+
+		same( true, $mapped['adult'] );
+		same( 177013, $mapped['nh_id'] );
+		// Süslü başlık tercih edilir: İngilizce olan zaten etiketlerde duran
+		// çember ve dili parantez içinde tekrar ediyor.
+		same( 'Ad', $mapped['title'] );
+		same( 'çizer', $mapped['author'] );
+		same( 'grup', $mapped['studio'] );
+		same( array( 'etiket' ), $mapped['genres'] );
+		same( 2017, $mapped['year'] );
+	} );
+
+	it( 'galeri etiketleri düz listede de gelse ayrışır', function (): void {
+		$mapped = \Animeh\Support\MangaMapper::from_gallery(
+			array(
+				'id'         => 5,
+				'title'      => array( 'pretty' => 'Ad' ),
+				'taxonomies' => array(
+					'manga_artist' => array( 'a1', 'a1', 'a2' ),
+					'manga_tag'    => array( 't1' ),
+				),
+			)
+		);
+
+		// Tekrarlar teke iner.
+		same( 'a1, a2', $mapped['author'] );
+		same( array( 't1' ), $mapped['genres'] );
+	} );
+
+	it( 'arama satırı iki kaynak için de aynı şekilde', function (): void {
+		$row = \Animeh\Support\MangaMapper::search_row(
+			\Animeh\Support\MangaMapper::from_jikan( array( 'mal_id' => 13, 'title' => 'One Piece' ) ),
+			'tenrai'
+		);
+		same( 'tenrai', $row['source'] );
+		same( 13, $row['id'] );
+
+		$row = \Animeh\Support\MangaMapper::search_row(
+			\Animeh\Support\MangaMapper::from_gallery( array( 'id' => 99, 'title' => array( 'pretty' => 'X' ) ) ),
+			'gallery'
+		);
+		same( 'gallery', $row['source'] );
+		same( 99, $row['id'] );
+		same( true, $row['adult'] );
+	} );
+} );

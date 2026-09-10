@@ -423,6 +423,27 @@
     <string name="profile_friend_pending">İstek bekliyor</string>
     <string name="profile_friends_already">Arkadaşsınız</string>
 
+    <!-- Manga -->
+    <string name="home_new_chapters">Yeni Manga Bölümleri</string>
+    <string name="home_manga">Manga</string>
+    <string name="nav_home_anime">Anime</string>
+    <string name="manga">Manga</string>
+    <string name="admin_manga">Manga</string>
+    <string name="admin_manga_bridge">Manga Sitesi Köprüsü</string>
+    <string name="admin_manga_bridge_url">Köprü adresi</string>
+    <string name="admin_manga_bridge_key">Köprü anahtarı</string>
+    <string name="admin_manga_bridge_hint">Manga sitesindeki Ayarlar → Animeh Köprüsü ekranından kopyala.</string>
+    <string name="admin_manga_connect">Bağlan ve test et</string>
+    <string name="admin_manga_sync">Mangaları içe aktar</string>
+    <string name="admin_manga_sync_restart">Baştan başlat</string>
+    <string name="admin_manga_mirror">Görselleri kovamıza kopyala</string>
+    <string name="admin_manga_mirror_hint">Kopyalanan sayfalar manga sitesi kapansa bile çalışmaya devam eder.</string>
+    <string name="admin_manga_search">Manga ara</string>
+    <string name="admin_manga_source_tenrai">Tenrai / Jikan</string>
+    <string name="admin_manga_source_gallery">Galeri kaynağı</string>
+    <string name="admin_manga_gallery_enable">Galeri kaynağını aç</string>
+    <string name="admin_manga_gallery_note">Bu kaynaktan gelen her eser +18 olarak işaretlenir.</string>
+
     <!-- Puanlar, çerçeveler ve sıralama -->
     <string name="points_title">Animeh Puanı</string>
     <string name="frames_shop">Çerçeve Mağazası</string>
@@ -430,6 +451,7 @@
 
     <string name="admin_frames">Çerçeveler</string>
     <string name="admin_frames_add">Çerçeve Ekle</string>
+    <string name="admin_frames_add_many">%1$d çerçeve ekle</string>
     <string name="admin_frames_empty">Henüz çerçeve eklenmemiş.</string>
     <string name="admin_frames_name">Çerçeve adı</string>
     <string name="admin_frames_price">Fiyat (puan)</string>

@@ -457,9 +457,12 @@ final class CatalogRepository {
 		// after asking for it. Both are indexed lookups on `episode_kind`.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-				"SELECT e.*, w.poster_url AS work_poster,
+				"SELECT e.*, w.poster_url AS work_poster, w.kind AS work_kind,
 				        (SELECT COUNT(*) FROM {$sources} sv WHERE sv.episode_id = e.id AND sv.kind = 'video') AS video_sources,
-				        (SELECT COUNT(*) FROM {$sources} ss WHERE ss.episode_id = e.id AND ss.kind = 'subtitle') AS subtitle_sources
+				        (SELECT COUNT(*) FROM {$sources} ss WHERE ss.episode_id = e.id AND ss.kind = 'subtitle') AS subtitle_sources,
+				        -- Same reasoning as the two above: a chapter row on
+				        -- its own cannot say whether it has anything to read.
+				        (SELECT COUNT(*) FROM {$sources} sp WHERE sp.episode_id = e.id AND sp.kind = 'page') AS page_count
 				 FROM {$table} e
 				 LEFT JOIN {$works} w ON w.id = e.work_id
 				 {$clause}
@@ -678,7 +681,7 @@ final class CatalogRepository {
 	 * @param int $limit How many.
 	 * @return array<int, array<string, mixed>>
 	 */
-	public function latest_episodes( int $limit = 20 ): array {
+	public function latest_episodes( int $limit = 20, string $kind = CatalogSchema::KIND_ANIME ): array {
 		global $wpdb;
 
 		$episodes = CatalogSchema::episodes();
@@ -686,18 +689,77 @@ final class CatalogRepository {
 
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-				"SELECT e.*, w.title AS work_title, w.slug AS work_slug, w.poster_url AS work_poster
+				"SELECT e.*, w.kind AS work_kind, w.title AS work_title, w.slug AS work_slug, w.poster_url AS work_poster
 				 FROM {$episodes} e
 				 INNER JOIN {$works} w ON w.id = e.work_id
-				 WHERE e.published = 1 AND w.published = 1
+				 WHERE e.published = 1 AND w.published = 1 AND w.kind = %s
 				 ORDER BY e.published_at DESC, e.id DESC
 				 LIMIT %d",
+				$kind,
 				max( 1, min( $limit, self::MAX_PER_PAGE ) )
 			),
 			ARRAY_A
 		);
 
 		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
+	 * Every page of one chapter, in reading order.
+	 *
+	 * Pages are `sources` rows with `kind = 'page'`; a page of a manga stands
+	 * in the same relation to a chapter as a video rendition does to an
+	 * episode, and giving it a table of its own would have meant a second copy
+	 * of everything that already reads that one.
+	 *
+	 * @param int $episode_id Chapter.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function pages( int $episode_id ): array {
+		global $wpdb;
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+				'SELECT * FROM ' . CatalogSchema::sources() . " WHERE episode_id = %d AND kind = 'page' ORDER BY sort_order ASC, id ASC",
+				$episode_id
+			),
+			ARRAY_A
+		);
+
+		return is_array( $rows ) ? $rows : array();
+	}
+
+	/**
+	 * How many pages each of a set of chapters has, in one query.
+	 *
+	 * @param int[] $episode_ids Chapters.
+	 * @return array<int, int>
+	 */
+	public function page_counts( array $episode_ids ): array {
+		global $wpdb;
+
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $episode_ids ) ) ) );
+		if ( array() === $ids ) {
+			return array();
+		}
+
+		$placeholders = implode( ',', array_fill( 0, count( $ids ), '%d' ) );
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				'SELECT episode_id, COUNT(*) AS pages FROM ' . CatalogSchema::sources() .
+				" WHERE kind = 'page' AND episode_id IN ({$placeholders}) GROUP BY episode_id",
+				...$ids
+			),
+			ARRAY_A
+		);
+
+		$counts = array();
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			$counts[ (int) $row['episode_id'] ] = (int) $row['pages'];
+		}
+
+		return $counts;
 	}
 
 	/**
@@ -909,6 +971,7 @@ final class CatalogRepository {
 			'tenrai_id'        => 0,
 			'mal_id'           => 0,
 			'tmdb_id'          => 0,
+			'nh_id'            => 0,
 			'slug'             => '',
 			'title'            => '',
 			'title_english'    => '',
@@ -926,6 +989,7 @@ final class CatalogRepository {
 			'format'           => '',
 			'rating'           => '',
 			'studio'           => '',
+			'author'           => '',
 			'genres'           => '[]',
 			'total_episodes'   => 0,
 			'duration_seconds' => 0,

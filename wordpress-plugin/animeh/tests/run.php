@@ -40,6 +40,9 @@ require_once __DIR__ . '/../src/Support/ImageResizer.php';
 require_once __DIR__ . '/../src/Support/Points.php';
 require_once __DIR__ . '/../src/Support/ProfileTheme.php';
 require_once __DIR__ . '/../src/Support/FrameFile.php';
+require_once __DIR__ . '/../src/Support/B2Url.php';
+require_once __DIR__ . '/../src/Support/ChapterNumber.php';
+require_once __DIR__ . '/../src/Support/MangaMapper.php';
 
 // Not Support/, but the two methods exercised below are pure: normalising a
 // fingerprint and shaping a statement list touch nothing WordPress owns.

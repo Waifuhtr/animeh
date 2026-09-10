@@ -30,6 +30,8 @@ data class WorkDto(
     val format: String = "",
     val rating: String = "",
     val studio: String = "",
+    /** Who drew it. Empty on an anime, where the studio is the credit. */
+    val author: String = "",
     val genres: List<String> = emptyList(),
     val synonyms: List<String> = emptyList(),
     @SerialName("total_episodes") val totalEpisodes: Int = 0,
@@ -58,6 +60,14 @@ data class EpisodeDto(
     @SerialName("work_id") val workId: Long = 0,
     @SerialName("season_number") val seasonNumber: Int = 1,
     val number: Int = 0,
+    /**
+     * The exact chapter number, written out.
+     *
+     * [number] is the whole part and always has been; a chapter 10.5 sends
+     * "10" there and "10.5" here. Anything that shows a number to a person
+     * should use this one.
+     */
+    @SerialName("number_label") val numberLabel: String = "",
     val title: String = "",
     val synopsis: String = "",
     @SerialName("thumbnail_url") val thumbnailUrl: String = "",
@@ -71,6 +81,10 @@ data class EpisodeDto(
     @SerialName("work_slug") val workSlug: String = "",
     @SerialName("work_poster") val workPoster: String = "",
     @SerialName("source_counts") val sourceCounts: SourceCountsDto? = null,
+    /** Non-zero on a manga chapter: how many pages it has. */
+    @SerialName("page_count") val pageCount: Int = 0,
+    /** "manga" on a chapter joined to its work, so a rail knows where to send a tap. */
+    @SerialName("work_kind") val workKind: String = "",
 )
 
 @Serializable
@@ -108,12 +122,16 @@ data class HomeDto(
     @SerialName("recently_added") val recentlyAdded: List<WorkDto> = emptyList(),
     val airing: List<WorkDto> = emptyList(),
     @SerialName("latest_episodes") val latestEpisodes: List<EpisodeDto> = emptyList(),
+    @SerialName("latest_chapters") val latestChapters: List<EpisodeDto> = emptyList(),
+    val manga: List<WorkDto> = emptyList(),
     @SerialName("continue") val continueWatching: List<HistoryDto> = emptyList(),
 )
 
 @Serializable
 data class HistoryDto(
     @SerialName("work_id") val workId: Long = 0,
+    /** "manga" sends a tap to the reader instead of the player. */
+    @SerialName("work_kind") val workKind: String = "anime",
     @SerialName("work_title") val workTitle: String = "",
     @SerialName("work_slug") val workSlug: String = "",
     @SerialName("poster_url") val posterUrl: String = "",

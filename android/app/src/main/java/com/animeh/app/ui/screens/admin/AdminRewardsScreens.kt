@@ -59,7 +59,7 @@ fun AdminFramesScreen(
     val snackbar = remember { SnackbarHostState() }
 
     var editing by remember { mutableStateOf<FrameDto?>(null) }
-    var pendingUpload by remember { mutableStateOf<android.net.Uri?>(null) }
+    var pendingUpload by remember { mutableStateOf<List<android.net.Uri>>(emptyList()) }
 
     LaunchedEffect(message) {
         message?.let {
@@ -68,16 +68,23 @@ fun AdminFramesScreen(
         }
     }
 
-    val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        pendingUpload = uri
+    // Several at once. Adding forty frames one dialog at a time was the
+    // slowest part of setting the shop up, and the picker has supported a
+    // multiple selection all along.
+    val pick = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        pendingUpload = uris
     }
 
-    pendingUpload?.let { uri ->
+    if (pendingUpload.isNotEmpty()) {
         FrameUploadDialog(
-            onDismiss = { pendingUpload = null },
+            count = pendingUpload.size,
+            onDismiss = { pendingUpload = emptyList() },
             onConfirm = { name, price, rarity ->
-                pendingUpload = null
-                viewModel.upload(uri, name, price, rarity)
+                val chosen = pendingUpload
+                pendingUpload = emptyList()
+                viewModel.upload(chosen, name, price, rarity)
             },
         )
     }
@@ -181,6 +188,7 @@ private fun AdminFrameRow(frame: FrameDto, onClick: () -> Unit) {
 
 @Composable
 private fun FrameUploadDialog(
+    count: Int,
     onDismiss: () -> Unit,
     onConfirm: (name: String, price: Int, rarity: String) -> Unit,
 ) {
@@ -188,19 +196,34 @@ private fun FrameUploadDialog(
     var price by remember { mutableStateOf("200") }
     var rarity by remember { mutableStateOf("common") }
 
+    val single = count == 1
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.admin_frames_add)) },
+        title = {
+            Text(
+                if (single) {
+                    stringResource(R.string.admin_frames_add)
+                } else {
+                    stringResource(R.string.admin_frames_add_many, count)
+                }
+            )
+        },
         text = {
             Column {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it.take(60) },
-                    label = { Text(stringResource(R.string.admin_frames_name)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(10.dp))
+                // Offered only for a single file: one name across forty
+                // frames would be forty frames nobody can tell apart. In a
+                // batch each is named from its own filename.
+                if (single) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it.take(60) },
+                        label = { Text(stringResource(R.string.admin_frames_name)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(Modifier.height(10.dp))
+                }
                 PriceField(price) { price = it }
                 Spacer(Modifier.height(10.dp))
                 RarityPicker(rarity) { rarity = it }

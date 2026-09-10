@@ -52,7 +52,13 @@ import java.util.Locale
 @Composable
 fun HomeScreen(
     onWorkClick: (Work) -> Unit,
-    onEpisodeClick: (Long) -> Unit,
+    /**
+     * Open a row.
+     *
+     * The flag says which screen: a chapter goes to the reader and an
+     * episode to the player, and only the row itself knows which it is.
+     */
+    onEpisodeClick: (id: Long, isChapter: Boolean) -> Unit,
     onSeeAll: () -> Unit,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
@@ -79,6 +85,7 @@ fun HomeScreen(
 
             // Cut once rather than on every recomposition of the list body.
             val newEpisodes = remember(feed.latestEpisodes) { feed.latestEpisodes.take(NEW_EPISODE_ROWS) }
+            val newChapters = remember(feed.latestChapters) { feed.latestChapters.take(NEW_EPISODE_ROWS) }
 
             LazyColumn(
                 contentPadding = PaddingValues(bottom = 24.dp),
@@ -118,7 +125,7 @@ fun HomeScreen(
                                 key = { it.episodeId },
                                 contentType = { "continue" },
                             ) { item ->
-                                ContinueCard(item = item, onClick = { onEpisodeClick(item.episodeId) })
+                                ContinueCard(item = item, onClick = { onEpisodeClick(item.episodeId, item.isChapter) })
                             }
                         }
                     }
@@ -131,8 +138,27 @@ fun HomeScreen(
                         key = { "ep-${it.id}" },
                         contentType = { "episode" },
                     ) { episode ->
-                        EpisodeRowCard(episode = episode, onClick = { onEpisodeClick(episode.id) })
+                        EpisodeRowCard(episode = episode, onClick = { onEpisodeClick(episode.id, episode.isChapter) })
                     }
+                }
+
+                // Below the episodes rather than mixed into them: a row of
+                // video thumbnails and a row of manga covers are two
+                // different promises, and one list of both is neither.
+                if (newChapters.isNotEmpty()) {
+                    item(contentType = "header") { SectionHeader(stringResource(R.string.home_new_chapters)) }
+                    items(
+                        items = newChapters,
+                        key = { "ch-${it.id}" },
+                        contentType = { "episode" },
+                    ) { chapter ->
+                        EpisodeRowCard(episode = chapter, onClick = { onEpisodeClick(chapter.id, true) })
+                    }
+                }
+
+                if (feed.manga.isNotEmpty()) {
+                    item(contentType = "header") { SectionHeader(stringResource(R.string.home_manga)) }
+                    item(contentType = "work-rail") { WorkRail(feed.manga, onWorkClick) }
                 }
 
                 if (feed.popular.isNotEmpty()) {

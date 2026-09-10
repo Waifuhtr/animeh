@@ -32,6 +32,7 @@ import com.animeh.app.ui.screens.auth.*
 import com.animeh.app.ui.screens.detail.DetailScreen
 import com.animeh.app.ui.screens.discover.DiscoverScreen
 import com.animeh.app.ui.screens.home.HomeScreen
+import com.animeh.app.reader.ReaderScreen
 import com.animeh.app.ui.screens.leaderboard.LeaderboardScreen
 import com.animeh.app.ui.screens.library.LibraryScreen
 import com.animeh.app.ui.screens.profile.FrameShopScreen
@@ -132,6 +133,13 @@ fun AnimehApp(
             context.startActivity(PlayerActivity.intent(context, episodeId))
         }
 
+        // A chapter is read and an episode is played. Which one a row is comes
+        // from the row itself — the server sends the work's kind alongside
+        // every episode and every history entry, so no screen has to guess.
+        val openEpisode: (Long, Boolean) -> Unit = { id, isChapter ->
+            if (isChapter) navController.navigate(Routes.reader(id)) else openPlayer(id)
+        }
+
         NavHost(
             navController = navController,
             startDestination = Routes.HOME,
@@ -146,7 +154,7 @@ fun AnimehApp(
             composable(Routes.HOME) {
                 HomeScreen(
                     onWorkClick = { navController.navigate(Routes.detail(it.id)) },
-                    onEpisodeClick = openPlayer,
+                    onEpisodeClick = openEpisode,
                     onSeeAll = { switchTab(Routes.DISCOVER) },
                 )
             }
@@ -161,7 +169,7 @@ fun AnimehApp(
                 LibraryScreen(
                     signedIn = authState is AuthState.SignedIn,
                     onWorkClick = { navController.navigate(Routes.detail(it.id)) },
-                    onEpisodeClick = openPlayer,
+                    onEpisodeClick = openEpisode,
                     onSignIn = { navController.navigate(Routes.LOGIN) },
                 )
             }
@@ -196,6 +204,23 @@ fun AnimehApp(
                 )
             }
 
+            composable(
+                route = Routes.READER,
+                arguments = listOf(navArgument("chapterId") { type = NavType.LongType }),
+            ) { entry ->
+                ReaderScreen(
+                    chapterId = entry.arguments?.getLong("chapterId") ?: 0L,
+                    onBack = { navController.popBackStack() },
+                    // Straight to the next chapter rather than back and in
+                    // again: the reader is where somebody reads three of them.
+                    onChapter = { id ->
+                        navController.navigate(Routes.reader(id)) {
+                            popUpTo(Routes.READER) { inclusive = true }
+                        }
+                    },
+                )
+            }
+
             composable(Routes.LEADERBOARD) {
                 LeaderboardScreen(
                     onBack = { navController.popBackStack() },
@@ -210,7 +235,7 @@ fun AnimehApp(
                 DetailScreen(
                     workId = entry.arguments?.getLong("workId") ?: 0L,
                     onBack = { navController.popBackStack() },
-                    onPlayEpisode = openPlayer,
+                    onPlayEpisode = openEpisode,
                     onSignIn = { navController.navigate(Routes.LOGIN) },
                     onOpenRoom = { navController.navigate(Routes.ROOM) },
                     signedIn = authState is AuthState.SignedIn,
@@ -385,5 +410,9 @@ private fun androidx.navigation.NavGraphBuilder.adminGraph(
 
     composable(Routes.ADMIN_FRAMES) {
         AdminFramesScreen(onBack = { navController.popBackStack() })
+    }
+
+    composable(Routes.ADMIN_MANGA) {
+        AdminMangaScreen(onBack = { navController.popBackStack() })
     }
 }

@@ -136,6 +136,7 @@ final class CatalogController {
 		$result = $repo->works(
 			array(
 				'search'    => $request->get_param( 'search' ),
+				'kind'      => $request->get_param( 'kind' ),
 				'genre'     => $request->get_param( 'genre' ),
 				'year'      => $request->get_param( 'year' ),
 				'season'    => $request->get_param( 'season' ),
@@ -262,6 +263,18 @@ final class CatalogController {
 			'recently_added'  => array_map( array( self::class, 'work_payload' ), $recent['items'] ),
 			'airing'          => array_map( array( self::class, 'work_payload' ), $airing['items'] ),
 			'latest_episodes' => array_map( array( self::class, 'latest_episode_payload' ), $repo->latest_episodes( 20 ) ),
+			// The manga rail, built the same way and kept separate. A reader
+			// and a viewer are the same person here, but "yeni bölüm" under a
+			// row of video thumbnails and "yeni bölüm" under a row of covers
+			// are two different promises.
+			'latest_chapters' => array_map(
+				array( self::class, 'latest_episode_payload' ),
+				$repo->latest_episodes( 20, CatalogSchema::KIND_MANGA )
+			),
+			'manga'           => array_map(
+				array( self::class, 'work_payload' ),
+				$repo->works( array( 'kind' => CatalogSchema::KIND_MANGA, 'sort' => 'recent', 'per_page' => 20 ) )['items']
+			),
 			'continue'        => array(),
 		);
 
@@ -520,6 +533,9 @@ final class CatalogController {
 			'format'         => (string) $work['format'],
 			'rating'         => (string) $work['rating'],
 			'studio'         => (string) $work['studio'],
+			// Who drew it, for a manga. Empty on an anime, where the studio
+			// column is the one that means anything.
+			'author'         => (string) ( $work['author'] ?? '' ),
 			'genres'         => self::json_list( (string) $work['genres'] ),
 			'synonyms'       => self::json_list( (string) $work['synonyms'] ),
 			'total_episodes' => (int) $work['total_episodes'],
@@ -533,6 +549,7 @@ final class CatalogController {
 			// admin panel uses it to show whether artwork can be refreshed
 			// without searching again.
 			'tmdb_id'        => (int) ( $work['tmdb_id'] ?? 0 ),
+			'mal_id'         => (int) ( $work['mal_id'] ?? 0 ),
 		);
 	}
 
@@ -547,8 +564,14 @@ final class CatalogController {
 			'id'               => (int) $episode['id'],
 			'work_id'          => (int) $episode['work_id'],
 			'season_number'    => (int) $episode['season_number'],
-			'number'           => (int) $episode['number'],
+			'number'           => ChapterNumber::whole( $episode['number'] ?? 0 ),
 			'title'            => (string) $episode['title'],
+			// The whole part, as it has always been sent, and the exact
+			// number beside it. Chapter 10.5 is a real chapter and a
+			// different one from 10; an integer alone cannot say that, and
+			// changing what `number` means would break every screen that has
+			// been reading it as one since the first version.
+			'number_label'     => ChapterNumber::label( $episode['number'] ?? 0 ),
 			'synopsis'         => (string) $episode['synopsis'],
 			'thumbnail_url'    => (string) $episode['thumbnail_url'],
 			// What to draw when the episode has no image of its own; absent
@@ -558,6 +581,12 @@ final class CatalogController {
 			'filler'           => (bool) $episode['filler'],
 			'published'        => (bool) $episode['published'],
 			'published_at'     => (string) $episode['published_at'],
+			// Non-zero only on a manga chapter, which is how the app tells a
+			// thing to read from a thing to play without asking the work.
+			'page_count'       => (int) ( $episode['page_count'] ?? 0 ),
+			// Carried on rows that joined the work, so a rail can send a
+			// chapter to the reader and an episode to the player.
+			'work_kind'        => (string) ( $episode['work_kind'] ?? '' ),
 		);
 
 		// Only when the query asked for them. An episode row on its own does
@@ -598,6 +627,9 @@ final class CatalogController {
 	public static function history_payload( array $row ): array {
 		return array(
 			'work_id'          => (int) $row['work_id'],
+			// Which screen a tap on this row opens. Without it a manga in
+			// "devam et" would go to the player, which has nothing to play.
+			'work_kind'        => (string) ( $row['work_kind'] ?? 'anime' ),
 			'work_title'       => (string) ( $row['work_title'] ?? '' ),
 			'work_slug'        => (string) ( $row['work_slug'] ?? '' ),
 			'poster_url'       => (string) ( $row['poster_url'] ?? '' ),
@@ -648,6 +680,13 @@ final class CatalogController {
 	private function list_args(): array {
 		return array(
 			'search'    => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
+			// Anime unless asked otherwise: every screen that existed before
+			// manga did keeps browsing the same catalogue it always has.
+			'kind'      => array(
+				'type'    => 'string',
+				'default' => CatalogSchema::KIND_ANIME,
+				'enum'    => array( CatalogSchema::KIND_ANIME, CatalogSchema::KIND_MANGA ),
+			),
 			'genre'     => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
 			'year'      => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
 			'season'    => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_key' ),

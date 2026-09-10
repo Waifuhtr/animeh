@@ -22,6 +22,8 @@ import androidx.compose.runtime.Immutable
 data class Work(
     val id: Long,
     val slug: String,
+    /** "anime" or "manga". */
+    val kind: String = KIND_ANIME,
     val title: String,
     val titleEnglish: String = "",
     val synopsis: String = "",
@@ -33,6 +35,8 @@ data class Work(
     val status: WorkStatus = WorkStatus.UNKNOWN,
     val format: String = "",
     val studio: String = "",
+    /** Who drew it, on a manga. An anime credits its studio instead. */
+    val author: String = "",
     val genres: List<String> = emptyList(),
     val totalEpisodes: Int = 0,
     val durationSeconds: Int = 0,
@@ -52,6 +56,15 @@ data class Work(
     /** The title to show, preferring English when the site's language is not
      *  the romanised original. */
     val displayTitle: String get() = title.ifBlank { titleEnglish }
+
+    /**
+     * Whether this is read rather than watched.
+     *
+     * The one question every screen that handles both has to answer, and the
+     * only thing that separates them: a manga is a work with chapters instead
+     * of episodes and a reader instead of a player.
+     */
+    val isManga: Boolean get() = kind == KIND_MANGA
 
     val hasScore: Boolean get() = score > 0.0
 }
@@ -76,12 +89,24 @@ data class Season(
     val episodeCount: Int = 0,
 )
 
+/** The two things a work can be. */
+const val KIND_ANIME = "anime"
+const val KIND_MANGA = "manga"
+
 @Immutable
 data class Episode(
     val id: Long,
     val workId: Long,
     val seasonNumber: Int,
     val number: Int,
+    /**
+     * The exact number, written out: "10" or "10.5".
+     *
+     * [number] is the whole part and always has been. Manga numbering has
+     * halves in it and 10.5 is a different chapter from 10, so anything shown
+     * to a person uses this.
+     */
+    val numberLabel: String = "",
     val title: String = "",
     val synopsis: String = "",
     val thumbnailUrl: String = "",
@@ -95,8 +120,18 @@ data class Episode(
     val workPoster: String = "",
     val videoSourceCount: Int = 0,
     val subtitleSourceCount: Int = 0,
+    /** Non-zero on a manga chapter. */
+    val pageCount: Int = 0,
+    /** "manga" where the row was joined to its work. */
+    val workKind: String = "",
 ) {
-    val label: String get() = title.ifBlank { "$number. Bölüm" }
+    /** The number as written, falling back to the whole part. */
+    val displayNumber: String get() = numberLabel.ifBlank { number.toString() }
+
+    val label: String get() = title.ifBlank { "$displayNumber. Bölüm" }
+
+    /** Whether this one opens the reader rather than the player. */
+    val isChapter: Boolean get() = pageCount > 0 || workKind == KIND_MANGA
 }
 
 @Immutable
@@ -164,6 +199,7 @@ data class Progress(
 @Immutable
 data class ContinueItem(
     val workId: Long,
+    val workKind: String = KIND_ANIME,
     val workTitle: String,
     val workSlug: String,
     val posterUrl: String,
@@ -173,20 +209,27 @@ data class ContinueItem(
     val episodeTitle: String,
     val thumbnailUrl: String,
     val progress: Progress,
-)
+) {
+    /** Whether resuming this one opens the reader rather than the player. */
+    val isChapter: Boolean get() = workKind == KIND_MANGA
+}
 
 @Immutable
 data class HomeFeed(
     val hero: List<Work> = emptyList(),
     val continueWatching: List<ContinueItem> = emptyList(),
     val latestEpisodes: List<Episode> = emptyList(),
+    /** The manga side of the same feed: new chapters, and the newest titles. */
+    val latestChapters: List<Episode> = emptyList(),
+    val manga: List<Work> = emptyList(),
     val popular: List<Work> = emptyList(),
     val airing: List<Work> = emptyList(),
     val recentlyAdded: List<Work> = emptyList(),
 ) {
     val isEmpty: Boolean
         get() = hero.isEmpty() && popular.isEmpty() && recentlyAdded.isEmpty() &&
-            airing.isEmpty() && latestEpisodes.isEmpty()
+            airing.isEmpty() && latestEpisodes.isEmpty() && latestChapters.isEmpty() &&
+            manga.isEmpty()
 }
 
 @Immutable

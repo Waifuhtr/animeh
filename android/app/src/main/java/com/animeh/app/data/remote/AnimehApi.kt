@@ -39,6 +39,8 @@ interface PublicApi {
     @GET("catalog/works")
     suspend fun works(
         @Query("search") search: String? = null,
+        /** "anime" unless asked; every screen that predates manga is unchanged. */
+        @Query("kind") kind: String? = null,
         @Query("genre") genre: String? = null,
         @Query("year") year: Int? = null,
         @Query("season") season: String? = null,
@@ -166,6 +168,10 @@ interface UserApi {
 
     @GET("episodes/{id}/play")
     suspend fun play(@Path("id") episodeId: Long): Response<PlaybackDto>
+
+    /** The reader's payload: every page, and every address for each of them. */
+    @GET("chapters/{id}/pages")
+    suspend fun chapterPages(@Path("id") chapterId: Long): Response<ChapterPagesDto>
 
     @POST("works/{id}/reviews")
     suspend fun saveReview(
@@ -433,10 +439,12 @@ interface AdminApi {
      */
     @Multipart
     @POST("admin/frames")
-    suspend fun uploadFrame(
-        @Part file: MultipartBody.Part,
+    suspend fun uploadFrames(
+        // A list of parts, all named `file[]`, so forty frames are one
+        // request rather than forty.
+        @Part files: List<MultipartBody.Part>,
         @PartMap fields: Map<String, @JvmSuppressWildcards RequestBody>,
-    ): Response<FrameEnvelopeDto>
+    ): Response<FrameUploadDto>
 
     @POST("admin/frames/{id}")
     suspend fun updateFrame(
@@ -446,6 +454,34 @@ interface AdminApi {
 
     @DELETE("admin/frames/{id}")
     suspend fun deleteFrame(@Path("id") id: Long): Response<OkDto>
+
+    @GET("admin/manga/bridge")
+    suspend fun mangaBridge(): Response<MangaBridgeDto>
+
+    @POST("admin/manga/bridge")
+    suspend fun saveMangaBridge(@Body body: BridgeSaveRequest): Response<MangaBridgeDto>
+
+    @POST("admin/manga/sync")
+    suspend fun syncManga(@Body body: MangaSyncRequest): Response<MangaSyncResultDto>
+
+    @POST("admin/manga/mirror")
+    suspend fun mirrorManga(): Response<MirrorResultDto>
+
+    @GET("admin/manga/search")
+    suspend fun searchManga(
+        @Query("q") query: String,
+        @Query("source") source: String,
+        @Query("page") page: Int = 1,
+    ): Response<MangaSearchDto>
+
+    @POST("admin/manga/import")
+    suspend fun importManga(@Body body: MangaImportRequest): Response<MangaImportResultDto>
+
+    @GET("admin/manga/gallery")
+    suspend fun gallerySource(): Response<GallerySourceDto>
+
+    @POST("admin/manga/gallery")
+    suspend fun saveGallerySource(@Body body: GallerySourceRequest): Response<GallerySourceDto>
 
     @POST("admin/users/{id}/points")
     suspend fun grantPoints(

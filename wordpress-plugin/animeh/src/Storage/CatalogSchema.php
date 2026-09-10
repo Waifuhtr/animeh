@@ -27,7 +27,7 @@ final class CatalogSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '8';
+	public const VERSION = '9';
 
 	/**
 	 * Option holding the installed catalog version.
@@ -285,6 +285,10 @@ final class CatalogSchema {
 			-- Remembered so refreshing artwork does not have to search by
 			-- title again, which is the step that can pick the wrong show.
 			tmdb_id bigint(20) unsigned NOT NULL DEFAULT 0,
+			-- A gallery id, for a manga imported from that source. Separate
+			-- from `mal_id` because they number different things and a work
+			-- can carry both.
+			nh_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			slug varchar(191) NOT NULL DEFAULT '',
 			title varchar(255) NOT NULL DEFAULT '',
 			title_english varchar(255) NOT NULL DEFAULT '',
@@ -303,6 +307,10 @@ final class CatalogSchema {
 			rating varchar(32) NOT NULL DEFAULT '',
 			studio varchar(191) NOT NULL DEFAULT '',
 			genres longtext NOT NULL,
+			-- Who drew and wrote it. A studio makes an anime and a person
+			-- makes a manga; the two do not fit in one column without one of
+			-- them reading as a lie.
+			author varchar(191) NOT NULL DEFAULT '',
 			total_episodes smallint(5) unsigned NOT NULL DEFAULT 0,
 			duration_seconds int(10) unsigned NOT NULL DEFAULT 0,
 			published tinyint(1) NOT NULL DEFAULT 0,
@@ -340,7 +348,11 @@ final class CatalogSchema {
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			work_id bigint(20) unsigned NOT NULL DEFAULT 0,
 			season_number smallint(5) unsigned NOT NULL DEFAULT 1,
-			number smallint(5) unsigned NOT NULL DEFAULT 1,
+			-- Decimal, because chapter 10.5 exists and is a different chapter
+			-- from 10. An anime episode simply stores a whole number here and
+			-- the payload still sends it as one, so nothing that reads this
+			-- column today changes.
+			number decimal(8,2) NOT NULL DEFAULT 1.00,
 			title varchar(255) NOT NULL DEFAULT '',
 			synopsis longtext NOT NULL,
 			thumbnail_url varchar(512) NOT NULL DEFAULT '',

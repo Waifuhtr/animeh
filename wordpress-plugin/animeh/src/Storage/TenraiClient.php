@@ -280,6 +280,40 @@ final class TenraiClient {
 	}
 
 	/**
+	 * Search manga.
+	 *
+	 * Same service, same schema, a different noun. `sfw` is left off here on
+	 * purpose: a manga catalogue that quietly hides half of itself from the
+	 * person curating it is a catalogue whose search box lies, and the app's
+	 * own adult flag is what decides who sees what afterwards.
+	 *
+	 * @param string $query Search text.
+	 * @param int    $page  Page number.
+	 * @param int    $limit Results per page.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function search_manga( string $query, int $page = 1, int $limit = 20 ) {
+		return $this->get(
+			'manga',
+			array(
+				'q'     => $query,
+				'page'  => max( 1, $page ),
+				'limit' => max( 1, min( $limit, 25 ) ),
+			)
+		);
+	}
+
+	/**
+	 * Full details for one manga.
+	 *
+	 * @param int $id Tenrai/MAL id.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	public function manga( int $id ) {
+		return $this->get( 'manga/' . $id . '/full' );
+	}
+
+	/**
 	 * Every episode of one anime, following the pagination.
 	 *
 	 * @param int $id       Tenrai/MAL id.

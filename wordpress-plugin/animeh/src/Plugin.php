@@ -26,6 +26,7 @@ use Animeh\Rest\MeController;
 use Animeh\Rest\MigrationController;
 use Animeh\Rest\Permissions;
 use Animeh\Rest\RoomLinkPage;
+use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
 use Animeh\Rest\SocialController;
 use Animeh\Rest\StorageController;
@@ -84,6 +85,7 @@ final class Plugin {
 				( new SocialController() )->register_routes();
 				( new AdminController() )->register_routes();
 				( new RewardsController() )->register_routes();
+				( new MangaController() )->register_routes();
 			}
 		);
 

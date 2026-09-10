@@ -13,12 +13,15 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.animeh.app.R
+import com.animeh.app.domain.KIND_MANGA
+import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.core.UiState
 import com.animeh.app.domain.Work
 import com.animeh.app.ui.components.*
@@ -49,6 +52,25 @@ fun DiscoverScreen(
     }
 
     Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        // Two lists, not one with a filter on it. Above the search box
+        // because it decides what the search box searches.
+        TabRow(
+            selectedTabIndex = if (filters.kind == KIND_MANGA) 1 else 0,
+            containerColor = Color.Transparent,
+            divider = { HorizontalDivider(color = Color.White.copy(alpha = 0.06f)) },
+        ) {
+            Tab(
+                selected = filters.kind == KIND_ANIME,
+                onClick = { viewModel.setKind(KIND_ANIME) },
+                text = { Text(stringResource(R.string.nav_home_anime)) },
+            )
+            Tab(
+                selected = filters.kind == KIND_MANGA,
+                onClick = { viewModel.setKind(KIND_MANGA) },
+                text = { Text(stringResource(R.string.manga)) },
+            )
+        }
+
         OutlinedTextField(
             value = filters.query,
             onValueChange = viewModel::setQuery,

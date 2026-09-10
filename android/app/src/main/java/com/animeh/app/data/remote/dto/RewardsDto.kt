@@ -155,3 +155,18 @@ data class GrantPointsRequest(
     val amount: Int,
     val note: String = "",
 )
+
+@Serializable
+data class FrameUploadDto(
+    /** The first one, for callers that only ever send one. */
+    val frame: FrameDto = FrameDto(),
+    val frames: List<FrameDto> = emptyList(),
+    /** The files the server refused, with its reason for each. */
+    val failed: List<FrameUploadFailureDto> = emptyList(),
+)
+
+@Serializable
+data class FrameUploadFailureDto(
+    val filename: String = "",
+    val message: String = "",
+)

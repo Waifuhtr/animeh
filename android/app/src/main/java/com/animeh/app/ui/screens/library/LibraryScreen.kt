@@ -39,7 +39,7 @@ import com.animeh.app.ui.components.*
 fun LibraryScreen(
     signedIn: Boolean,
     onWorkClick: (Work) -> Unit,
-    onEpisodeClick: (Long) -> Unit,
+    onEpisodeClick: (id: Long, isChapter: Boolean) -> Unit,
     onSignIn: () -> Unit,
     viewModel: LibraryViewModel = hiltViewModel(),
 ) {
@@ -84,7 +84,7 @@ fun LibraryScreen(
                 )
                 is UiState.Success -> LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
                     items(history.data, key = { it.episodeId }) { item ->
-                        ContinueRow(item = item, onClick = { onEpisodeClick(item.episodeId) })
+                        ContinueRow(item = item, onClick = { onEpisodeClick(item.episodeId, item.isChapter) })
                     }
                 }
             }

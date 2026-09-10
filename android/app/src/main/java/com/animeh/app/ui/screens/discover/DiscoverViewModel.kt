@@ -6,6 +6,7 @@ import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
 import com.animeh.app.data.repository.CatalogRepository
 import com.animeh.app.domain.Genre
+import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.domain.Work
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
@@ -20,6 +21,14 @@ import javax.inject.Inject
 
 data class DiscoverFilters(
     val query: String = "",
+    /**
+     * Which half of the catalogue is being browsed.
+     *
+     * Not one of [isActive]'s tests: switching to manga is not a filter over
+     * the anime list, it is a different list — and the "clear filters" button
+     * should not quietly send somebody back to the other one.
+     */
+    val kind: String = KIND_ANIME,
     val genre: String = "",
     val year: Int = 0,
     val season: String = "",
@@ -53,6 +62,14 @@ class DiscoverViewModel @Inject constructor(
         viewModelScope.launch {
             (repository.genres() as? AppResult.Success)?.let { _genres.value = it.data }
         }
+    }
+
+    /** Switch between anime and manga, and start the list again. */
+    fun setKind(kind: String) {
+        if (_filters.value.kind == kind) return
+
+        _filters.update { it.copy(kind = kind) }
+        scheduleSearch(0)
     }
 
     fun setQuery(query: String) {
@@ -89,7 +106,10 @@ class DiscoverViewModel @Inject constructor(
     }
 
     fun clearFilters() {
-        _filters.value = DiscoverFilters()
+        // The kind survives: it is which list you are looking at, not a filter
+        // over it, and clearing filters should not move you to a different
+        // catalogue.
+        _filters.value = DiscoverFilters(kind = _filters.value.kind)
         _results.value = UiState.Empty
     }
 
@@ -147,6 +167,7 @@ class DiscoverViewModel @Inject constructor(
 
         return repository.works(
             search = current.query,
+            kind = current.kind,
             genre = current.genre,
             year = current.year,
             season = current.season,

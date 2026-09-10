@@ -28,6 +28,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.core.UiState
+import com.animeh.app.core.dataOrNull
 import com.animeh.app.data.repository.label
 import com.animeh.app.domain.Work
 import com.animeh.app.ui.components.*
@@ -39,7 +40,7 @@ fun DetailScreen(
     workId: Long,
     signedIn: Boolean,
     onBack: () -> Unit,
-    onPlayEpisode: (Long) -> Unit,
+    onPlayEpisode: (id: Long, isChapter: Boolean) -> Unit,
     onSignIn: () -> Unit,
     onOpenRoom: () -> Unit = {},
     viewModel: DetailViewModel = hiltViewModel(),
@@ -67,8 +68,12 @@ fun DetailScreen(
     // turns those into the words on the page.
     val labels by viewModel.labels.collectAsStateWithLifecycle()
 
+    // The work's own kind decides where a row goes. Every episode of a manga
+    // is a chapter, so this is settled once here rather than per row — a
+    // chapter with no pages yet is still a chapter, and sending it to the
+    // player would only mean a different empty screen.
     val play: (Long) -> Unit = { episodeId ->
-        if (signedIn) onPlayEpisode(episodeId) else onSignIn()
+        if (signedIn) onPlayEpisode(episodeId, state.work.dataOrNull?.isManga == true) else onSignIn()
     }
 
     // Raised by the view model when the page opens on a flagged series, not

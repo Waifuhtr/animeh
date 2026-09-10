@@ -50,6 +50,8 @@ class CatalogRepository @Inject constructor(
 
     suspend fun works(
         search: String? = null,
+        /** "manga" to browse the other half of the catalogue. */
+        kind: String? = null,
         genre: String? = null,
         year: Int? = null,
         season: String? = null,
@@ -61,6 +63,7 @@ class CatalogRepository @Inject constructor(
     ): AppResult<List<Work>> = ApiErrorMapper.call({ dto -> dto.items.map { it.toDomain() } }) {
         publicApi.works(
             search = search?.takeIf { it.isNotBlank() },
+            kind = kind?.takeIf { it.isNotBlank() },
             genre = genre?.takeIf { it.isNotBlank() },
             year = year?.takeIf { it > 0 },
             season = season?.takeIf { it.isNotBlank() },

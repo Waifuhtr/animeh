@@ -136,6 +136,53 @@ final class StorageKey {
 	}
 
 	/**
+	 * Folder for one manga chapter.
+	 *
+	 * Under the same root as everything else, on purpose: manga are works in
+	 * the same catalogue, and a second tree would mean a second set of
+	 * lifecycle rules for the same kind of file.
+	 *
+	 * The chapter number is padded to four digits and multiplied by ten, so
+	 * chapter 10.5 lands between 10 and 11 rather than after 105 — the
+	 * console sorts keys as strings, and a long-running series really does
+	 * reach four figures.
+	 *
+	 * @param string $slug   Manga slug.
+	 * @param float  $number Chapter number, possibly fractional.
+	 */
+	public static function chapter_prefix( string $slug, float $number ): string {
+		return sprintf(
+			'%s/chapter-%05d',
+			self::anime_prefix( $slug ),
+			(int) round( max( 0.0, $number ) * 10 )
+		);
+	}
+
+	/**
+	 * Key for one page of a chapter.
+	 *
+	 * The position leads the filename so a directory listing is in reading
+	 * order whatever the pages were originally called — and they are called
+	 * everything: `01.jpg`, `page_1.webp`, `2.png`.
+	 *
+	 * @param string $slug     Manga slug.
+	 * @param float  $number   Chapter number.
+	 * @param int    $position One-based page number.
+	 * @param string $filename Original file name, for its extension.
+	 */
+	public static function chapter_page( string $slug, float $number, int $position, string $filename ): string {
+		$extension = strtolower( (string) pathinfo( $filename, PATHINFO_EXTENSION ) );
+		$extension = 1 === preg_match( '/^[a-z0-9]{1,5}$/', $extension ) ? $extension : 'jpg';
+
+		return sprintf(
+			'%s/%03d.%s',
+			self::chapter_prefix( $slug, $number ),
+			max( 1, $position ),
+			$extension
+		);
+	}
+
+	/**
 	 * Key for a subtitle belonging to an episode.
 	 *
 	 * @param string $slug     Anime slug.

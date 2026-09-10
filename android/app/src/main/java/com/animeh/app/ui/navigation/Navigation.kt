@@ -48,6 +48,10 @@ object Routes {
     const val FRIENDS = "friends"
     const val ROOM = "room"
     const val FRAME_SHOP = "frames"
+
+    private const val READER_BASE = "read"
+    const val READER = "$READER_BASE/{chapterId}"
+    fun reader(chapterId: Long) = "$READER_BASE/$chapterId"
     const val LEADERBOARD = "leaderboard"
 
     private const val PROFILE_BASE = "profile/user"
@@ -59,6 +63,7 @@ object Routes {
     const val ADMIN_MODERATORS = "admin/moderators"
     const val ADMIN_SERVER = "admin/server"
     const val ADMIN_FRAMES = "admin/frames"
+    const val ADMIN_MANGA = "admin/manga"
 
     private const val ADMIN_WORK_BASE = "admin/work"
     const val ADMIN_WORK_EDIT = "$ADMIN_WORK_BASE/{workId}"

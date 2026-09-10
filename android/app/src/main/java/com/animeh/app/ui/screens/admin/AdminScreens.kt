@@ -536,6 +536,10 @@ private val SECTIONS = listOf(
     Triple(Routes.ADMIN_WORKS, R.string.admin_anime, Icons.Filled.MovieFilter),
     Triple(Routes.ADMIN_TENRAI, R.string.admin_tenrai, Icons.Filled.CloudDownload),
     Triple(Routes.ADMIN_TMDB, R.string.admin_tmdb_search, Icons.Filled.Image),
+    // A moderator reaches it: importing chapters and copying images is
+    // catalogue work, and the two things here that are not — the bridge
+    // key and the second source's switch — are refused server-side.
+    Triple(Routes.ADMIN_MANGA, R.string.admin_manga, Icons.Filled.MenuBook),
     Triple(Routes.ADMIN_FONTS, R.string.admin_fonts, Icons.Filled.FontDownload),
     Triple(Routes.ADMIN_TERMS, R.string.admin_terms, Icons.Filled.Translate),
     Triple(Routes.ADMIN_USERS, R.string.admin_users, Icons.Filled.People),
@@ -562,6 +566,7 @@ private val MODERATOR_SECTIONS = setOf(
     Routes.ADMIN_WORKS,
     Routes.ADMIN_TENRAI,
     Routes.ADMIN_TMDB,
+    Routes.ADMIN_MANGA,
     Routes.ADMIN_USERS,
     Routes.ADMIN_REPORTS,
 )

@@ -459,31 +459,114 @@ final class RewardsController {
 	 */
 	public function upload_frame( WP_REST_Request $request ) {
 		$files = $request->get_file_params();
-		$file  = $files['file'] ?? null;
 
-		if ( ! is_array( $file ) || ! isset( $file['tmp_name'] ) || UPLOAD_ERR_OK !== (int) ( $file['error'] ?? UPLOAD_ERR_NO_FILE ) ) {
+		// One part named `file`, or many named `file[]`. Forty frames uploaded
+		// one at a time is forty round trips and forty dialogs; PHP already
+		// gives us the whole set in one request, so the only thing missing was
+		// a handler that looked for it.
+		$uploads = self::normalise_uploads( $files['file'] ?? null );
+
+		if ( array() === $uploads ) {
 			return new WP_Error( 'animeh_frame_no_file', __( 'Dosya gelmedi.', 'animeh' ), array( 'status' => 400 ) );
 		}
 
-		$stored = FrameRepository::store(
-			(string) $file['tmp_name'],
-			(string) ( $file['name'] ?? 'frame' ),
-			array(
-				'name'       => (string) $request->get_param( 'name' ),
-				'price'      => (int) $request->get_param( 'price' ),
-				'rarity'     => (string) $request->get_param( 'rarity' ),
-				'sort_order' => (int) $request->get_param( 'sort_order' ),
-				'published'  => null === $request->get_param( 'published' ) ? true : (bool) $request->get_param( 'published' ),
-			)
-		);
+		// A name given with a batch would be the same name on every frame, so
+		// it is only used when there is exactly one file. The rest are named
+		// from their own filenames, which is what a batch upload wants anyway.
+		$single = 1 === count( $uploads );
 
-		if ( $stored instanceof WP_Error ) {
-			return $stored;
+		$added  = array();
+		$failed = array();
+
+		foreach ( $uploads as $index => $file ) {
+			$stored = FrameRepository::store(
+				(string) $file['tmp_name'],
+				(string) ( $file['name'] ?? 'frame' ),
+				array(
+					'name'       => $single ? (string) $request->get_param( 'name' ) : '',
+					'price'      => (int) $request->get_param( 'price' ),
+					'rarity'     => (string) $request->get_param( 'rarity' ),
+					// Keeps the order they were picked in, so a numbered set
+					// of frames lands in the shop in that order.
+					'sort_order' => (int) $request->get_param( 'sort_order' ) + $index,
+					'published'  => null === $request->get_param( 'published' ) ? true : (bool) $request->get_param( 'published' ),
+				)
+			);
+
+			if ( $stored instanceof WP_Error ) {
+				// One bad file does not sink the batch: the other thirty-nine
+				// are fine, and the reply says exactly which one failed and
+				// why so it can be fixed and sent again.
+				$failed[] = array(
+					'filename' => (string) ( $file['name'] ?? '' ),
+					'message'  => $stored->get_error_message(),
+				);
+				continue;
+			}
+
+			$added[] = FrameRepository::payload( $stored );
 		}
 
-		( new LogRepository() )->record( 'info', 'frame_added', 'Çerçeve eklendi: ' . (string) $stored['name'] );
+		if ( array() === $added ) {
+			return new WP_Error(
+				'animeh_frame_all_failed',
+				$failed[0]['message'] ?? __( 'Çerçeve eklenemedi.', 'animeh' ),
+				array( 'status' => 422, 'failed' => $failed )
+			);
+		}
 
-		return new WP_REST_Response( array( 'frame' => FrameRepository::payload( $stored ) ), 201 );
+		( new LogRepository() )->record(
+			'info',
+			'frame_added',
+			sprintf( '%d çerçeve eklendi', count( $added ) )
+		);
+
+		return new WP_REST_Response(
+			array(
+				// Kept for the single-file callers that read `frame`.
+				'frame'  => $added[0],
+				'frames' => $added,
+				'failed' => $failed,
+			),
+			201
+		);
+	}
+
+	/**
+	 * PHP's two shapes for an upload field, as one list.
+	 *
+	 * A single part arrives as `['name' => 'a.webp', 'tmp_name' => …]`; a
+	 * repeated one as `['name' => ['a.webp', 'b.webp'], 'tmp_name' => […]]`.
+	 * Everything downstream wants the first shape, one at a time.
+	 *
+	 * @param mixed $field The `$_FILES` entry.
+	 * @return array<int, array<string, mixed>>
+	 */
+	private static function normalise_uploads( $field ): array {
+		if ( ! is_array( $field ) || ! isset( $field['tmp_name'] ) ) {
+			return array();
+		}
+
+		if ( ! is_array( $field['tmp_name'] ) ) {
+			return UPLOAD_ERR_OK === (int) ( $field['error'] ?? UPLOAD_ERR_NO_FILE )
+				? array( $field )
+				: array();
+		}
+
+		$uploads = array();
+		foreach ( array_keys( $field['tmp_name'] ) as $index ) {
+			if ( UPLOAD_ERR_OK !== (int) ( $field['error'][ $index ] ?? UPLOAD_ERR_NO_FILE ) ) {
+				continue;
+			}
+
+			$uploads[] = array(
+				'name'     => $field['name'][ $index ] ?? 'frame',
+				'tmp_name' => $field['tmp_name'][ $index ],
+				'error'    => UPLOAD_ERR_OK,
+			);
+		}
+
+		return $uploads;
 	}
 
 	/**

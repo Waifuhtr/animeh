@@ -1,6 +1,7 @@
 package com.animeh.app.ui.screens.admin
 
 import android.net.Uri
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -1002,13 +1003,19 @@ class AdminFramesViewModel @Inject constructor(
         }
     }
 
-    fun upload(uri: Uri, name: String, price: Int, rarity: String) {
+    fun upload(uris: List<Uri>, name: String, price: Int, rarity: String) {
+        if (uris.isEmpty()) return
+
         viewModelScope.launch {
             _busy.value = true
 
-            when (val result = repository.uploadFrame(uri, name, price, rarity)) {
+            when (val result = repository.uploadFrames(uris, name, price, rarity)) {
                 is AppResult.Success -> {
-                    _message.value = "${result.data.name} eklendi"
+                    _message.value = if (result.data.size == 1) {
+                        "${result.data.first().name} eklendi"
+                    } else {
+                        "${result.data.size} çerçeve eklendi"
+                    }
                     load()
                 }
                 // The server's own words: it knows whether the file was the
@@ -1044,6 +1051,269 @@ class AdminFramesViewModel @Inject constructor(
 
     fun messageShown() {
         _message.value = null
+    }
+
+    private fun describe(error: AppError): String = when (error) {
+        is AppError.Message -> error.text
+        else -> "Bir şeyler ters gitti."
+    }
+}
+
+/**
+ * The manga panel's state.
+ *
+ * The two long jobs — pulling the library across and copying its images —
+ * run as a loop of small calls rather than one long one, because the other
+ * end is a shared host whose proxy stops listening after about thirty
+ * seconds. Each call reports where it got to and the next one carries on, so
+ * a stall is one lost batch rather than a lost run.
+ */
+@Immutable
+data class AdminMangaState(
+    val bridgeUrl: String = "",
+    val bridgeKey: String = "",
+    val hasKey: Boolean = false,
+    val site: String = "",
+    val connecting: Boolean = false,
+    val works: Int = 0,
+    val chapters: Int = 0,
+    val pages: Int = 0,
+    val syncing: Boolean = false,
+    val syncProgress: String = "",
+    val mirrorTotal: Int = 0,
+    val mirrored: Int = 0,
+    val mirroring: Boolean = false,
+    val query: String = "",
+    val source: String = "tenrai",
+    val galleryEnabled: Boolean = false,
+    val searching: Boolean = false,
+    val results: List<MangaSearchItemDto> = emptyList(),
+    val importingId: Long = 0,
+)
+
+@HiltViewModel
+class AdminMangaViewModel @Inject constructor(
+    private val repository: AdminRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(AdminMangaState())
+    val state: StateFlow<AdminMangaState> = _state.asStateFlow()
+
+    private val _message = MutableStateFlow<String?>(null)
+    val message: StateFlow<String?> = _message.asStateFlow()
+
+    private var mirrorJob: Job? = null
+
+    init {
+        load()
+        loadGallery()
+    }
+
+    fun setBridgeUrl(value: String) = _state.update { it.copy(bridgeUrl = value.trim()) }
+
+    fun setBridgeKey(value: String) = _state.update { it.copy(bridgeKey = value.trim()) }
+
+    fun setQuery(value: String) = _state.update { it.copy(query = value) }
+
+    fun setSource(value: String) = _state.update { it.copy(source = value, results = emptyList()) }
+
+    fun load() {
+        viewModelScope.launch {
+            (repository.mangaBridge() as? AppResult.Success)?.let { apply(it.data) }
+        }
+    }
+
+    private fun loadGallery() {
+        viewModelScope.launch {
+            (repository.gallerySource() as? AppResult.Success)?.let { result ->
+                _state.update { it.copy(galleryEnabled = result.data.enabled) }
+            }
+        }
+    }
+
+    fun connect() {
+        val current = _state.value
+        if (current.bridgeUrl.isBlank()) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(connecting = true) }
+
+            when (val result = repository.saveMangaBridge(current.bridgeUrl, current.bridgeKey)) {
+                is AppResult.Success -> {
+                    apply(result.data)
+                    // Cleared once stored: it is never sent back, and leaving
+                    // it on screen only invites it being pasted somewhere.
+                    _state.update { it.copy(bridgeKey = "", connecting = false) }
+                    _message.value = result.data.remote?.let {
+                        "${it.site}: ${it.manga} manga, ${it.chapters} bölüm"
+                    } ?: "Bağlandı"
+                }
+
+                is AppResult.Failure -> {
+                    _state.update { it.copy(connecting = false) }
+                    _message.value = describe(result.error)
+                }
+            }
+        }
+    }
+
+    /**
+     * Pull the library across, batch after batch, until the server says done.
+     *
+     * Looped here rather than on the server for one reason: a run that takes
+     * four minutes cannot be one HTTP request on a shared host, and a job
+     * queue would mean a progress screen that reads a table instead of a
+     * reply. This way each batch's result is the progress report.
+     */
+    fun sync(reset: Boolean) {
+        if (_state.value.syncing) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(syncing = true, syncProgress = "") }
+
+            var first = true
+            while (true) {
+                val result = repository.syncManga(reset = reset && first)
+                first = false
+
+                if (result !is AppResult.Success) {
+                    _message.value = describe((result as AppResult.Failure).error)
+                    break
+                }
+
+                val data = result.data
+                _state.update {
+                    it.copy(
+                        works = data.counts.works,
+                        chapters = data.counts.chapters,
+                        pages = data.counts.pages,
+                        mirrorTotal = data.mirror.total,
+                        mirrored = data.mirror.mirrored,
+                        syncProgress = "${data.page} / ${data.pages} sayfa · " +
+                            data.imported.joinToString(", ") { row -> row.title }.take(80),
+                    )
+                }
+
+                if (data.done) {
+                    _message.value = "İçe aktarma tamamlandı"
+                    break
+                }
+            }
+
+            _state.update { it.copy(syncing = false) }
+        }
+    }
+
+    /**
+     * Copy pages into our bucket until there are none left.
+     *
+     * Cancellable, because it is the long one: tens of thousands of images at
+     * twenty-five a call. Stopping loses nothing — every copied page is
+     * already recorded, and starting again picks up from the first one that
+     * is not.
+     */
+    fun mirror() {
+        if (_state.value.mirroring) return
+
+        mirrorJob = viewModelScope.launch {
+            _state.update { it.copy(mirroring = true) }
+
+            while (true) {
+                val result = repository.mirrorManga()
+
+                if (result !is AppResult.Success) {
+                    _message.value = describe((result as AppResult.Failure).error)
+                    break
+                }
+
+                val data = result.data
+                _state.update { it.copy(mirrorTotal = data.total, mirrored = data.mirrored) }
+
+                if (data.failed.isNotEmpty()) {
+                    // Named rather than counted: a page that will not copy is
+                    // usually one URL that has rotted, and its address is the
+                    // only thing that makes it findable.
+                    _message.value = data.failed.first().message
+                }
+
+                if (data.done || (data.copied == 0 && data.failed.isEmpty())) {
+                    _message.value = "Kopyalama tamamlandı"
+                    break
+                }
+            }
+
+            _state.update { it.copy(mirroring = false) }
+        }
+    }
+
+    fun stopMirror() {
+        mirrorJob?.cancel()
+        _state.update { it.copy(mirroring = false) }
+    }
+
+    fun search() {
+        val current = _state.value
+        if (current.query.isBlank()) return
+
+        viewModelScope.launch {
+            _state.update { it.copy(searching = true) }
+
+            when (val result = repository.searchManga(current.query, current.source)) {
+                is AppResult.Success ->
+                    _state.update { it.copy(searching = false, results = result.data) }
+
+                is AppResult.Failure -> {
+                    _state.update { it.copy(searching = false) }
+                    _message.value = describe(result.error)
+                }
+            }
+        }
+    }
+
+    fun import(item: MangaSearchItemDto) {
+        viewModelScope.launch {
+            _state.update { it.copy(importingId = item.id) }
+
+            when (val result = repository.importManga(item.id, item.source)) {
+                is AppResult.Success -> {
+                    _message.value = if (result.data.created) {
+                        "${item.title} eklendi"
+                    } else {
+                        "${item.title} güncellendi"
+                    }
+                    load()
+                }
+
+                is AppResult.Failure -> _message.value = describe(result.error)
+            }
+
+            _state.update { it.copy(importingId = 0) }
+        }
+    }
+
+    fun setGalleryEnabled(enabled: Boolean) {
+        _state.update { it.copy(galleryEnabled = enabled) }
+
+        viewModelScope.launch { repository.saveGallerySource(enabled, "") }
+    }
+
+    fun messageShown() {
+        _message.value = null
+    }
+
+    private fun apply(data: MangaBridgeDto) {
+        _state.update {
+            it.copy(
+                bridgeUrl = data.url.ifBlank { it.bridgeUrl },
+                hasKey = data.hasKey,
+                site = data.site,
+                works = data.counts.works,
+                chapters = data.counts.chapters,
+                pages = data.counts.pages,
+                mirrorTotal = data.mirror.total,
+                mirrored = data.mirror.mirrored,
+            )
+        }
     }
 
     private fun describe(error: AppError): String = when (error) {

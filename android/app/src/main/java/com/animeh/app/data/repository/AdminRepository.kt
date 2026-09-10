@@ -334,35 +334,48 @@ class AdminRepository @Inject constructor(
      * megabytes, which is a size a phone can hold, and multipart needs a
      * length the content resolver does not always know for a stream.
      */
-    suspend fun uploadFrame(
-        uri: Uri,
+    suspend fun uploadFrames(
+        uris: List<Uri>,
         name: String,
         price: Int,
         rarity: String,
-    ): AppResult<FrameDto> {
-        val bytes = withContext(Dispatchers.IO) {
-            runCatching { contentResolver.openInputStream(uri)?.use { it.readBytes() } }.getOrNull()
+    ): AppResult<List<FrameDto>> {
+        if (uris.isEmpty()) return AppResult.Failure(AppError.Message("Dosya seçilmedi."))
+
+        val parts = withContext(Dispatchers.IO) {
+            uris.mapNotNull { uri ->
+                val bytes = runCatching {
+                    contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                }.getOrNull()
+
+                if (bytes == null || bytes.isEmpty()) {
+                    null
+                } else {
+                    MultipartBody.Part.createFormData(
+                        // The repeated form name is what makes this one
+                        // request instead of forty: PHP collects `file[]`
+                        // into a single upload field.
+                        "file[]",
+                        uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "frame",
+                        bytes.toRequestBody(mediaType(contentResolver.getType(uri).orEmpty())),
+                    )
+                }
+            }
         }
 
-        if (bytes == null || bytes.isEmpty()) {
-            return AppResult.Failure(AppError.Message("Dosya okunamadı."))
-        }
-
-        val filename = uri.lastPathSegment?.substringAfterLast('/')?.ifBlank { null } ?: "frame"
-        val type = contentResolver.getType(uri).orEmpty()
-        val part = MultipartBody.Part.createFormData(
-            "file",
-            filename,
-            bytes.toRequestBody(mediaType(type)),
-        )
+        if (parts.isEmpty()) return AppResult.Failure(AppError.Message("Dosyalar okunamadı."))
 
         val fields = mapOf(
+            // Only meaningful for a single file; the server ignores it for a
+            // batch and names each frame from its own filename.
             "name" to name.toPlainPart(),
             "price" to price.toString().toPlainPart(),
             "rarity" to rarity.toPlainPart(),
         )
 
-        return ApiErrorMapper.call({ it.frame }) { api.uploadFrame(part, fields) }
+        return ApiErrorMapper.call({ it.frames.ifEmpty { listOf(it.frame) } }) {
+            api.uploadFrames(parts, fields)
+        }
     }
 
     suspend fun updateFrame(
@@ -384,6 +397,33 @@ class AdminRepository @Inject constructor(
         ApiErrorMapper.call({ it.balance }) {
             api.grantPoints(userId, GrantPointsRequest(amount, note))
         }
+
+    /* ── Manga ───────────────────────────────────────────────────────── */
+
+    suspend fun mangaBridge(): AppResult<MangaBridgeDto> =
+        ApiErrorMapper.call { api.mangaBridge() }
+
+    suspend fun saveMangaBridge(url: String, key: String, test: Boolean = true): AppResult<MangaBridgeDto> =
+        ApiErrorMapper.call { api.saveMangaBridge(BridgeSaveRequest(url, key, test)) }
+
+    /** One batch. Zero continues from wherever the last call stopped. */
+    suspend fun syncManga(page: Int = 0, reset: Boolean = false): AppResult<MangaSyncResultDto> =
+        ApiErrorMapper.call { api.syncManga(MangaSyncRequest(page, reset)) }
+
+    suspend fun mirrorManga(): AppResult<MirrorResultDto> =
+        ApiErrorMapper.call { api.mirrorManga() }
+
+    suspend fun searchManga(query: String, source: String): AppResult<List<MangaSearchItemDto>> =
+        ApiErrorMapper.call({ it.items }) { api.searchManga(query, source) }
+
+    suspend fun importManga(id: Long, source: String): AppResult<MangaImportResultDto> =
+        ApiErrorMapper.call { api.importManga(MangaImportRequest(id, source)) }
+
+    suspend fun gallerySource(): AppResult<GallerySourceDto> =
+        ApiErrorMapper.call { api.gallerySource() }
+
+    suspend fun saveGallerySource(enabled: Boolean, key: String): AppResult<GallerySourceDto> =
+        ApiErrorMapper.call { api.saveGallerySource(GallerySourceRequest(enabled, key)) }
 
     private fun String.toPlainPart() = toRequestBody("text/plain".toMediaTypeOrNull())
 

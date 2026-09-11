@@ -630,6 +630,9 @@ private val SECTIONS = listOf(
     Triple(Routes.ADMIN_MANGA_LIBRARY, R.string.admin_manga_library, Icons.Filled.MenuBook),
     // And where they come from: the bridge, the copy run and the two sources.
     Triple(Routes.ADMIN_MANGA, R.string.admin_manga_sources, Icons.Filled.CloudSync),
+    // AnimehTok is a shelf anyone can upload to, so a moderator has to be able
+    // to take something off it.
+    Triple(Routes.ADMIN_SHORTS, R.string.admin_shorts, Icons.Filled.MovieFilter),
     Triple(Routes.ADMIN_FONTS, R.string.admin_fonts, Icons.Filled.FontDownload),
     Triple(Routes.ADMIN_TERMS, R.string.admin_terms, Icons.Filled.Translate),
     Triple(Routes.ADMIN_USERS, R.string.admin_users, Icons.Filled.People),
@@ -654,6 +657,7 @@ private val SECTIONS = listOf(
  */
 private val MODERATOR_SECTIONS = setOf(
     Routes.ADMIN_WORKS,
+    Routes.ADMIN_SHORTS,
     Routes.ADMIN_MANGA_LIBRARY,
     Routes.ADMIN_TENRAI,
     Routes.ADMIN_TMDB,

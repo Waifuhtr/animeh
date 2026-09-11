@@ -1,5 +1,6 @@
 package com.animeh.app.ui.navigation
 
+import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -55,6 +56,33 @@ object Routes {
     fun reader(chapterId: Long) = "$READER_BASE/$chapterId"
     const val LEADERBOARD = "leaderboard"
 
+    /* ── AnimehTok ───────────────────────────────────────────────────── */
+
+    /** The swipe feed. Not a bottom-bar tab: it is a mode, entered from Home. */
+    const val SHORTS = "shorts"
+    const val SHORTS_UPLOAD = "shorts/upload"
+    const val SHORTS_SEARCH = "shorts/search"
+
+    private const val SHORTS_TAG_BASE = "shorts/tag"
+    const val SHORTS_TAG = "$SHORTS_TAG_BASE/{tag}"
+
+    /**
+     * A tag page.
+     *
+     * The tag is encoded because it is somebody's typed text: "#c++" and
+     * "#kedi/köpek" are both legal tags and both break a route that pastes
+     * them in raw.
+     */
+    fun shortsTag(tag: String) = "$SHORTS_TAG_BASE/" + Uri.encode(tag)
+
+    private const val SHORTS_SOUND_BASE = "shorts/sound"
+    const val SHORTS_SOUND = "$SHORTS_SOUND_BASE/{soundId}"
+    fun shortsSound(soundId: Long) = "$SHORTS_SOUND_BASE/$soundId"
+
+    private const val SHORTS_CREATOR_BASE = "shorts/user"
+    const val SHORTS_CREATOR = "$SHORTS_CREATOR_BASE/{creatorId}"
+    fun shortsCreator(creatorId: Long) = "$SHORTS_CREATOR_BASE/$creatorId"
+
     private const val PROFILE_BASE = "profile/user"
     const val PUBLIC_PROFILE = "$PROFILE_BASE/{userId}"
     fun publicProfile(userId: Long) = "$PROFILE_BASE/$userId"
@@ -65,6 +93,7 @@ object Routes {
     const val ADMIN_SERVER = "admin/server"
     const val ADMIN_FRAMES = "admin/frames"
     const val ADMIN_MANGA = "admin/manga"
+    const val ADMIN_SHORTS = "admin/shorts"
 
     private const val ADMIN_WORK_BASE = "admin/work"
     const val ADMIN_WORK_EDIT = "$ADMIN_WORK_BASE/{workId}?kind={kind}"

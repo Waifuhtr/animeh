@@ -25,6 +25,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.animeh.app.R
 import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.user
+import com.animeh.app.ui.screens.shorts.ShortsProfileCard
 import com.animeh.app.ui.components.AvatarWithFrame
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.components.formatWatched
@@ -43,6 +44,7 @@ fun ProfileScreen(
     onPublicProfile: (Long) -> Unit = {},
     onFrameShop: () -> Unit = {},
     onLeaderboard: () -> Unit = {},
+    onShorts: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val user = authState.user
@@ -162,6 +164,12 @@ fun ProfileScreen(
             RankCard(wallet = wallet, theme = theme, onLeaderboard = onLeaderboard)
 
             ThemePalette(selected = themeSlug, onChoose = viewModel::chooseTheme)
+
+            // AnimehTok's own numbers, in their own card. Not three more rows
+            // in the one above: a short is not an episode, scrolling is not
+            // watch time, and none of it is worth a point — so putting these
+            // beside "izlenen bölüm" would be saying the opposite.
+            ShortsProfileCard(onOpenFeed = onShorts, onOpenMine = onShorts)
         }
 
         stats?.let { current ->

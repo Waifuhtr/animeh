@@ -71,6 +71,64 @@ interface PublicApi {
         @Query("kind") kind: String? = null,
     ): Response<GenreListDto>
 
+    /* ── AnimehTok ───────────────────────────────────────────────────── */
+
+    /**
+     * The swipe feed.
+     *
+     * Readable signed out, like the catalogue: a wall in front of the first
+     * video is a wall in front of the reason to make an account. Signing in
+     * is what the like button needs.
+     */
+    @GET("shorts/feed")
+    suspend fun shortsFeed(
+        @Query("tab") tab: String = "foryou",
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 10,
+    ): Response<ShortFeedDto>
+
+    @GET("shorts/{id}")
+    suspend fun short(@Path("id") id: Long): Response<ShortDto>
+
+    @GET("shorts/{id}/comments")
+    suspend fun shortComments(
+        @Path("id") id: Long,
+        @Query("parent") parent: Long = 0,
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 20,
+    ): Response<ShortCommentListDto>
+
+    @GET("shorts/tags/{tag}")
+    suspend fun shortTag(
+        @Path("tag") tag: String,
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 21,
+    ): Response<ShortTagPageDto>
+
+    @GET("shorts/tags")
+    suspend fun trendingShortTags(): Response<ShortTagListDto>
+
+    @GET("shorts/sounds/{id}")
+    suspend fun shortSound(
+        @Path("id") id: Long,
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 21,
+    ): Response<ShortSoundPageDto>
+
+    @GET("shorts/users/{id}")
+    suspend fun shortCreator(
+        @Path("id") id: Long,
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 21,
+    ): Response<ShortCreatorPageDto>
+
+    @GET("shorts/search")
+    suspend fun searchShorts(@Query("q") query: String): Response<ShortSearchDto>
+
+    /** A view counts whether or not anybody is signed in. */
+    @POST("shorts/{id}/view")
+    suspend fun countShortView(@Path("id") id: Long): Response<OkDto>
+
     @GET("announcements")
     suspend fun announcements(): Response<AnnouncementListDto>
 
@@ -275,9 +333,94 @@ interface UserApi {
      */
     @POST("me/recommend")
     suspend fun recommend(@Body body: RecommendRequest): Response<RecommendResultDto>
+
+    /* ── AnimehTok ───────────────────────────────────────────────────── */
+
+    @POST("shorts/uploads")
+    suspend fun beginShortUpload(@Body body: ShortUploadBeginRequest): Response<ShortUploadPlanDto>
+
+    @POST("shorts/uploads/complete")
+    suspend fun completeShortUpload(@Body body: ShortUploadCompleteRequest): Response<ShortDto>
+
+    /**
+     * The cover frame, as raw JPEG bytes.
+     *
+     * Small enough to come through the server, unlike the video: the phone
+     * grabs a frame and puts it, and there is nothing to decode on the way.
+     */
+    @POST("shorts/{id}/cover")
+    suspend fun uploadShortCover(
+        @Path("id") id: Long,
+        @Body body: RequestBody,
+    ): Response<ShortDto>
+
+    @PUT("shorts/{id}")
+    suspend fun updateShort(@Path("id") id: Long, @Body body: ShortUpdateRequest): Response<ShortDto>
+
+    @DELETE("shorts/{id}")
+    suspend fun deleteShort(@Path("id") id: Long): Response<OkDto>
+
+    @POST("shorts/{id}/like")
+    suspend fun likeShort(@Path("id") id: Long): Response<ShortDto>
+
+    @DELETE("shorts/{id}/like")
+    suspend fun unlikeShort(@Path("id") id: Long): Response<ShortDto>
+
+    @POST("shorts/{id}/save")
+    suspend fun saveShort(@Path("id") id: Long): Response<ShortDto>
+
+    @DELETE("shorts/{id}/save")
+    suspend fun unsaveShort(@Path("id") id: Long): Response<ShortDto>
+
+    @POST("shorts/{id}/comments")
+    suspend fun addShortComment(
+        @Path("id") id: Long,
+        @Body body: ShortCommentRequest,
+    ): Response<ShortCommentDto>
+
+    @DELETE("shorts/comments/{id}")
+    suspend fun deleteShortComment(@Path("id") id: Long): Response<OkDto>
+
+    @POST("shorts/comments/{id}/like")
+    suspend fun likeShortComment(@Path("id") id: Long): Response<ShortCommentDto>
+
+    @DELETE("shorts/comments/{id}/like")
+    suspend fun unlikeShortComment(@Path("id") id: Long): Response<ShortCommentDto>
+
+    @POST("shorts/users/{id}/follow")
+    suspend fun followCreator(@Path("id") id: Long): Response<ShortFollowDto>
+
+    @DELETE("shorts/users/{id}/follow")
+    suspend fun unfollowCreator(@Path("id") id: Long): Response<ShortFollowDto>
+
+    @GET("me/shorts")
+    suspend fun myShorts(
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 21,
+    ): Response<ShortListDto>
+
+    @GET("me/shorts/saved")
+    suspend fun savedShorts(
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 21,
+    ): Response<ShortListDto>
+
+    @GET("me/shorts/stats")
+    suspend fun myShortStats(): Response<ShortStatsEnvelopeDto>
 }
 
 interface AdminApi {
+
+    /* ── AnimehTok moderation ────────────────────────────────────────── */
+
+    @GET("admin/shorts")
+    suspend fun adminShorts(
+        @Query("offset") offset: Int = 0,
+        @Query("per_page") perPage: Int = 30,
+    ): Response<AdminShortListDto>
+
+    @DELETE("admin/shorts/{id}")
+    suspend fun adminDeleteShort(@Path("id") id: Long): Response<OkDto>
 
     @GET("admin/dashboard")
     suspend fun dashboard(): Response<DashboardDto>

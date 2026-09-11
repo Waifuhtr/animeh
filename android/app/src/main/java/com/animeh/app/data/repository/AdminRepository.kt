@@ -44,6 +44,18 @@ class AdminRepository @Inject constructor(
     suspend fun dashboard(): AppResult<DashboardDto> =
         ApiErrorMapper.call { api.dashboard() }
 
+    /**
+     * Every AnimehTok video, newest first.
+     *
+     * A moderator has to be able to take one down, and there is no other list
+     * that shows unpublished ones.
+     */
+    suspend fun shorts(offset: Int = 0): AppResult<AdminShortListDto> =
+        ApiErrorMapper.call { api.adminShorts(offset) }
+
+    suspend fun deleteShort(id: Long): AppResult<Unit> =
+        ApiErrorMapper.call({ Unit }) { api.adminDeleteShort(id) }
+
     suspend fun works(
         search: String = "",
         kind: String = KIND_ANIME,

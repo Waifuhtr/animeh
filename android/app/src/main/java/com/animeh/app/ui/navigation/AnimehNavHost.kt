@@ -43,6 +43,14 @@ import com.animeh.app.ui.screens.library.LibraryScreen
 import com.animeh.app.ui.screens.profile.FrameShopScreen
 import com.animeh.app.ui.screens.profile.ProfileScreen
 import com.animeh.app.ui.screens.settings.SettingsScreen
+import com.animeh.app.ui.screens.admin.AdminShortsScreen
+import com.animeh.app.ui.screens.shorts.ShortCreatorScreen
+import com.animeh.app.ui.screens.shorts.ShortSearchScreen
+import com.animeh.app.ui.screens.shorts.ShortSoundScreen
+import com.animeh.app.ui.screens.shorts.ShortTagScreen
+import com.animeh.app.ui.screens.shorts.ShortUploadScreen
+import com.animeh.app.ui.screens.shorts.ShortsModeSheet
+import com.animeh.app.ui.screens.shorts.ShortsScreen
 import com.animeh.app.ui.screens.social.*
 
 /**
@@ -84,7 +92,16 @@ fun AnimehApp(
     // for the same reason: Discover's route has to stay "discover".
     var discoverGenre by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // Tapping Home while already on Home offers the short-video mode, which is
+    // where she asked for it: AnimehTok is a mode, not a sixth tab, and a tab
+    // would put it in front of people who never asked for it.
+    var offerShorts by rememberSaveable { mutableStateOf(false) }
+
     val switchTab: (String) -> Unit = { route ->
+        if (route == Routes.HOME && currentRoute == Routes.HOME) {
+            offerShorts = true
+        }
+
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) {
                 saveState = true
@@ -114,6 +131,16 @@ fun AnimehApp(
         onWorkHandled()
 
         navController.navigate(Routes.detail(id))
+    }
+
+    if (offerShorts) {
+        ShortsModeSheet(
+            onDismiss = { offerShorts = false },
+            onEnter = {
+                offerShorts = false
+                navController.navigate(Routes.SHORTS)
+            },
+        )
     }
 
     Scaffold(
@@ -214,6 +241,7 @@ fun AnimehApp(
                     onPublicProfile = { navController.navigate(Routes.publicProfile(it)) },
                     onFrameShop = { navController.navigate(Routes.FRAME_SHOP) },
                     onLeaderboard = { navController.navigate(Routes.LEADERBOARD) },
+                    onShorts = { navController.navigate(Routes.SHORTS) },
                 )
             }
 
@@ -247,6 +275,75 @@ fun AnimehApp(
                 LeaderboardScreen(
                     onBack = { navController.popBackStack() },
                     onProfile = { navController.navigate(Routes.publicProfile(it)) },
+                )
+            }
+
+            /* ── AnimehTok ─────────────────────────────────────────── */
+
+            // Every one of these opens a video by id by dropping it into the
+            // feed, so "open a short" is always the same screen and back
+            // always goes where it came from.
+            val openShort: (Long) -> Unit = { navController.navigate(Routes.SHORTS) }
+
+            composable(Routes.ADMIN_SHORTS) {
+                AdminShortsScreen(onBack = { navController.popBackStack() })
+            }
+
+            composable(Routes.SHORTS) {
+                ShortsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTag = { navController.navigate(Routes.shortsTag(it)) },
+                    onOpenSound = { navController.navigate(Routes.shortsSound(it)) },
+                    onOpenCreator = { navController.navigate(Routes.shortsCreator(it)) },
+                    onUpload = { navController.navigate(Routes.SHORTS_UPLOAD) },
+                    onSearch = { navController.navigate(Routes.SHORTS_SEARCH) },
+                )
+            }
+
+            composable(Routes.SHORTS_UPLOAD) {
+                ShortUploadScreen(
+                    onBack = { navController.popBackStack() },
+                    onUploaded = { navController.popBackStack() },
+                )
+            }
+
+            composable(Routes.SHORTS_SEARCH) {
+                ShortSearchScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenTag = { navController.navigate(Routes.shortsTag(it)) },
+                    onOpenSound = { navController.navigate(Routes.shortsSound(it)) },
+                    onOpenCreator = { navController.navigate(Routes.shortsCreator(it)) },
+                    onOpenShort = openShort,
+                )
+            }
+
+            composable(
+                route = Routes.SHORTS_TAG,
+                arguments = listOf(navArgument("tag") { type = NavType.StringType }),
+            ) {
+                ShortTagScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenShort = openShort,
+                )
+            }
+
+            composable(
+                route = Routes.SHORTS_SOUND,
+                arguments = listOf(navArgument("soundId") { type = NavType.StringType }),
+            ) {
+                ShortSoundScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenShort = openShort,
+                )
+            }
+
+            composable(
+                route = Routes.SHORTS_CREATOR,
+                arguments = listOf(navArgument("creatorId") { type = NavType.StringType }),
+            ) {
+                ShortCreatorScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenShort = openShort,
                 )
             }
 

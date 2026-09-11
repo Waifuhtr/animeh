@@ -66,7 +66,10 @@ interface PublicApi {
     ): Response<EpisodeListDto>
 
     @GET("catalog/genres")
-    suspend fun genres(): Response<GenreListDto>
+    suspend fun genres(
+        /** Anime and manga do not share a vocabulary, so neither does this list. */
+        @Query("kind") kind: String? = null,
+    ): Response<GenreListDto>
 
     @GET("announcements")
     suspend fun announcements(): Response<AnnouncementListDto>

@@ -73,13 +73,12 @@ class DiscoverViewModel @Inject constructor(
     val total: StateFlow<Int> = _total.asStateFlow()
 
     private var searchJob: Job? = null
+    private var genreJob: Job? = null
     private var page = 1
     private var endReached = false
 
     init {
-        viewModelScope.launch {
-            (repository.genres() as? AppResult.Success)?.let { _genres.value = it.data }
-        }
+        loadGenres(_filters.value.kind)
 
         // Opens on the catalogue rather than on an empty screen asking to be
         // typed into. Browsing is the point of this tab; searching is one of
@@ -92,7 +91,28 @@ class DiscoverViewModel @Inject constructor(
         if (_filters.value.kind == kind) return
 
         _filters.update { it.copy(kind = kind) }
+        loadGenres(kind)
         scheduleSearch(0)
+    }
+
+    /**
+     * The genre list for one shelf.
+     *
+     * Re-fetched on every switch rather than loaded once, because the two
+     * shelves do not share a vocabulary. Loaded once, the manga tab offered
+     * "Aksiyon" and "Shounen" — names the anime catalogue uses and no manga
+     * carries — so every genre on it returned nothing.
+     */
+    private fun loadGenres(kind: String) {
+        genreJob?.cancel()
+
+        genreJob = viewModelScope.launch {
+            when (val result = repository.genres(kind)) {
+                is AppResult.Success -> _genres.value = result.data
+                // The chips simply do not appear; the rest of the screen works.
+                is AppResult.Failure -> _genres.value = emptyList()
+            }
+        }
     }
 
     fun setQuery(query: String) {
@@ -116,7 +136,12 @@ class DiscoverViewModel @Inject constructor(
      * that looks like the link is broken.
      */
     fun browseGenre(genre: String, kind: String) {
+        val switched = _filters.value.kind != kind
+
         _filters.value = DiscoverFilters(kind = kind, genre = genre)
+        // Not via setKind: the filters are being replaced wholesale here, and
+        // setKind would have already seen the new kind and done nothing.
+        if (switched) loadGenres(kind)
         scheduleSearch(0)
     }
 

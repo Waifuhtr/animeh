@@ -168,8 +168,8 @@ class CatalogRepository @Inject constructor(
         }
     }
 
-    suspend fun genres(): AppResult<List<Genre>> =
-        ApiErrorMapper.call({ dto -> dto.genres.map { it.toDomain() } }) { publicApi.genres() }
+    suspend fun genres(kind: String = KIND_ANIME): AppResult<List<Genre>> =
+        ApiErrorMapper.call({ dto -> dto.genres.map { it.toDomain() } }) { publicApi.genres(kind) }
 
     suspend fun playback(episodeId: Long): AppResult<Playback> =
         ApiErrorMapper.call({ it.toDomain() }) { userApi.play(episodeId) }

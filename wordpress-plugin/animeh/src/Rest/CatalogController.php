@@ -115,6 +115,13 @@ final class CatalogController {
 				'methods'             => WP_REST_Server::READABLE,
 				'callback'            => array( $this, 'genres' ),
 				'permission_callback' => '__return_true',
+				'args'                => array(
+					'kind' => array(
+						'type'    => 'string',
+						'default' => CatalogSchema::KIND_ANIME,
+						'enum'    => array( CatalogSchema::KIND_ANIME, CatalogSchema::KIND_MANGA ),
+					),
+				),
 			)
 		);
 
@@ -309,9 +316,16 @@ final class CatalogController {
 
 	/**
 	 * Genres present in the catalog, for the discover screen's chips.
+	 *
+	 * One shelf at a time: anime and manga do not share a vocabulary, and a
+	 * list that mixes them offers the manga tab names no manga has.
+	 *
+	 * @param WP_REST_Request $request Request.
 	 */
-	public function genres(): WP_REST_Response {
-		return new WP_REST_Response( array( 'genres' => ( new CatalogRepository() )->genres() ) );
+	public function genres( WP_REST_Request $request ): WP_REST_Response {
+		$kind = (string) ( $request->get_param( 'kind' ) ?: CatalogSchema::KIND_ANIME );
+
+		return new WP_REST_Response( array( 'genres' => ( new CatalogRepository() )->genres( $kind ) ) );
 	}
 
 	/**

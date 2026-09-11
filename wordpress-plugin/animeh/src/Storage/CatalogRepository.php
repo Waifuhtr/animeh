@@ -802,10 +802,18 @@ final class CatalogRepository {
 	 *
 	 * @return array<int, array{name: string, count: int}>
 	 */
-	public function genres(): array {
+	public function genres( string $kind = CatalogSchema::KIND_ANIME ): array {
 		global $wpdb;
 
-		$rows = $wpdb->get_col( 'SELECT genres FROM ' . CatalogSchema::works() . ' WHERE published = 1' ); // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.DirectDatabaseQuery
+		// One shelf at a time. Unfiltered this returned anime and manga genres
+		// in one list, so the manga tab offered "Aksiyon", "Dram", "Shounen" —
+		// names no manga carries — and every one of them returned nothing.
+		$rows = $wpdb->get_col(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				'SELECT genres FROM ' . CatalogSchema::works() . ' WHERE published = 1 AND kind = %s',
+				$kind
+			)
+		);
 
 		$counts = array();
 		foreach ( is_array( $rows ) ? $rows : array() as $json ) {

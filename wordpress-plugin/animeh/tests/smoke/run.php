@@ -190,9 +190,31 @@ step(
 );
 
 step(
-	'GET /catalog/genres',
-	static function (): void {
-		( new CatalogController() )->genres();
+	'GET /catalog/genres — raf başına ayrı',
+	static function () use ( $wpdb ): void {
+		foreach ( array( 'anime', 'manga' ) as $kind ) {
+			$wpdb->queries = array();
+
+			( new CatalogController() )->genres( new WP_REST_Request( array( 'kind' => $kind ) ) );
+
+			// Two shelves, two vocabularies. Unfiltered this answered with both
+			// at once, so the manga tab offered "Aksiyon" and "Shounen" — names
+			// the anime catalogue uses — and every one returned nothing.
+			$asked = array_filter(
+				$wpdb->queries,
+				static fn( $sql ): bool => str_contains( (string) $sql, 'SELECT genres FROM' )
+			);
+
+			if ( array() === $asked ) {
+				throw new RuntimeException( 'türler hiç sorgulanmadı' );
+			}
+
+			foreach ( $asked as $sql ) {
+				if ( ! str_contains( (string) $sql, 'kind = ' ) ) {
+					throw new RuntimeException( "tür sorgusunda raf süzgeci yok ({$kind})" );
+				}
+			}
+		}
 	}
 );
 

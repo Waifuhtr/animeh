@@ -41,6 +41,12 @@ php "$ROOT/tools/php-call-check.php" "$PLUGIN_DIR/src" "$BRIDGE_DIR" > /dev/null
 php "$ROOT/tools/php-method-check.php" > /dev/null
 php "$BRIDGE_DIR/tests/smoke.php" > /dev/null
 
+# The two languages meet at strings, and nothing in either build checks them.
+# A path the app calls that the plugin never registers is a 404 with an empty
+# form behind it; a key a DTO expects that no payload writes is a silent zero.
+python3 "$ROOT/tools/checks/rest_routes.py" > /dev/null
+python3 "$ROOT/tools/checks/dto_payload_keys.py" > /dev/null
+
 # Everything the plugin needs at runtime, and nothing else: no tests, no
 # development state, no editor leftovers.
 REQUIRED=(

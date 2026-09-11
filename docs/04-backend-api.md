@@ -110,7 +110,7 @@ Namespace `animeh/v1`. **Her rotada gerçek bir `permission_callback`.**
 | `POST /auth/refresh` | token yenileme |
 | `POST /auth/password/forgot` | şifre sıfırlama |
 | `GET /catalog/home` | ana sayfanın tüm rafları, **tek istekte** |
-| `GET /catalog/works` | arama ve filtreleme |
+| `GET /catalog/works` | arama ve filtreleme: `search`, `kind`, `genre`, `format`, `year`, `season`, `status`, `sort` |
 | `GET /catalog/works/{id\|slug}` | anime detayı |
 | `GET /catalog/works/{id}/episodes` | bölüm listesi |
 | `GET /catalog/genres` | türler |
@@ -148,6 +148,7 @@ kataloğdur. Hesap gerektiren şey **oynatma**.
 | `POST /admin/tenrai/import` | içe aktar |
 | `GET/POST /admin/tenrai/settings` | Tenrai yapılandırması |
 | `GET /admin/users`, `POST /admin/users/{id}/role` | kullanıcılar |
+| `GET /admin/works/{id}` | tek eser — düzenleme formunun doldurduğu yer |
 | `GET/POST/DELETE /admin/announcements` | duyurular |
 | `GET/DELETE /admin/logs` | sistem logları |
 

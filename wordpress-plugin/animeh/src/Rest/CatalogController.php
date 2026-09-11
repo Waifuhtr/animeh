@@ -156,6 +156,7 @@ final class CatalogController {
 				'search'    => $request->get_param( 'search' ),
 				'kind'      => $request->get_param( 'kind' ),
 				'genre'     => $request->get_param( 'genre' ),
+				'format'    => $request->get_param( 'format' ),
 				'year'      => $request->get_param( 'year' ),
 				'season'    => $request->get_param( 'season' ),
 				'status'    => $request->get_param( 'status' ),
@@ -711,6 +712,8 @@ final class CatalogController {
 				'enum'    => array( CatalogSchema::KIND_ANIME, CatalogSchema::KIND_MANGA ),
 			),
 			'genre'     => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
+			// TV / Movie / OVA / ONA / Special, or a manga's own kind.
+			'format'    => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
 			'year'      => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
 			'season'    => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_key' ),
 			'status'    => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_key' ),

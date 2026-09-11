@@ -342,3 +342,82 @@ fun WorkRail(
 }
 
 private const val POSTER_RATIO = 1.45f
+
+/**
+ * A work as one wide row, for Discover's list view.
+ *
+ * The same facts as the poster card, laid out for reading rather than for
+ * scanning: at three-across a title has to be two words, and in a list it can
+ * be a title.
+ */
+@Composable
+fun WorkRow(
+    work: Work,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(PosterShape)
+            .clickable(onClick = onClick)
+            .background(SurfaceCard)
+            .padding(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = work.posterUrl,
+            contentDescription = work.displayTitle,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .width(64.dp)
+                .height(64.dp * POSTER_RATIO)
+                .clip(RoundedCornerShape(10.dp))
+                .background(Color.Black.copy(alpha = 0.3f)),
+        )
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                work.displayTitle,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            Spacer(Modifier.height(4.dp))
+
+            Text(
+                listOfNotNull(
+                    work.format.takeIf { it.isNotBlank() },
+                    work.year.takeIf { it > 0 }?.toString(),
+                    work.totalEpisodes.takeIf { it > 0 }?.let { "$it bölüm" },
+                ).joinToString(" · "),
+                style = MaterialTheme.typography.labelMedium,
+                color = TextMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+
+        if (work.score > 0) {
+            Spacer(Modifier.width(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    Icons.Filled.Star,
+                    null,
+                    tint = StatusWarning,
+                    modifier = Modifier.size(16.dp),
+                )
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    String.format("%.1f", work.score),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = TextSecondary,
+                )
+            }
+        }
+    }
+}

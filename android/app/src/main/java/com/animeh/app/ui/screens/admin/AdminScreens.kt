@@ -37,6 +37,7 @@ import com.animeh.app.data.remote.dto.AdminEpisodeRequest
 import com.animeh.app.data.remote.dto.AdminWorkRequest
 import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.domain.KIND_MANGA
+import com.animeh.app.domain.formatsFor
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.components.ErrorState
 import com.animeh.app.ui.navigation.Routes
@@ -401,6 +402,17 @@ fun AdminWorkEditScreen(
                 }
             }
 
+            // The column the discover screen filters on. It was import-only
+            // until now, which meant a TMDB anime — those arrived with it
+            // empty — could not be reached by any filter and could not be
+            // fixed from here either.
+            FormatPicker(
+                kind = form.kind ?: KIND_ANIME,
+                selected = form.format.orEmpty(),
+            ) { value ->
+                viewModel.update { it.copy(format = value) }
+            }
+
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Switch(
                     checked = form.published == true,
@@ -441,6 +453,41 @@ fun AdminWorkEditScreen(
             ) {
                 if (saving) CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
                 else Text(stringResource(R.string.save))
+            }
+        }
+    }
+}
+
+/**
+ * Which format a work is, chosen rather than typed.
+ *
+ * A free text field would be the smaller change, but the server matches this
+ * exactly: "tv " with a trailing space, or "Dizi" typed in Turkish, is a work
+ * that quietly disappears from the discover screen's chips. The list comes
+ * from [formatsFor], the same one those chips are built from.
+ */
+@Composable
+private fun FormatPicker(
+    kind: String,
+    selected: String,
+    onSelect: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(
+            if (kind == KIND_MANGA) "Tür (manga)" else "Tür (anime)",
+            style = MaterialTheme.typography.labelLarge,
+            color = TextSecondary,
+        )
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            items(formatsFor(kind), key = { it.first }) { (value, label) ->
+                val chosen = selected.equals(value, ignoreCase = true)
+                FilterChip(
+                    // Tapping the chosen one clears it, because "none of these"
+                    // is a real answer and there is no other way to give it.
+                    selected = chosen,
+                    onClick = { onSelect(if (chosen) "" else value) },
+                    label = { Text(label) },
+                )
             }
         }
     }

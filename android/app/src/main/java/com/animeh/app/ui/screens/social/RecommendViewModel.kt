@@ -4,8 +4,8 @@ import androidx.compose.runtime.Immutable
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
+import com.animeh.app.core.explain
 import com.animeh.app.data.remote.dto.UserDto
 import com.animeh.app.data.repository.SocialRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -50,7 +50,7 @@ class RecommendViewModel @Inject constructor(
                 }
 
                 is AppResult.Failure -> _state.update {
-                    it.copy(loading = false, error = describe(result.error))
+                    it.copy(loading = false, error = result.error.explain())
                 }
             }
         }
@@ -75,19 +75,9 @@ class RecommendViewModel @Inject constructor(
                 is AppResult.Success -> _state.update { it.copy(sending = false, sent = true) }
 
                 is AppResult.Failure -> _state.update {
-                    it.copy(sending = false, error = describe(result.error))
+                    it.copy(sending = false, error = result.error.explain())
                 }
             }
         }
-    }
-
-    /**
-     * The server's own sentence when it wrote one — "Sadece arkadaşlarına
-     * öneri gönderebilirsin" says more than any string here could.
-     */
-    private fun describe(error: AppError): String = error.reason() ?: when (error) {
-        is AppError.Network -> "İnternet bağlantısı yok."
-        is AppError.Timeout -> "Sunucu yanıt vermedi."
-        else -> "Gönderilemedi."
     }
 }

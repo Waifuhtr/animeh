@@ -1312,6 +1312,23 @@ describe( 'TmdbMapper', static function (): void {
 		same( 1440, $mapped['duration_seconds'] );
 	} );
 
+	it( 'gives every TMDB import a format', static function (): void {
+		// This mapper only reads the `tv` endpoint, so "TV" is the honest
+		// answer and an empty string is not: the discover screen filters on
+		// this column exactly, and a work with no format matches no chip —
+		// every anime imported from TMDB used to be unreachable that way.
+		$mapped = \Animeh\Support\TmdbMapper::work( array( 'id' => 7 ) );
+		same( 'TV', $mapped['format'] );
+
+		// Including when TMDB describes the show as something else entirely:
+		// `type` is a production category — "Scripted", "Miniseries" — not one
+		// of the formats this catalog browses by.
+		$mapped = \Animeh\Support\TmdbMapper::work(
+			array( 'id' => 8, 'type' => 'Miniseries' )
+		);
+		same( 'TV', $mapped['format'] );
+	} );
+
 	it( 'survives a TV payload with every optional field missing', static function (): void {
 		$mapped = \Animeh\Support\TmdbMapper::work( array( 'id' => 7 ) );
 

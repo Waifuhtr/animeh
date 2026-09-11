@@ -43,6 +43,8 @@ interface PublicApi {
         /** "anime" unless asked; every screen that predates manga is unchanged. */
         @Query("kind") kind: String? = null,
         @Query("genre") genre: String? = null,
+        /** TV / Movie / OVA / ONA / Special, or a manga's own kind. */
+        @Query("format") format: String? = null,
         @Query("year") year: Int? = null,
         @Query("season") season: String? = null,
         @Query("status") status: String? = null,

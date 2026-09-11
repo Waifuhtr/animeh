@@ -187,7 +187,7 @@ final class CatalogRepository {
 	/**
 	 * A page of works.
 	 *
-	 * @param array<string, mixed> $args search, genre, year, season, status, sort, page, per_page, include_unpublished.
+	 * @param array<string, mixed> $args search, kind, genre, format, year, season, status, sort, page, per_page, include_unpublished.
 	 * @return array{items: array<int, array<string, mixed>>, total: int}
 	 */
 	public function works( array $args = array() ): array {
@@ -218,6 +218,14 @@ final class CatalogRepository {
 			// from also matching "Action Adventure".
 			$where[]  = 'genres LIKE %s';
 			$params[] = '%"' . $wpdb->esc_like( $genre ) . '"%';
+		}
+
+		// TV, Movie, OVA, ONA, Special — and on the other shelf Manga, Manhwa,
+		// Doujinshi. Whatever the import wrote, matched exactly.
+		$format = trim( (string) ( $args['format'] ?? '' ) );
+		if ( '' !== $format ) {
+			$where[]  = 'format = %s';
+			$params[] = $format;
 		}
 
 		$year = (int) ( $args['year'] ?? 0 );

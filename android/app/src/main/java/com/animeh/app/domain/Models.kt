@@ -93,6 +93,38 @@ data class Season(
 const val KIND_ANIME = "anime"
 const val KIND_MANGA = "manga"
 
+/**
+ * What a work is, within its kind — the value stored in `works.format`.
+ *
+ * The wire value on the left is matched exactly by the server's filter, so the
+ * discover screen's chips and the admin form's picker have to agree on the
+ * spelling to the letter. They live here rather than in either screen for that
+ * reason: two lists that must match are one list.
+ *
+ * The labels are Turkish where Turkish is what people say — "Dizi", "Film" —
+ * and left alone where the English word is what everyone uses anyway.
+ */
+val ANIME_FORMATS = listOf(
+    "TV" to "Dizi",
+    "Movie" to "Film",
+    "OVA" to "OVA",
+    "ONA" to "ONA",
+    "Special" to "Special",
+)
+
+/** As [ANIME_FORMATS], for the other shelf. */
+val MANGA_FORMATS = listOf(
+    "Manga" to "Manga",
+    "Manhwa" to "Manhwa",
+    "Manhua" to "Manhua",
+    "Doujinshi" to "Doujinshi",
+    "One-shot" to "Tek Bölüm",
+)
+
+/** The formats offered for one kind of work. */
+fun formatsFor(kind: String): List<Pair<String, String>> =
+    if (kind == KIND_MANGA) MANGA_FORMATS else ANIME_FORMATS
+
 @Immutable
 data class Episode(
     val id: Long,

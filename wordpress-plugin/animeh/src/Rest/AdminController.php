@@ -1359,6 +1359,7 @@ final class AdminController {
 			'score'            => $mapped['score'],
 			'year'             => $mapped['year'],
 			'status'           => $mapped['status'],
+			'format'           => $mapped['format'],
 			'genres'           => wp_json_encode( $mapped['genres'] ),
 			'total_episodes'   => $mapped['total_episodes'],
 			'duration_seconds' => $mapped['duration_seconds'],
@@ -1371,7 +1372,13 @@ final class AdminController {
 			$row['published'] = (int) $existing['published'];
 			$row['studio']    = (string) $existing['studio'];
 			$row['season']    = (string) $existing['season'];
-			$row['format']    = (string) $existing['format'];
+			// Only when somebody actually put something there. An empty format
+			// is not an edit to protect, and every anime imported from TMDB
+			// before this had one carries an empty one — a re-import is how
+			// those get fixed.
+			if ( '' !== (string) $existing['format'] ) {
+				$row['format'] = (string) $existing['format'];
+			}
 			$row['tenrai_id'] = (int) $existing['tenrai_id'];
 			$row['mal_id']    = (int) $existing['mal_id'];
 

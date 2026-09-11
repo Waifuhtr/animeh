@@ -98,6 +98,7 @@ internal fun MangaDetailScreen(
     onReadChapter: (Long) -> Unit,
     onSignIn: () -> Unit,
     onRecommend: (Long) -> Unit,
+    onGenreClick: (genre: String, kind: String) -> Unit,
     viewModel: DetailViewModel,
 ) {
     // Newest first is the wrong default for a manga: a series is read from
@@ -150,6 +151,7 @@ internal fun MangaDetailScreen(
                         onBack = onBack,
                         onBookmark = { viewModel.toggleWatchlist() },
                         onRecommend = { onRecommend(work.data.id) },
+                        onGenreClick = { genre -> onGenreClick(genre, work.data.kind) },
                     )
                 }
 
@@ -229,6 +231,7 @@ private fun MangaHero(
     onBack: () -> Unit,
     onBookmark: () -> Unit,
     onRecommend: () -> Unit,
+    onGenreClick: (String) -> Unit,
 ) {
     Column {
         Box(Modifier.fillMaxWidth().height(260.dp)) {
@@ -361,7 +364,7 @@ private fun MangaHero(
 
         if (work.genres.isNotEmpty()) {
             Spacer(Modifier.height(12.dp))
-            GenreChips(work.genres)
+            GenreChips(work.genres, onGenreClick)
         }
 
         Spacer(Modifier.height(16.dp))
@@ -389,7 +392,7 @@ private fun Fact(
 }
 
 @Composable
-private fun GenreChips(genres: List<String>) {
+private fun GenreChips(genres: List<String>, onClick: (String) -> Unit) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -398,6 +401,9 @@ private fun GenreChips(genres: List<String>) {
             Surface(
                 color = AccentPrimary.copy(alpha = 0.16f),
                 shape = RoundedCornerShape(20.dp),
+                // Tapping one browses it: a badge that says "Doujinshi" and
+                // does nothing is a label pretending to be a link.
+                modifier = Modifier.clickable { onClick(genre) },
             ) {
                 Text(
                     genre,

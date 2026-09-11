@@ -363,6 +363,43 @@ tek tablo tutmanın bedeli ve karşılığında kütüphane, favoriler, geçmiş
 
 ---
 
+## 6.97 Keşfet yeniden tasarlandı
+
+Verdiğin konsept tasarımın düzeni, kapaklar ana sayfadaki kapak tasarımıyla:
+
+- Üstte arama satırı ve yanında **süzgeç düğmesi**; kaç süzgeç açıksa rozet
+  olarak üstünde yazıyor.
+- Altında **Anime / Manga** sekmesi. Bu bir süzgeç değil, hangi rafa baktığın
+  — "süzgeçleri temizle" seni öteki rafa atmıyor.
+- Onun altında **tür çipleri**: anime için Dizi / Film / OVA / ONA / Special,
+  manga için Manga / Manhwa / Manhua / Doujinshi / Tek Bölüm.
+- Süzgeç kartı açılınca tür, yıl, sezon, durum ve sıralama satırları geliyor.
+  Manga'da sezon satırı yok — mangada yayın sezonu yoktur.
+- Sonuç satırında kaç eser bulunduğu ve **ızgara / liste** düğmesi.
+- Ekran artık boş bir arama kutusuyla değil, **kataloğun kendisiyle** açılıyor.
+
+**Tür etiketleri tıklanabilir.** Bir manganın (ya da animenin) sayfasındaki
+türe basınca Keşfet o türle ve o rafla açılıyor.
+
+### `format` sütunu hakkında bir hata
+
+Tür çipleri `works.format` sütununu **birebir** eşleştiriyor. İki sorun vardı:
+
+1. **TMDB'den gelen her anime `format` alanı boş geliyordu** — `TmdbMapper`
+   bu alanı hiç yazmıyordu. Boş bir format hiçbir çiple eşleşmez, yani TMDB
+   ile aktarılmış her anime süzgeçle ulaşılamazdı. Artık `TV` yazıyor (bu
+   eşleyici yalnızca TMDB'nin `tv` ucunu okuyor, dolayısıyla dürüst cevap bu;
+   TMDB'nin kendi `type` alanı "Scripted"/"Miniseries" der — yapım kategorisi,
+   bu kataloğun gezindiği tür değil). Var olan bir eseri yeniden aktarınca
+   boş format **doldurulur**; dolu olan korunur, çünkü onu biri elle yazmıştır.
+2. **Yönetim panelinde tür alanı yoktu.** Sunucu kabul ediyordu, uygulama
+   gönderiyordu, ama formda hiç giriş yoktu — yani elle düzeltmek de mümkün
+   değildi. Artık eser düzenleme formunda bir **tür seçici** var, Keşfet'le
+   aynı listeden. Yazılan değil seçilen: "tv " ya da "Dizi" yazmak eseri
+   sessizce süzgeçten düşürürdü.
+
+---
+
 ## 7. Ekstra: çerçeveleri toplu yükleme
 
 Aynı sürümde: Yönetim Paneli → Çerçeveler → **+** artık **birden çok dosya**
@@ -382,7 +419,7 @@ Tek dosya seçersen isim alanı yine çıkıyor; çokta çıkmıyor, çünkü k�
 - `B2Url` (iki adres arası dönüşüm, kodlama, sorgu dizesi, eksik parça),
   `ChapterNumber` (10.5 ≠ 10, virgüllü yazım, başlık içinden sayı),
   `MangaMapper` (iki kaynağın da aynı şekle çevrilmesi, +18 bayrağı),
-  `GalleryRef` (numara, `#numara`, yapıştırılan adres, isim → 0) — 199
+  `GalleryRef` (numara, `#numara`, yapıştırılan adres, isim → 0) — 215
   birim testi geçiyor.
 - Her PHP dosyası `php -l`.
 - **Şema, dbDelta'nın gözünden doğrulanıyor.** Koşucu `install()`'ı çalıştırıp
@@ -395,7 +432,7 @@ Tek dosya seçersen isim alanı yine çıkıyor; çokta çıkmıyor, çünkü k�
 - **Manga uçları gerçekten çalıştırıldı.** `tests/smoke/` içindeki koşucu artık
   `wp_remote_get`'i de karşılıyor, yani içe aktarma, kopyalama, iki kaynakta
   arama ve okuyucu ucu sahte bir köprü/kaynak yanıtıyla baştan sona koşuyor —
-  112 kontrol. Galeri aramasının olmayan bir uca gitmesi tam olarak burada
+  120 kontrol. Galeri aramasının olmayan bir uca gitmesi tam olarak burada
   yakalandı; ilk sürümde bu yollardan hiçbiri hiç çalıştırılmamıştı.
 - **Köprü eklentisi de çalıştırıldı.** Kendi koşucusu var
   (`animeh-manga-bridge/tests/smoke.php`, 12 kontrol): rotalar kaydoluyor mu,
@@ -403,6 +440,14 @@ Tek dosya seçersen isim alanı yine çıkıyor; çokta çıkmıyor, çünkü k�
   gerçek gövde üretiyor mu, sayfa sıralaması doğal mı (`1, 2, 10`), b2/bunny
   bayrakları hangi sırayla kazanıyor. 500'ü bu yakaladı — ve hatayı geri koyup
   koşucunun gerçekten düştüğü doğrulandı.
+- **İki dilin buluştuğu yer: dizeler.** Uygulamanın çağırdığı her yol ile
+  eklentinin kaydettiği her rota karşılaştırılıyor
+  (`tools/checks/rest_routes.py`, 120 çağrı / 111 rota, eşleşmeyen yok) ve her
+  DTO alanının sunucuda bir yazıcısı olduğu doğrulanıyor
+  (`tools/checks/dto_payload_keys.py`, 460 anahtar). İlki `/admin/works/{id}`
+  404'ünün tam şekli; ikincisi ise her alanın varsayılanı olduğu için hiç hata
+  vermeyen, sessizce 0 dönen eksik anahtar için. İkisi de
+  `tools/build-plugin.sh` içinde koşuyor.
 - **`tools/php-call-check.php`**: her PHP dosyasında, çağrılan yerleşik
   fonksiyona verilen argüman sayısı imzasıyla karşılaştırılıyor. `key()`
   hatası tam olarak bu şekilde görünür oluyor (`en az 1 argüman ister, 0

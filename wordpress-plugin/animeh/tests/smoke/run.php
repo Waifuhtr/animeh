@@ -133,6 +133,63 @@ step(
 );
 
 step(
+	'ana sayfanın anime rayları manga çekmiyor',
+	static function () use ( $wpdb ): void {
+		$wpdb->queries = array();
+
+		( new CatalogController() )->home();
+
+		// hero, popular, recently_added and airing all select from `works`
+		// without naming a kind, and rely on the repository defaulting to
+		// anime. That default is load-bearing: drop it and a manga appears in
+		// the slider, under "Popüler", and — an ongoing manga carries status
+		// `airing` too — under "Yayında", while the rails built for manga sit
+		// below showing the same covers again.
+		$works = array_filter(
+			$wpdb->queries,
+			static fn( $sql ): bool => str_contains( (string) $sql, 'animeh_works' )
+				&& ! str_contains( (string) $sql, 'animeh_episodes' )
+		);
+
+		if ( array() === $works ) {
+			throw new RuntimeException( 'works hiç sorgulanmadı' );
+		}
+
+		foreach ( $works as $sql ) {
+			if ( ! str_contains( (string) $sql, 'kind = ' ) ) {
+				throw new RuntimeException(
+					'tür süzgeci olmayan sorgu: ' . substr( preg_replace( '/\s+/', ' ', (string) $sql ), 0, 160 )
+				);
+			}
+		}
+	}
+);
+
+step(
+	'GET /catalog/works?format= süzüyor',
+	static function () use ( $wpdb ): void {
+		$wpdb->queries = array();
+
+		( new CatalogController() )->works(
+			new WP_REST_Request(
+				array( 'page' => 1, 'per_page' => 20, 'sort' => 'recent', 'format' => 'TV' )
+			)
+		);
+
+		// The discover screen's chips are only as real as this clause: without
+		// it every chip returns the whole catalogue and the filter is a lie.
+		$filtered = array_filter(
+			$wpdb->queries,
+			static fn( $sql ): bool => str_contains( (string) $sql, 'format = ' )
+		);
+
+		if ( array() === $filtered ) {
+			throw new RuntimeException( 'format süzgeci sorguya girmedi' );
+		}
+	}
+);
+
+step(
 	'GET /catalog/genres',
 	static function (): void {
 		( new CatalogController() )->genres();

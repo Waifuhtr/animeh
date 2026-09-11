@@ -80,6 +80,10 @@ fun AnimehApp(
     // its route has to stay exactly "discover" for the tab to light up.
     var discoverKind by rememberSaveable { mutableStateOf<String?>(null) }
 
+    // A genre tapped on a work's page. Same mechanism as the shelf above, and
+    // for the same reason: Discover's route has to stay "discover".
+    var discoverGenre by rememberSaveable { mutableStateOf<String?>(null) }
+
     val switchTab: (String) -> Unit = { route ->
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) {
@@ -178,6 +182,8 @@ fun AnimehApp(
                     onWorkClick = { navController.navigate(Routes.detail(it.id)) },
                     startKind = discoverKind,
                     onStartKindHandled = { discoverKind = null },
+                    startGenre = discoverGenre,
+                    onStartGenreHandled = { discoverGenre = null },
                 )
             }
 
@@ -255,6 +261,11 @@ fun AnimehApp(
                     onSignIn = { navController.navigate(Routes.LOGIN) },
                     onOpenRoom = { navController.navigate(Routes.ROOM) },
                     onRecommend = { navController.navigate(Routes.recommend(it)) },
+                    onGenreClick = { genre, kind ->
+                        discoverGenre = genre
+                        discoverKind = kind
+                        switchTab(Routes.DISCOVER)
+                    },
                     signedIn = authState is AuthState.SignedIn,
                 )
             }

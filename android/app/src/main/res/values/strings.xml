@@ -113,6 +113,11 @@
     <string name="discover_hint">Anime ara…</string>
     <string name="discover_genres">Türler</string>
     <string name="discover_filters">Filtreler</string>
+    <string name="discover_subtitle">Sana özel öneriler, en popüler animeler ve daha fazlası burada!</string>
+    <string name="discover_reset">Tümünü sıfırla</string>
+    <string name="discover_genre">Tür</string>
+    <string name="discover_results">Sonuçlar</string>
+    <string name="filter_all">Tümü</string>
     <string name="discover_year">Yıl</string>
     <string name="discover_season">Sezon</string>
     <string name="discover_status">Durum</string>

@@ -127,3 +127,25 @@ sealed class AppError(
     val requiresLogin: Boolean
         get() = this is Unauthorized
 }
+
+/**
+ * The one sentence a view model puts in a snackbar.
+ *
+ * [AppError.reason] first, because the server's own words are almost always
+ * better than anything assembled from a status code — "Bu çerçeve için yeterli
+ * puanın yok", "Bölüm bulunamadı", "Önce depolama ayarlarını yap" — and they
+ * are already in Turkish.
+ *
+ * Lives here rather than in each view model because it had drifted into five
+ * identical private copies (two in the admin panel, plus the manga panel, the
+ * frame shop and the recommend sheet); a sixth would have been written the
+ * next time somebody needed it.
+ *
+ * Not [messageRes]: a view model has no Context, and these three fallbacks are
+ * deliberately shorter than the full-screen strings — a snackbar is one line.
+ */
+fun AppError.explain(): String = reason() ?: when (this) {
+    is AppError.Network -> "İnternet bağlantısı yok."
+    is AppError.Timeout -> "Sunucu yanıt vermedi."
+    else -> "Bir şeyler ters gitti."
+}

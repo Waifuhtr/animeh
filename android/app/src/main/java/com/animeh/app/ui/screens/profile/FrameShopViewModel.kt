@@ -3,8 +3,8 @@ package com.animeh.app.ui.screens.profile
 import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
+import com.animeh.app.core.explain
 import com.animeh.app.data.remote.dto.FrameDto
 import com.animeh.app.data.repository.RewardsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -64,7 +64,7 @@ class FrameShopViewModel @Inject constructor(
 
                 is AppResult.Failure -> {
                     _state.value = _state.value.copy(loading = false)
-                    _message.value = describe(result.error)
+                    _message.value = result.error.explain()
                 }
             }
         }
@@ -100,7 +100,7 @@ class FrameShopViewModel @Inject constructor(
 
                 is AppResult.Failure -> {
                     _state.value = _state.value.copy(busyId = 0)
-                    _message.value = describe(result.error)
+                    _message.value = result.error.explain()
                 }
             }
         }
@@ -114,7 +114,7 @@ class FrameShopViewModel @Inject constructor(
                     frames = _state.value.frames.map { it.copy(equipped = it.id == frame.id) },
                 )
 
-                is AppResult.Failure -> _message.value = describe(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
         }
     }
@@ -134,18 +134,5 @@ class FrameShopViewModel @Inject constructor(
 
     fun messageShown() {
         _message.value = null
-    }
-
-    /**
-     * The server's own words where it sent any.
-     *
-     * "Bu çerçeve için yeterli puanın yok" is a better sentence than anything
-     * this class could assemble from a status code, and it is already
-     * translated.
-     */
-    private fun describe(error: AppError): String = error.reason() ?: when (error) {
-        is AppError.Network -> "İnternet bağlantısı yok."
-        is AppError.Timeout -> "Sunucu yanıt vermedi."
-        else -> "Bir şeyler ters gitti."
     }
 }

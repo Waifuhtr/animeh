@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
+import com.animeh.app.core.explain
 import com.animeh.app.data.remote.dto.*
 import com.animeh.app.data.repository.AdminRepository
 import com.animeh.app.domain.Episode
@@ -1069,7 +1070,7 @@ class AdminFramesViewModel @Inject constructor(
                 // The server's own words: it knows whether the file was the
                 // wrong shape, the wrong format or simply too big, and each of
                 // those needs a different thing done about it.
-                is AppResult.Failure -> _message.value = describe(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
 
             _busy.value = false
@@ -1080,7 +1081,7 @@ class AdminFramesViewModel @Inject constructor(
         viewModelScope.launch {
             when (val result = repository.updateFrame(id, name, price, rarity, published)) {
                 is AppResult.Success -> load()
-                is AppResult.Failure -> _message.value = describe(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
         }
     }
@@ -1092,7 +1093,7 @@ class AdminFramesViewModel @Inject constructor(
                     _message.value = "Çerçeve silindi"
                     load()
                 }
-                is AppResult.Failure -> _message.value = describe(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
         }
     }
@@ -1101,11 +1102,6 @@ class AdminFramesViewModel @Inject constructor(
         _message.value = null
     }
 
-    private fun describe(error: AppError): String = error.reason() ?: when (error) {
-        is AppError.Network -> "İnternet bağlantısı yok."
-        is AppError.Timeout -> "Sunucu yanıt vermedi."
-        else -> "Bir şeyler ters gitti."
-    }
 }
 
 /**
@@ -1208,7 +1204,7 @@ class AdminMangaViewModel @Inject constructor(
 
                 is AppResult.Failure -> {
                     _state.update { it.copy(connecting = false) }
-                    _message.value = describe(result.error)
+                    _message.value = result.error.explain()
                 }
             }
         }
@@ -1234,7 +1230,7 @@ class AdminMangaViewModel @Inject constructor(
                 first = false
 
                 if (result !is AppResult.Success) {
-                    val reason = describe((result as AppResult.Failure).error)
+                    val reason = (result as AppResult.Failure).error.explain()
                     _message.value = reason
                     _state.update { it.copy(lastError = reason) }
                     break
@@ -1289,7 +1285,7 @@ class AdminMangaViewModel @Inject constructor(
                 val result = repository.mirrorManga()
 
                 if (result !is AppResult.Success) {
-                    val reason = describe((result as AppResult.Failure).error)
+                    val reason = (result as AppResult.Failure).error.explain()
                     _message.value = reason
                     _state.update { it.copy(lastError = reason) }
                     break
@@ -1345,7 +1341,7 @@ class AdminMangaViewModel @Inject constructor(
 
                 is AppResult.Failure -> {
                     _state.update { it.copy(searching = false) }
-                    _message.value = describe(result.error)
+                    _message.value = result.error.explain()
                 }
             }
         }
@@ -1373,7 +1369,7 @@ class AdminMangaViewModel @Inject constructor(
                     }
                 }
 
-                is AppResult.Failure -> _message.value = describe(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
 
             _state.update { it.copy(importingId = 0) }
@@ -1394,7 +1390,7 @@ class AdminMangaViewModel @Inject constructor(
 
                 is AppResult.Failure -> {
                     _state.update { it.copy(galleryEnabled = !enabled) }
-                    _message.value = describe(result.error)
+                    _message.value = result.error.explain()
                 }
             }
         }
@@ -1420,11 +1416,6 @@ class AdminMangaViewModel @Inject constructor(
         }
     }
 
-    private fun describe(error: AppError): String = error.reason() ?: when (error) {
-        is AppError.Network -> "İnternet bağlantısı yok."
-        is AppError.Timeout -> "Sunucu yanıt vermedi."
-        else -> "Bir şeyler ters gitti."
-    }
 }
 
 /* ── Manga chapters and their pages ──────────────────────────────────── */
@@ -1501,7 +1492,7 @@ class AdminChaptersViewModel @Inject constructor(
                 }
 
                 is AppResult.Failure -> {
-                    val reason = describeAdmin(result.error)
+                    val reason = result.error.explain()
                     _message.value = reason
                     _state.update { it.copy(loading = false, lastError = reason) }
                 }
@@ -1534,7 +1525,7 @@ class AdminChaptersViewModel @Inject constructor(
                 }
 
                 is AppResult.Failure -> {
-                    val reason = describeAdmin(result.error)
+                    val reason = result.error.explain()
                     _message.value = reason
                     _state.update { it.copy(lastError = reason) }
                 }
@@ -1552,7 +1543,7 @@ class AdminChaptersViewModel @Inject constructor(
                     load()
                 }
 
-                is AppResult.Failure -> _message.value = describeAdmin(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
         }
     }
@@ -1618,7 +1609,7 @@ class AdminChapterPagesViewModel @Inject constructor(
                     }
                 }
 
-                is AppResult.Failure -> _message.value = describeAdmin(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
 
             _state.update { it.copy(uploading = false) }
@@ -1633,7 +1624,7 @@ class AdminChapterPagesViewModel @Inject constructor(
                     _message.value = "Sayfalar silindi"
                 }
 
-                is AppResult.Failure -> _message.value = describeAdmin(result.error)
+                is AppResult.Failure -> _message.value = result.error.explain()
             }
         }
     }
@@ -1641,17 +1632,4 @@ class AdminChapterPagesViewModel @Inject constructor(
     fun messageShown() {
         _message.value = null
     }
-}
-
-/**
- * The sentence an admin screen shows for a failure.
- *
- * The server's own words when it wrote any — "Bölüm bulunamadı", "Önce
- * depolama ayarlarını yap" — because on this side of the app the person
- * reading is the one who can act on them.
- */
-internal fun describeAdmin(error: AppError): String = error.reason() ?: when (error) {
-    is AppError.Network -> "İnternet bağlantısı yok."
-    is AppError.Timeout -> "Sunucu yanıt vermedi."
-    else -> "Bir şeyler ters gitti."
 }

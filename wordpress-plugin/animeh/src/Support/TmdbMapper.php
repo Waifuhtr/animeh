@@ -115,6 +115,15 @@ final class TmdbMapper {
 			'banner_url'       => self::image( (string) ( $tv['backdrop_path'] ?? '' ), self::BACKDROP_SIZE, $base ),
 			'year'             => self::year( $first_air ),
 			'status'           => self::status( (string) ( $tv['status'] ?? '' ) ),
+			// This mapper only ever reads TMDB's `tv` endpoint, so everything
+			// it returns is a series. TMDB's own `type` is not the answer: it
+			// says "Scripted", "Miniseries", "Documentary" — a production
+			// category, not one of the formats this catalog browses by.
+			//
+			// It has to be set. A TMDB import used to leave `format` empty,
+			// and an empty format matches no chip on the discover screen, so
+			// those titles were unreachable by any filter.
+			'format'           => 'TV',
 			'genres'           => $genres,
 			'total_episodes'   => (int) ( $tv['number_of_episodes'] ?? 0 ),
 			'duration_seconds' => array() === $runtimes ? 0 : $runtimes[0] * 60,

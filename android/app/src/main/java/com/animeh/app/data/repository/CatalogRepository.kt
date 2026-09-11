@@ -53,6 +53,7 @@ class CatalogRepository @Inject constructor(
         /** "manga" to browse the other half of the catalogue. */
         kind: String? = null,
         genre: String? = null,
+        format: String? = null,
         year: Int? = null,
         season: String? = null,
         status: String? = null,
@@ -65,6 +66,7 @@ class CatalogRepository @Inject constructor(
             search = search?.takeIf { it.isNotBlank() },
             kind = kind?.takeIf { it.isNotBlank() },
             genre = genre?.takeIf { it.isNotBlank() },
+            format = format?.takeIf { it.isNotBlank() },
             year = year?.takeIf { it > 0 },
             season = season?.takeIf { it.isNotBlank() },
             status = status?.takeIf { it.isNotBlank() },
@@ -78,6 +80,45 @@ class CatalogRepository @Inject constructor(
         // not claim a place on the home screen.
         if (result is AppResult.Success) {
             workDao.upsert(result.data.map { it.toEntity() })
+        }
+    }
+
+    /**
+     * A page of works, and how many there are in total.
+     *
+     * The same call as [works], kept apart because only one screen needs the
+     * count: Discover says "Sonuçlar (12.458)" and everywhere else the number
+     * is noise the response already carried and threw away.
+     */
+    suspend fun worksPage(
+        search: String? = null,
+        kind: String? = null,
+        genre: String? = null,
+        format: String? = null,
+        year: Int? = null,
+        season: String? = null,
+        status: String? = null,
+        sort: String = "recent",
+        page: Int = 1,
+        perPage: Int = 20,
+    ): AppResult<WorkPage> = ApiErrorMapper.call({ dto ->
+        WorkPage(dto.items.map { it.toDomain() }, dto.total)
+    }) {
+        publicApi.works(
+            search = search?.takeIf { it.isNotBlank() },
+            kind = kind?.takeIf { it.isNotBlank() },
+            genre = genre?.takeIf { it.isNotBlank() },
+            format = format?.takeIf { it.isNotBlank() },
+            year = year?.takeIf { it > 0 },
+            season = season?.takeIf { it.isNotBlank() },
+            status = status?.takeIf { it.isNotBlank() },
+            sort = sort,
+            page = page,
+            perPage = perPage,
+        )
+    }.also { result ->
+        if (result is AppResult.Success) {
+            workDao.upsert(result.data.items.map { it.toEntity() })
         }
     }
 
@@ -194,3 +235,9 @@ class CatalogRepository @Inject constructor(
         const val CONTINUE_LIMIT = 20
     }
 }
+
+/** One page of results, with the size of the whole set behind it. */
+data class WorkPage(
+    val items: List<Work>,
+    val total: Int,
+)

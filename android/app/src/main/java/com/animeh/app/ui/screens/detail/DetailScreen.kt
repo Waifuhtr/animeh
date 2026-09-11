@@ -45,6 +45,8 @@ fun DetailScreen(
     onOpenRoom: () -> Unit = {},
     /** Hand a work to a friend. Shown on the manga page; the id is the work. */
     onRecommend: (Long) -> Unit = {},
+    /** A genre badge: browse everything else wearing it, on the same shelf. */
+    onGenreClick: (genre: String, kind: String) -> Unit = { _, _ -> },
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -105,6 +107,7 @@ fun DetailScreen(
             onReadChapter = play,
             onSignIn = onSignIn,
             onRecommend = onRecommend,
+            onGenreClick = onGenreClick,
             viewModel = viewModel,
         )
         return
@@ -174,7 +177,7 @@ fun DetailScreen(
                         item { Synopsis(work.synopsis) }
                     }
 
-                    item { MetaGrid(work, labels) }
+                    item { MetaGrid(work, labels, onGenreClick) }
 
                     if (work.seasons.size > 1) {
                         item {
@@ -437,14 +440,23 @@ private fun Synopsis(text: String) {
 }
 
 @Composable
-private fun MetaGrid(work: Work, labels: Map<String, Map<String, String>>) {
+private fun MetaGrid(
+    work: Work,
+    labels: Map<String, Map<String, String>>,
+    onGenreClick: (genre: String, kind: String) -> Unit,
+) {
     Column(Modifier.padding(horizontal = 16.dp)) {
         if (work.genres.isNotEmpty()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(work.genres) { genre ->
                     // The stored value is whatever the import wrote; what is
-                    // drawn is whatever an admin named it under Terimler.
-                    AssistChip(onClick = {}, label = { Text(labels.label("genre", genre)) })
+                    // drawn is whatever an admin named it under Terimler. The
+                    // tap carries the stored one, because that is what the
+                    // catalogue can be filtered by.
+                    AssistChip(
+                        onClick = { onGenreClick(genre, work.kind) },
+                        label = { Text(labels.label("genre", genre)) },
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))

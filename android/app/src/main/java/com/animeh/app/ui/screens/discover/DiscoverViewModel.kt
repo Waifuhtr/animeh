@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.animeh.app.core.AppResult
 import com.animeh.app.core.UiState
 import com.animeh.app.data.repository.CatalogRepository
+import com.animeh.app.data.repository.WorkPage
 import com.animeh.app.domain.Genre
 import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.domain.Work
@@ -30,14 +31,27 @@ data class DiscoverFilters(
      */
     val kind: String = KIND_ANIME,
     val genre: String = "",
+    /** TV, Film, OVA, ONA, Special — or a manga's own kind. */
+    val format: String = "",
     val year: Int = 0,
     val season: String = "",
     val status: String = "",
     val sort: String = "recent",
 ) {
+    /** Whether anything has been narrowed down, which decides what an empty result means. */
     val isActive: Boolean
-        get() = query.isNotBlank() || genre.isNotBlank() || year > 0 ||
-            season.isNotBlank() || status.isNotBlank()
+        get() = query.isNotBlank() || genre.isNotBlank() || format.isNotBlank() ||
+            year > 0 || season.isNotBlank() || status.isNotBlank()
+
+    /** How many of the five filter rows are set, for the badge on the button. */
+    val activeCount: Int
+        get() = listOf(
+            genre.isNotBlank(),
+            format.isNotBlank(),
+            year > 0,
+            season.isNotBlank(),
+            status.isNotBlank(),
+        ).count { it }
 }
 
 @HiltViewModel
@@ -54,6 +68,10 @@ class DiscoverViewModel @Inject constructor(
     private val _genres = MutableStateFlow<List<Genre>>(emptyList())
     val genres: StateFlow<List<Genre>> = _genres.asStateFlow()
 
+    /** How many works match, which is not how many are on screen. */
+    private val _total = MutableStateFlow(0)
+    val total: StateFlow<Int> = _total.asStateFlow()
+
     private var searchJob: Job? = null
     private var page = 1
     private var endReached = false
@@ -62,6 +80,11 @@ class DiscoverViewModel @Inject constructor(
         viewModelScope.launch {
             (repository.genres() as? AppResult.Success)?.let { _genres.value = it.data }
         }
+
+        // Opens on the catalogue rather than on an empty screen asking to be
+        // typed into. Browsing is the point of this tab; searching is one of
+        // the things you can do once you are here.
+        scheduleSearch(0)
     }
 
     /** Switch between anime and manga, and start the list again. */
@@ -82,6 +105,23 @@ class DiscoverViewModel @Inject constructor(
 
     fun setGenre(genre: String) {
         _filters.update { it.copy(genre = if (it.genre == genre) "" else genre) }
+        scheduleSearch(0)
+    }
+
+    /**
+     * Browse one genre, arriving from somewhere else.
+     *
+     * Sets rather than toggles: a tap on "Doujinshi" on a manga's page means
+     * show me that, and toggling would turn the second such tap into a no-op
+     * that looks like the link is broken.
+     */
+    fun browseGenre(genre: String, kind: String) {
+        _filters.value = DiscoverFilters(kind = kind, genre = genre)
+        scheduleSearch(0)
+    }
+
+    fun setFormat(format: String) {
+        _filters.update { it.copy(format = if (it.format == format) "" else format) }
         scheduleSearch(0)
     }
 
@@ -110,7 +150,7 @@ class DiscoverViewModel @Inject constructor(
         // over it, and clearing filters should not move you to a different
         // catalogue.
         _filters.value = DiscoverFilters(kind = _filters.value.kind)
-        _results.value = UiState.Empty
+        scheduleSearch(0)
     }
 
     /** Fetch the next page, if there is one. */
@@ -123,10 +163,11 @@ class DiscoverViewModel @Inject constructor(
             page++
             when (val result = search(page)) {
                 is AppResult.Success -> {
-                    if (result.data.isEmpty()) {
+                    _total.value = result.data.total
+                    if (result.data.items.isEmpty()) {
                         endReached = true
                     } else {
-                        _results.value = UiState.Success(existing + result.data)
+                        _results.value = UiState.Success(existing + result.data.items)
                     }
                 }
                 // A failed page keeps what is already listed; the user can
@@ -139,12 +180,6 @@ class DiscoverViewModel @Inject constructor(
     private fun scheduleSearch(delayMs: Long) {
         searchJob?.cancel()
 
-        val current = _filters.value
-        if (!current.isActive) {
-            _results.value = UiState.Empty
-            return
-        }
-
         searchJob = viewModelScope.launch {
             if (delayMs > 0) delay(delayMs)
 
@@ -153,22 +188,25 @@ class DiscoverViewModel @Inject constructor(
             endReached = false
 
             when (val result = search(1)) {
-                is AppResult.Success ->
-                    _results.value = if (result.data.isEmpty()) UiState.Empty
-                    else UiState.Success(result.data)
+                is AppResult.Success -> {
+                    _total.value = result.data.total
+                    _results.value = if (result.data.items.isEmpty()) UiState.Empty
+                    else UiState.Success(result.data.items)
+                }
 
                 is AppResult.Failure -> _results.value = UiState.Error(result.error)
             }
         }
     }
 
-    private suspend fun search(page: Int): AppResult<List<Work>> {
+    private suspend fun search(page: Int): AppResult<WorkPage> {
         val current = _filters.value
 
-        return repository.works(
+        return repository.worksPage(
             search = current.query,
             kind = current.kind,
             genre = current.genre,
+            format = current.format,
             year = current.year,
             season = current.season,
             status = current.status,

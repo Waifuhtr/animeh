@@ -37,6 +37,7 @@ if ( is_dir( $animeh_font_dir ) ) {
 
 \Animeh\Storage\Schema::drop();
 \Animeh\Storage\CatalogSchema::drop();
+\Animeh\Storage\ShortsSchema::drop();
 
 delete_option( 'animeh_test_presets' );
 delete_option( 'animeh_settings' );

@@ -25,8 +25,10 @@ require __DIR__ . '/rows.php';
 use Animeh\Rest\CatalogController;
 use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
+use Animeh\Rest\ShortsController;
 use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\LeaderboardRepository;
+use Animeh\Storage\ShortsSchema;
 use Animeh\Storage\UserDataRepository;
 use Animeh\Storage\MangaBridge;
 
@@ -370,6 +372,10 @@ echo "\nŞema\n";
 
 $GLOBALS['__delta'] = array();
 CatalogSchema::install();
+// AnimehTok's tables go through the same three checks below rather than
+// growing their own: the `author` bug was a comment inside a CREATE TABLE, and
+// nothing about that hazard is specific to the catalog.
+ShortsSchema::install();
 
 step(
 	'her tablo dbDelta\'ya gidiyor',
@@ -424,6 +430,44 @@ step(
 			}
 			if ( substr_count( rtrim( $statement, "; \n" ), ';' ) > 0 ) {
 				throw new RuntimeException( $table . ': ifadenin içinde noktalı virgül var' );
+			}
+		}
+	}
+);
+
+step(
+	'AnimehTok tabloları şemada',
+	static function (): void {
+		$want = array(
+			'animeh_shorts',
+			'animeh_short_tags',
+			'animeh_short_likes',
+			'animeh_short_saves',
+			'animeh_short_comments',
+			'animeh_short_comment_likes',
+			'animeh_short_sounds',
+			'animeh_short_follows',
+			'animeh_short_views',
+		);
+
+		$seen = array();
+		foreach ( $GLOBALS['__delta'] as $statement ) {
+			if ( 1 === preg_match( '|CREATE TABLE (\S+)|', $statement, $named ) ) {
+				$seen[] = $named[1];
+			}
+		}
+
+		foreach ( $want as $suffix ) {
+			$found = false;
+			foreach ( $seen as $table ) {
+				if ( str_ends_with( $table, $suffix ) ) {
+					$found = true;
+					break;
+				}
+			}
+
+			if ( ! $found ) {
+				throw new RuntimeException( 'eksik tablo: ' . $suffix );
 			}
 		}
 	}
@@ -874,6 +918,285 @@ step(
 
 		if ( $response instanceof WP_Error ) {
 			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+/* ── AnimehTok ───────────────────────────────────────────────────────── */
+
+echo "\nAnimehTok\n";
+
+/**
+ * One short-video row, as the table holds it.
+ *
+ * @param array<string, mixed> $overrides Columns to change.
+ * @return array<string, mixed>
+ */
+function animeh_short_row( array $overrides = array() ): array {
+	return array_merge(
+		array(
+			'id'            => 5,
+			'user_id'       => 7,
+			'slug'          => 'dans-7',
+			'description'   => 'Bu bir #anime klibi #dans',
+			'storage_key'   => 'animehtok/kullanici7-7/dans-7.mp4',
+			'thumb_key'     => 'animehtok/kullanici7-7/dans-7-kapak.jpg',
+			'sound_id'      => 3,
+			'duration_ms'   => 14000,
+			'width'         => 1080,
+			'height'        => 1920,
+			'size_bytes'    => 4200000,
+			'mime'          => 'video/mp4',
+			'published'     => 1,
+			'adult'         => 0,
+			'view_count'    => 120,
+			'like_count'    => 9,
+			'comment_count' => 2,
+			'save_count'    => 1,
+			'created_at'    => '2026-09-01 10:00:00',
+		),
+		$overrides
+	);
+}
+
+step(
+	'GET /shorts/feed',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array( 'shorts' => array( animeh_short_row() ) );
+
+		$response = ( new ShortsController() )->feed(
+			new WP_REST_Request( array( 'tab' => 'foryou', 'per_page' => 10, 'offset' => 0 ) )
+		);
+
+		$items = $response->get_data()['items'] ?? array();
+		if ( array() === $items ) {
+			throw new RuntimeException( 'akış boş döndü' );
+		}
+
+		// Every field the feed screen reads has to be in the payload, because
+		// each one has a default on the Kotlin side and a missing key is a
+		// silent zero rather than an error.
+		foreach ( array( 'id', 'description', 'video_url', 'creator', 'sound', 'liked', 'saved', 'like_count' ) as $field ) {
+			if ( ! array_key_exists( $field, $items[0] ) ) {
+				throw new RuntimeException( 'eksik alan: ' . $field );
+			}
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'GET /shorts/feed?tab=following — çıkış yapmışken boş',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array( 'shorts' => array( animeh_short_row() ) );
+
+		$response = ( new ShortsController() )->feed(
+			new WP_REST_Request( array( 'tab' => 'following', 'per_page' => 10, 'offset' => 0 ) )
+		);
+
+		// Nobody is signed in, so there is nobody being followed. An empty
+		// list is the honest answer; the whole catalogue would not be.
+		if ( array() !== ( $response->get_data()['items'] ?? array() ) ) {
+			throw new RuntimeException( 'takip akışı çıkış yapmışken dolu döndü' );
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'GET /shorts/{id}',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array( 'shorts' => array( animeh_short_row() ) );
+
+		$response = ( new ShortsController() )->show( new WP_REST_Request( array( 'id' => 5 ) ) );
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'GET /shorts/{id} — yoksa 404',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array();
+
+		$response = ( new ShortsController() )->show( new WP_REST_Request( array( 'id' => 404 ) ) );
+
+		if ( ! $response instanceof WP_Error || 404 !== ( $response->get_error_data()['status'] ?? 0 ) ) {
+			throw new RuntimeException( '404 beklenirdi' );
+		}
+	}
+);
+
+step(
+	'GET /shorts/tags/{tag}',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array( 'shorts' => array( animeh_short_row() ) );
+
+		$response = ( new ShortsController() )->tag_page(
+			new WP_REST_Request( array( 'tag' => 'anime', 'per_page' => 21, 'offset' => 0 ) )
+		);
+
+		$data = $response->get_data();
+		foreach ( array( 'tag', 'key', 'count', 'items' ) as $field ) {
+			if ( ! array_key_exists( $field, $data ) ) {
+				throw new RuntimeException( 'eksik alan: ' . $field );
+			}
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'GET /shorts/sounds/{id}',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array(
+			'short_sounds' => array(
+				array(
+					'id'              => 3,
+					'title'           => 'Orijinal ses',
+					'author'          => 'Kullanıcı 7',
+					'origin_short_id' => 5,
+					'created_by'      => 7,
+					'use_count'       => 1,
+					'created_at'      => '2026-09-01 10:00:00',
+				),
+			),
+			'shorts'       => array( animeh_short_row() ),
+		);
+
+		$response = ( new ShortsController() )->sound_page(
+			new WP_REST_Request( array( 'id' => 3, 'per_page' => 21, 'offset' => 0 ) )
+		);
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		if ( ( $response->get_data()['sound']['id'] ?? 0 ) !== 3 ) {
+			throw new RuntimeException( 'ses bloğu yok' );
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'GET /shorts/users/{id}',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array( 'shorts' => array( animeh_short_row() ) );
+
+		$response = ( new ShortsController() )->creator(
+			new WP_REST_Request( array( 'id' => 7, 'per_page' => 21, 'offset' => 0 ) )
+		);
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		foreach ( array( 'creator', 'stats', 'following', 'is_self', 'items' ) as $field ) {
+			if ( ! array_key_exists( $field, $response->get_data() ) ) {
+				throw new RuntimeException( 'eksik alan: ' . $field );
+			}
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'GET /shorts/{id}/comments',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array(
+			'shorts'         => array( animeh_short_row() ),
+			'short_comments' => array(
+				array(
+					'id'          => 11,
+					'short_id'    => 5,
+					'user_id'     => 9,
+					'parent_id'   => 0,
+					'body'        => 'çok iyi',
+					'like_count'  => 2,
+					'reply_count' => 0,
+					'created_at'  => '2026-09-01 11:00:00',
+				),
+			),
+		);
+
+		$response = ( new ShortsController() )->comments(
+			new WP_REST_Request( array( 'id' => 5, 'parent' => 0, 'per_page' => 20, 'offset' => 0 ) )
+		);
+
+		if ( $response instanceof WP_Error ) {
+			throw new RuntimeException( $response->get_error_code() . ': ' . $response->get_error_message() );
+		}
+
+		$items = $response->get_data()['items'] ?? array();
+		if ( array() === $items || ! array_key_exists( 'author', $items[0] ) ) {
+			throw new RuntimeException( 'yorum yazarı yok' );
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'GET /shorts/search',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array( 'shorts' => array( animeh_short_row() ) );
+
+		$response = ( new ShortsController() )->search( new WP_REST_Request( array( 'q' => 'anime' ) ) );
+
+		foreach ( array( 'videos', 'tags', 'sounds', 'creators' ) as $field ) {
+			if ( ! array_key_exists( $field, $response->get_data() ) ) {
+				throw new RuntimeException( 'eksik alan: ' . $field );
+			}
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'AnimehTok hiçbir şekilde geçmişe ya da puana dokunmuyor',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows    = array( 'shorts' => array( animeh_short_row() ) );
+		$wpdb->queries = array();
+		$wpdb->writes  = array();
+
+		$controller = new ShortsController();
+		$controller->feed( new WP_REST_Request( array( 'tab' => 'foryou', 'per_page' => 10, 'offset' => 0 ) ) );
+		$controller->view( new WP_REST_Request( array( 'id' => 5 ) ) );
+		$controller->show( new WP_REST_Request( array( 'id' => 5 ) ) );
+
+		// This is the promise the whole feature is built on: scrolling shorts
+		// earns nothing and counts toward nothing. A chapter became an episode
+		// row once and quietly inflated every "watched" number; this is the
+		// check that keeps the same thing from happening again.
+		$forbidden = array( 'animeh_history', 'animeh_points', 'animeh_user_lists' );
+
+		foreach ( $wpdb->queries as $sql ) {
+			foreach ( $forbidden as $table ) {
+				if ( str_contains( (string) $sql, $table ) ) {
+					throw new RuntimeException( 'AnimehTok ' . $table . " tablosuna dokundu:\n" . $sql );
+				}
+			}
+		}
+
+		foreach ( $wpdb->writes as $write ) {
+			foreach ( $forbidden as $table ) {
+				if ( str_contains( (string) ( $write[1] ?? '' ), $table ) ) {
+					throw new RuntimeException( 'AnimehTok ' . $table . ' tablosuna yazdı' );
+				}
+			}
 		}
 
 		$wpdb->rows = array();

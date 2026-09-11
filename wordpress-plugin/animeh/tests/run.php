@@ -17,34 +17,16 @@ namespace Animeh\Tests;
 
 use Throwable;
 
-require_once __DIR__ . '/../src/Support/FontFile.php';
-require_once __DIR__ . '/../src/Support/AssScript.php';
-require_once __DIR__ . '/../src/Support/UrlGuard.php';
-require_once __DIR__ . '/../src/Support/Throttle.php';
-require_once __DIR__ . '/../src/Support/TestVerdict.php';
-require_once __DIR__ . '/../src/Support/PlaylistRewriter.php';
-require_once __DIR__ . '/../src/Support/S3Signer.php';
-require_once __DIR__ . '/../src/Support/StorageKey.php';
-require_once __DIR__ . '/../src/Support/SecretBox.php';
-require_once __DIR__ . '/../src/Support/MigrationCode.php';
-require_once __DIR__ . '/../src/Support/Snapshot.php';
-require_once __DIR__ . '/../src/Support/ApiToken.php';
-require_once __DIR__ . '/../src/Support/RateLimit.php';
-require_once __DIR__ . '/../src/Support/TenraiMapper.php';
-require_once __DIR__ . '/../src/Support/WatchProgress.php';
-require_once __DIR__ . '/../src/Support/TmdbMapper.php';
-require_once __DIR__ . '/../src/Support/GenreTally.php';
-require_once __DIR__ . '/../src/Support/ServiceAccountJwt.php';
-require_once __DIR__ . '/../src/Support/FontMatch.php';
-require_once __DIR__ . '/../src/Support/ImageResizer.php';
-require_once __DIR__ . '/../src/Support/Points.php';
-require_once __DIR__ . '/../src/Support/ProfileTheme.php';
-require_once __DIR__ . '/../src/Support/FrameFile.php';
-require_once __DIR__ . '/../src/Support/B2Url.php';
-require_once __DIR__ . '/../src/Support/ChapterNumber.php';
-require_once __DIR__ . '/../src/Support/GalleryRef.php';
-require_once __DIR__ . '/../src/Support/PageOrder.php';
-require_once __DIR__ . '/../src/Support/MangaMapper.php';
+// Every pure class, by directory rather than by name.
+//
+// This was a hand-written list of thirty requires, and a new class was simply
+// missing from it: the file existed, the tests for it were written, and every
+// one of them failed with "Class not found" until somebody noticed the list.
+// Nothing in Support/ inherits from anything, so load order does not matter
+// and a glob is the whole answer.
+foreach ( glob( __DIR__ . '/../src/Support/*.php' ) ?: array() as $support ) {
+	require_once $support;
+}
 
 // Not Support/, but the two methods exercised below are pure: normalising a
 // fingerprint and shaping a statement list touch nothing WordPress owns.

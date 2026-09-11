@@ -52,6 +52,15 @@ final class StorageKey {
 	public const PROFILE_ROOT = 'profil';
 
 	/**
+	 * Root for AnimehTok, the short-video shelf.
+	 *
+	 * Its own root beside `anime` and `manga` rather than a folder inside
+	 * either: a short is not an episode of anything, and the bill for it
+	 * should be readable on its own line.
+	 */
+	public const TOK_ROOT = 'animehtok';
+
+	/**
 	 * Transliterations applied before slugging.
 	 *
 	 * Turkish first, because the titles this library holds are Turkish-facing
@@ -237,6 +246,60 @@ final class StorageKey {
 	 */
 	public static function system_file( string $name ): string {
 		return self::SYSTEM_ROOT . '/' . ltrim( $name, '/' );
+	}
+
+	/**
+	 * Folder for one creator's AnimehTok videos.
+	 *
+	 * `animehtok/<kullanıcı>/…`, which is the layout asked for. The name is
+	 * slugged rather than used raw — a display name can hold a slash, and a
+	 * slash in a key is a folder somebody did not mean to create — and the
+	 * account id is appended so two people called "kaan" do not share a folder
+	 * and a rename does not strand the videos already in one.
+	 *
+	 * @param int    $user_id Account.
+	 * @param string $name    Display name or login.
+	 */
+	public static function tok_prefix( int $user_id, string $name ): string {
+		$slug = self::slug( $name );
+
+		if ( '' === $slug || 'anime' === $slug ) {
+			$slug = 'kullanici';
+		}
+
+		return self::TOK_ROOT . '/' . $slug . '-' . max( 0, $user_id );
+	}
+
+	/**
+	 * Key for one video, under its creator's folder.
+	 *
+	 * @param int    $user_id   Account.
+	 * @param string $name      Display name or login.
+	 * @param string $slug      The video's own slug.
+	 * @param string $extension File extension, without the dot.
+	 */
+	public static function tok_video( int $user_id, string $name, string $slug, string $extension = 'mp4' ): string {
+		$extension = strtolower( preg_replace( '/[^A-Za-z0-9]/', '', $extension ) ?? '' );
+
+		if ( ! in_array( $extension, array( 'mp4', 'webm', 'mov', 'm4v' ), true ) ) {
+			$extension = 'mp4';
+		}
+
+		return self::tok_prefix( $user_id, $name ) . '/' . self::slug( $slug ) . '.' . $extension;
+	}
+
+	/**
+	 * Key for one video's cover frame.
+	 *
+	 * Beside the video rather than in a folder of its own, so deleting a
+	 * creator's folder takes the covers with it.
+	 *
+	 * @param int    $user_id Account.
+	 * @param string $name    Display name or login.
+	 * @param string $slug    The video's own slug.
+	 */
+	public static function tok_cover( int $user_id, string $name, string $slug ): string {
+		return self::tok_prefix( $user_id, $name ) . '/' . self::slug( $slug ) . '-kapak.jpg';
 	}
 
 	/**

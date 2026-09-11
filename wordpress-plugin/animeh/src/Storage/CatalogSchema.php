@@ -725,9 +725,12 @@ final class CatalogSchema {
 	 * The comments belong next to the columns they explain, so they are
 	 * removed on the way out rather than deleted.
 	 *
+	 * Public so a second schema — AnimehTok has its own tables — goes through
+	 * the same safety net rather than growing its own copy of this lesson.
+	 *
 	 * @param string $sql Statement as written.
 	 */
-	private static function for_delta( string $sql ): string {
+	public static function for_delta( string $sql ): string {
 		$lines = array();
 
 		foreach ( explode( "\n", $sql ) as $line ) {
@@ -755,7 +758,7 @@ final class CatalogSchema {
 	 *
 	 * @param string $statement Comment-free statement.
 	 */
-	private static function reconcile( string $statement ): void {
+	public static function reconcile( string $statement ): void {
 		global $wpdb;
 
 		if ( 1 !== preg_match( '/CREATE TABLE\s+(\S+)\s*\((.*)\)[^)]*$/ms', $statement, $parts ) ) {

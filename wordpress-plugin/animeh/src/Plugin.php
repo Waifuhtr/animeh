@@ -29,6 +29,7 @@ use Animeh\Rest\RoomLinkPage;
 use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
 use Animeh\Rest\SocialController;
+use Animeh\Rest\ShortsController;
 use Animeh\Rest\StorageController;
 use Animeh\Rest\TestController;
 use Animeh\Storage\CatalogSchema;
@@ -36,6 +37,7 @@ use Animeh\Storage\FontRepository;
 use Animeh\Storage\FrameRepository;
 use Animeh\Storage\LogRepository;
 use Animeh\Storage\Schema;
+use Animeh\Storage\ShortsSchema;
 use Animeh\Storage\SnapshotStore;
 use Animeh\Storage\SocialRepository;
 use Animeh\Storage\TokenRepository;
@@ -66,6 +68,7 @@ final class Plugin {
 		// schema version is checked on every load instead.
 		add_action( 'init', array( Schema::class, 'maybe_upgrade' ) );
 		add_action( 'init', array( CatalogSchema::class, 'maybe_upgrade' ) );
+		add_action( 'init', array( ShortsSchema::class, 'maybe_upgrade' ) );
 
 		// Registered before `rest_api_init` so the bearer token is resolved by
 		// the time any permission callback asks who is calling.
@@ -86,6 +89,7 @@ final class Plugin {
 				( new AdminController() )->register_routes();
 				( new RewardsController() )->register_routes();
 				( new MangaController() )->register_routes();
+				( new ShortsController() )->register_routes();
 			}
 		);
 
@@ -138,6 +142,7 @@ final class Plugin {
 	public static function activate(): void {
 		Schema::install();
 		CatalogSchema::install();
+		ShortsSchema::install();
 		FontRepository::ensure_directory();
 		FrameRepository::ensure_directory();
 		Permissions::grant_to_administrators();

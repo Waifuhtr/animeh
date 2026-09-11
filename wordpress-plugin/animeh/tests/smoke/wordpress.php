@@ -60,6 +60,8 @@ function get_transient( $k ) { return $GLOBALS['__transients'][ $k ] ?? false; }
 function set_transient( $k, $v, $t = 0 ) { $GLOBALS['__transients'][ $k ] = $v; return true; }
 function delete_transient( $k ) { unset( $GLOBALS['__transients'][ $k ] ); return true; }
 function get_user_meta( $u, $k, $s = false ) { return ''; }
+// The Gravatar fallback, for an account that has not uploaded a picture.
+function get_avatar_url( $u, $args = array() ) { return 'https://example.test/avatar/' . (int) $u; }
 function update_user_meta( $u, $k, $v ) { return true; }
 function delete_user_meta( $u, $k ) { return true; }
 function delete_metadata( ...$a ) { return true; }
@@ -188,7 +190,31 @@ function animeh_http( string $url, $args = array() ) {
 }
 function current_user_can( $c ) { return false; }
 function user_can( $u, $c ) { return false; }
-function get_userdata( $id ) { return false; }
+/**
+ * An account, so a payload that names its author can actually be built.
+ *
+ * Returned false for everything until AnimehTok, whose every payload carries a
+ * creator: with no user there was no creator block to shape and the endpoints
+ * could not be run at all.
+ */
+function get_userdata( $id ) {
+	$id = (int) $id;
+
+	if ( $id <= 0 ) {
+		return false;
+	}
+
+	$user               = new WP_User();
+	$user->ID           = $id;
+	$user->user_login   = 'kullanici' . $id;
+	$user->display_name = 'Kullanıcı ' . $id;
+	$user->user_email   = 'k' . $id . '@example.test';
+
+	return $user;
+}
+
+/** Nobody, unless a test says otherwise. */
+function get_users( $args = array() ) { return $GLOBALS['__users'] ?? array(); }
 function get_role( $r ) { return null; }
 function add_role( ...$a ) { return null; }
 function add_action( ...$a ) { return true; }
@@ -234,7 +260,13 @@ class WP_REST_Server {
 	const EDITABLE = 'PUT';
 	const DELETABLE = 'DELETE';
 }
-class WP_User { public $ID = 0; public $roles = array(); }
+class WP_User {
+	public $ID = 0;
+	public $roles = array();
+	public $user_login = '';
+	public $display_name = '';
+	public $user_email = '';
+}
 class WP_Post {}
 class WP_Query { public $posts = array(); public $max_num_pages = 0; public $found_posts = 0;
 	public function __construct( $a = array() ) {} }

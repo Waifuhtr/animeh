@@ -2345,3 +2345,117 @@ describe( 'MangaMapper', function (): void {
 		same( true, $row['adult'] );
 	} );
 } );
+
+describe( 'Hashtag', static function (): void {
+	it( 'bir açıklamadaki etiketleri yazıldığı sırayla çıkarır', static function (): void {
+		same(
+			array( 'anime', 'Naruto', 'Sasuke' ),
+			\Animeh\Support\Hashtag::tags( 'Bu bir #anime klibi #Naruto#Sasuke' )
+		);
+	} );
+
+	it( 'aynı etiketi iki kez saymaz', static function (): void {
+		// Farklı yazılmış olsa bile: etiket sayfası tek sayfa.
+		same(
+			array( 'Anime' ),
+			\Animeh\Support\Hashtag::tags( '#Anime çok iyi #anime gerçekten #ANIME' )
+		);
+	} );
+
+	it( 'etiket boşlukta ve noktalamada biter', static function (): void {
+		same( array( 'anime' ), \Animeh\Support\Hashtag::tags( '#anime, çok iyi' ) );
+		same( array( 'anime' ), \Animeh\Support\Hashtag::tags( 'bak #anime.' ) );
+	} );
+
+	it( 'etiketsiz açıklamada boş liste döner', static function (): void {
+		same( array(), \Animeh\Support\Hashtag::tags( 'hiç etiket yok' ) );
+		same( array(), \Animeh\Support\Hashtag::tags( '' ) );
+		// Tek başına bir diyez etiket değil.
+		same( array(), \Animeh\Support\Hashtag::tags( '# ' ) );
+	} );
+
+	it( 'Türkçe İ ve ı aynı anahtara düşer', static function (): void {
+		// Bu sınıfın var olma sebebi: strtolower("İZLE") varsayılan kurallarla
+		// birleşen noktalı bir "i̇zle" üretir ve "izle" ile eşleşmez, yani
+		// etiket sayfası yazılışa göre bazen boş çıkardı.
+		same( \Animeh\Support\Hashtag::key( 'izle' ), \Animeh\Support\Hashtag::key( 'İZLE' ) );
+		same( \Animeh\Support\Hashtag::key( 'izle' ), \Animeh\Support\Hashtag::key( 'ızle' ) );
+		same( 'cokiyi', \Animeh\Support\Hashtag::key( 'Çok_İyi' ) );
+		same( \Animeh\Support\Hashtag::key( 'Çok_İyi' ), \Animeh\Support\Hashtag::key( 'cokiyi' ) );
+	} );
+
+	it( 'anahtarı olmayan şey etiket değildir', static function (): void {
+		same( '', \Animeh\Support\Hashtag::key( '___' ) );
+		same( false, \Animeh\Support\Hashtag::valid( '___' ) );
+		same( true, \Animeh\Support\Hashtag::valid( 'anime' ) );
+	} );
+
+	it( 'etiket sayısını ve uzunluğunu sınırlar', static function (): void {
+		$many = '';
+		for ( $i = 0; $i < 40; $i++ ) {
+			$many .= '#etiket' . $i . ' ';
+		}
+		same( \Animeh\Support\Hashtag::MAX_TAGS, count( \Animeh\Support\Hashtag::tags( $many ) ) );
+
+		$long = '#' . str_repeat( 'a', 200 );
+		$tags = \Animeh\Support\Hashtag::tags( $long );
+		same( \Animeh\Support\Hashtag::MAX_LENGTH, mb_strlen( $tags[0] ) );
+	} );
+
+	it( 'bahsedilen hesapları da bulur', static function (): void {
+		same( array( 'kaan', 'ayse.b' ), \Animeh\Support\Hashtag::mentions( 'selam @kaan ve @ayse.b' ) );
+		same( array(), \Animeh\Support\Hashtag::mentions( 'kimseden bahsetmiyorum' ) );
+	} );
+} );
+
+describe( 'StorageKey — AnimehTok', static function (): void {
+	it( 'animehtok/<kullanıcı>/<video> düzenini kurar', static function (): void {
+		same(
+			'animehtok/kaan-7',
+			\Animeh\Support\StorageKey::tok_prefix( 7, 'Kaan' )
+		);
+		same(
+			'animehtok/kaan-7/dans-videosu.mp4',
+			\Animeh\Support\StorageKey::tok_video( 7, 'Kaan', 'dans-videosu' )
+		);
+		same(
+			'animehtok/kaan-7/dans-videosu-kapak.jpg',
+			\Animeh\Support\StorageKey::tok_cover( 7, 'Kaan', 'dans-videosu' )
+		);
+	} );
+
+	it( 'aynı adlı iki kişi aynı klasörü paylaşmaz', static function (): void {
+		$a = \Animeh\Support\StorageKey::tok_prefix( 7, 'kaan' );
+		$b = \Animeh\Support\StorageKey::tok_prefix( 9, 'kaan' );
+
+		if ( $a === $b ) {
+			throw new RuntimeException( 'iki hesap aynı klasörde: ' . $a );
+		}
+	} );
+
+	it( 'ad bir eğik çizgi taşısa bile klasörden çıkmaz', static function (): void {
+		// Bir görünen ad "../../gizli" olabilir; anahtar operatör girdisinden
+		// kuruluyor ve klasörünün dışına yürüyen bir ad hiçbir zaman kastedilen
+		// şey değil.
+		$key = \Animeh\Support\StorageKey::tok_video( 3, '../../gizli', 'video' );
+
+		if ( 0 !== strpos( $key, 'animehtok/' ) || str_contains( $key, '..' ) ) {
+			throw new RuntimeException( 'kaçan anahtar: ' . $key );
+		}
+	} );
+
+	it( 'tanımadığı uzantıyı mp4 sayar', static function (): void {
+		same(
+			'animehtok/kaan-7/v.mp4',
+			\Animeh\Support\StorageKey::tok_video( 7, 'Kaan', 'v', 'exe' )
+		);
+		same(
+			'animehtok/kaan-7/v.webm',
+			\Animeh\Support\StorageKey::tok_video( 7, 'Kaan', 'v', 'webm' )
+		);
+	} );
+
+	it( 'adsız hesaba da bir klasör verir', static function (): void {
+		same( 'animehtok/kullanici-4', \Animeh\Support\StorageKey::tok_prefix( 4, '' ) );
+	} );
+} );

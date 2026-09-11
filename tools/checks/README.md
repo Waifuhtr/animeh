@@ -11,7 +11,7 @@ uydurulmuş bir string kaynağı.
 
 | Betik | Ne soruyor |
 | --- | --- |
-| `kotlin-new-errors.sh [ref]` | Bu değişiklik hangi hataları **ekledi**? Temel sürümü de derleyip farkı alıyor: on üç bin gürültünün hepsi iki koşuda da var, yeni yapılan hata yalnızca birinde. |
+| `kotlin-new-errors.sh [ref]` | Bu değişiklik hangi hataları **ekledi**? Temel sürümü de derleyip farkı alıyor: on üç bin gürültünün hepsi iki koşuda da var, yeni yapılan hata yalnızca birinde. **Kendi sembollerimizi ayrı ve en üstte basıyor** — `import com.animeh.…X` yazıp `X`'i çözemeyen bir dosya kesinlikle yanlıştır ve bunu hiçbir eksik jar açıklayamaz. (Tanımı hiç yazılmamış bir renk sabiti, 223 satırlık listede "unresolved reference" diye elenip sürüm derlemesine kadar gitti.) |
 | `android_resources.py <kök>` | Koddaki her `R.string.x` / `R.drawable.x` gerçekten `res/` içinde var mı? `R` derleyiciye görünmediği için bunu yalnızca kaynak dosyalarıyla karşılaştırarak anlayabiliyoruz. |
 | `subpackage_imports.py <kök>` | `androidx.compose.runtime.*` alt paketlere inmez — `rememberSaveable` gibi bir sembol ayrıca import edilmiş mi? |
 | `activity_collisions.py <kök>` | Bir Activity metodu, üst sınıfın metodunu kazara gölgeliyor mu? (`setImmersive` böyle bir derleme hatasıydı.) |

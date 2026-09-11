@@ -31,7 +31,7 @@ import com.animeh.app.data.repository.AdminRepository
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.components.ErrorState
 import com.animeh.app.ui.theme.StatusError
-import com.animeh.app.ui.theme.SurfaceVariantDark
+import com.animeh.app.ui.theme.SurfaceOverlay
 import com.animeh.app.ui.theme.TextSecondary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -176,7 +176,7 @@ private fun ShortRow(short: ShortDto, onDelete: () -> Unit) {
         Box(
             Modifier.size(width = 44.dp, height = 68.dp)
                 .clip(RoundedCornerShape(8.dp))
-                .background(SurfaceVariantDark),
+                .background(SurfaceOverlay),
             Alignment.Center,
         ) {
             AsyncImage(

@@ -98,7 +98,7 @@ fun AnimehApp(
     var offerShorts by rememberSaveable { mutableStateOf(false) }
 
     val switchTab: (String) -> Unit = { route ->
-        if (route == Routes.HOME && currentRoute == Routes.HOME) {
+        if (route == Routes.HOME && currentRoute?.route == Routes.HOME) {
             offerShorts = true
         }
 

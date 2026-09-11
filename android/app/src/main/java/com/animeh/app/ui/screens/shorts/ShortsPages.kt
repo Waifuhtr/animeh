@@ -37,7 +37,7 @@ import com.animeh.app.data.remote.dto.ShortDto
 import com.animeh.app.data.remote.dto.ShortStatsDto
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.theme.AccentPrimary
-import com.animeh.app.ui.theme.SurfaceVariantDark
+import com.animeh.app.ui.theme.SurfaceOverlay
 import com.animeh.app.ui.theme.TextSecondary
 
 /**
@@ -183,11 +183,11 @@ private fun PageHeader(
                 model = cover,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceVariantDark),
+                modifier = Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceOverlay),
             )
         } else {
             Box(
-                Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceVariantDark),
+                Modifier.size(64.dp).clip(RoundedCornerShape(12.dp)).background(SurfaceOverlay),
                 Alignment.Center,
             ) {
                 Icon(icon, null, tint = AccentPrimary, modifier = Modifier.size(30.dp))
@@ -215,7 +215,7 @@ private fun CreatorHeader(state: ShortGridState, onFollow: () -> Unit) {
             model = state.cover,
             contentDescription = state.title,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.size(88.dp).clip(CircleShape).background(SurfaceVariantDark),
+            modifier = Modifier.size(88.dp).clip(CircleShape).background(SurfaceOverlay),
         )
 
         Spacer(Modifier.height(10.dp))
@@ -268,7 +268,7 @@ private fun ShortTile(short: ShortDto, onClick: () -> Unit) {
     Box(
         Modifier
             .aspectRatio(0.62f)
-            .background(SurfaceVariantDark)
+            .background(SurfaceOverlay)
             .clickable(onClick = onClick)
     ) {
         AsyncImage(
@@ -463,7 +463,7 @@ private fun ListRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(
-            Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceVariantDark),
+            Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(SurfaceOverlay),
             Alignment.Center,
         ) {
             if (avatar.isNotBlank()) {
@@ -657,7 +657,7 @@ fun ShortsProfileCard(
                             modifier = Modifier
                                 .size(width = 58.dp, height = 92.dp)
                                 .clip(RoundedCornerShape(8.dp))
-                                .background(SurfaceVariantDark)
+                                .background(SurfaceOverlay)
                                 .clickable(onClick = onOpenMine),
                         )
                     }

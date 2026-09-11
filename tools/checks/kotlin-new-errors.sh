@@ -66,8 +66,30 @@ if [ -z "$NEW" ]; then
   exit 0
 fi
 
+# The list below is mostly androidx noise and it is long, which is exactly how
+# a real error hides in it: a `SurfaceVariantDark` that was never defined sat in
+# a list of 223 and reached a release build, because the list got skimmed and
+# every "unresolved reference" was waved through as invisible-androidx.
+#
+# So the ones this project OWNS are pulled out and printed first, on their own,
+# above everything else. An unresolved reference to a com.animeh symbol is never
+# an artifact of a missing jar: we ship that symbol, and if the compiler cannot
+# find it then it does not exist.
+OURS="$(echo "$NEW" | python3 "$(dirname "$0")/_our_symbols.py" "$ROOT/android")"
+
+if [ -n "$OURS" ]; then
+  echo "!!! KENDİ SEMBOLLERİMİZ — bunlar kesinlikle gerçek:"
+  echo "$OURS" | sed 's/^/  /'
+  echo
+fi
+
 echo "Bu değişiklikle GELEN hatalar:"
 echo "$NEW" | sed 's/^/  /'
 echo
 echo "$NEW" | wc -l | xargs printf "%s yeni hata\n"
+
+if [ -n "$OURS" ]; then
+  echo "$OURS" | wc -l | xargs printf "bunların %s tanesi kendi sembolümüz\n"
+fi
+
 exit 1

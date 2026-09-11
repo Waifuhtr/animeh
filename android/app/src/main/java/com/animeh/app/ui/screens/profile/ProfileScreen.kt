@@ -185,6 +185,34 @@ fun ProfileScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
+
+            // Its own row, and only once there is something to say. Reading
+            // is counted in chapters and pages; putting it in the row above
+            // would mean adding chapters to episodes and pages to hours.
+            if (current.manga.any) {
+                Spacer(Modifier.height(12.dp))
+
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    StatCard(
+                        value = current.manga.chaptersCompleted.toString(),
+                        label = stringResource(R.string.profile_chapters_read),
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatCard(
+                        value = current.manga.pagesRead.toString(),
+                        label = stringResource(R.string.profile_pages_read),
+                        modifier = Modifier.weight(1f),
+                    )
+                    StatCard(
+                        value = current.manga.worksCompleted.toString(),
+                        label = stringResource(R.string.profile_manga_completed),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
         }
 
         Spacer(Modifier.height(20.dp))

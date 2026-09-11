@@ -33,6 +33,8 @@ import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.core.UiState
 import com.animeh.app.data.repository.label
+import com.animeh.app.domain.KIND_ANIME
+import com.animeh.app.domain.KIND_MANGA
 import com.animeh.app.domain.Work
 import com.animeh.app.ui.components.*
 import com.animeh.app.ui.theme.StatusWarning
@@ -60,6 +62,8 @@ fun HomeScreen(
      */
     onEpisodeClick: (id: Long, isChapter: Boolean) -> Unit,
     onSeeAll: () -> Unit,
+    /** "Tümü" on a rail that belongs to one shelf: opens Discover on it. */
+    onSeeAllOf: (kind: String) -> Unit = { onSeeAll() },
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -132,7 +136,12 @@ fun HomeScreen(
                 }
 
                 if (newEpisodes.isNotEmpty()) {
-                    item(contentType = "header") { SectionHeader(stringResource(R.string.home_new_episodes)) }
+                    item(contentType = "header") {
+                        SectionHeader(
+                            stringResource(R.string.home_new_episodes),
+                            onSeeAll = { onSeeAllOf(KIND_ANIME) },
+                        )
+                    }
                     items(
                         items = newEpisodes,
                         key = { "ep-${it.id}" },
@@ -146,7 +155,12 @@ fun HomeScreen(
                 // video thumbnails and a row of manga covers are two
                 // different promises, and one list of both is neither.
                 if (newChapters.isNotEmpty()) {
-                    item(contentType = "header") { SectionHeader(stringResource(R.string.home_new_chapters)) }
+                    item(contentType = "header") {
+                        SectionHeader(
+                            stringResource(R.string.home_new_chapters),
+                            onSeeAll = { onSeeAllOf(KIND_MANGA) },
+                        )
+                    }
                     items(
                         items = newChapters,
                         key = { "ch-${it.id}" },
@@ -157,7 +171,12 @@ fun HomeScreen(
                 }
 
                 if (feed.manga.isNotEmpty()) {
-                    item(contentType = "header") { SectionHeader(stringResource(R.string.home_manga)) }
+                    item(contentType = "header") {
+                        SectionHeader(
+                            stringResource(R.string.home_manga),
+                            onSeeAll = { onSeeAllOf(KIND_MANGA) },
+                        )
+                    }
                     item(contentType = "work-rail") { WorkRail(feed.manga, onWorkClick) }
                 }
 

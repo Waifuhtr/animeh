@@ -205,13 +205,32 @@ data class ContinueItem(
     val posterUrl: String,
     val episodeId: Long,
     val episodeNumber: Int,
+    val numberLabel: String = "",
     val seasonNumber: Int,
+    val pageCount: Int = 0,
     val episodeTitle: String,
     val thumbnailUrl: String,
     val progress: Progress,
 ) {
     /** Whether resuming this one opens the reader rather than the player. */
     val isChapter: Boolean get() = workKind == KIND_MANGA
+
+    /** The number as it reads: "10.5" for a chapter that is one. */
+    val displayNumber: String get() = numberLabel.ifBlank { episodeNumber.toString() }
+
+    /**
+     * The line under the title.
+     *
+     * A manga has no seasons and a chapter has no runtime, so "1. Sezon · 12.
+     * Bölüm" was two wrong facts about a manga in one line. It says how long
+     * the chapter is instead, which is the thing a reader wants to know.
+     */
+    val subtitle: String
+        get() = if (isChapter) {
+            if (pageCount > 0) "Bölüm $displayNumber · $pageCount sayfa" else "Bölüm $displayNumber"
+        } else {
+            "$seasonNumber. Sezon · $episodeNumber. Bölüm"
+        }
 }
 
 @Immutable

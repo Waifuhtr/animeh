@@ -26,6 +26,8 @@ use Animeh\Rest\CatalogController;
 use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
 use Animeh\Storage\CatalogSchema;
+use Animeh\Storage\LeaderboardRepository;
+use Animeh\Storage\UserDataRepository;
 use Animeh\Storage\MangaBridge;
 
 $failures = 0;
@@ -194,6 +196,91 @@ step(
 		}
 		if ( 10 !== $rail[0]['number'] ) {
 			throw new RuntimeException( 'number: ' . var_export( $rail[0]['number'], true ) );
+		}
+	}
+);
+
+/* ── Watching and reading are counted apart ──────────────────────────── */
+
+echo "\nİstatistikler\n";
+
+step(
+	'izleme istatistiği yalnızca animeyi sayıyor',
+	static function () use ( $wpdb ): void {
+		$wpdb->queries = array();
+
+		( new UserDataRepository() )->stats( 7 );
+
+		$counted = array_filter(
+			$wpdb->queries,
+			static fn( $sql ): bool => str_contains( (string) $sql, 'animeh_history' )
+		);
+
+		if ( array() === $counted ) {
+			throw new RuntimeException( 'geçmiş hiç sorgulanmadı' );
+		}
+
+		// Every history query behind the profile numbers has to say which
+		// shelf it means. A chapter is an episode row and a page counts as a
+		// second, so an unfiltered one adds reading to "izlenen bölüm".
+		foreach ( $counted as $sql ) {
+			if ( ! str_contains( (string) $sql, 'w.kind' ) ) {
+				throw new RuntimeException(
+					'tür süzgeci olmayan sorgu: ' . substr( preg_replace( '/\s+/', ' ', (string) $sql ), 0, 160 )
+				);
+			}
+		}
+	}
+);
+
+step(
+	'sıralama tablosu da yalnızca anime',
+	static function () use ( $wpdb ): void {
+		$wpdb->queries = array();
+
+		LeaderboardRepository::standing( LeaderboardRepository::METRIC_EPISODES, 7 );
+
+		foreach ( $wpdb->queries as $sql ) {
+			if ( str_contains( (string) $sql, 'animeh_history' ) && ! str_contains( (string) $sql, 'w.kind' ) ) {
+				throw new RuntimeException(
+					'tür süzgeci olmayan sorgu: ' . substr( preg_replace( '/\s+/', ' ', (string) $sql ), 0, 160 )
+				);
+			}
+		}
+	}
+);
+
+step(
+	'profil manga bloğunu da veriyor',
+	static function (): void {
+		$stats = ( new UserDataRepository() )->stats( 7 );
+
+		if ( ! isset( $stats['manga'] ) || ! is_array( $stats['manga'] ) ) {
+			throw new RuntimeException( 'manga bloğu yok: ' . wp_json_encode( array_keys( $stats ) ) );
+		}
+
+		foreach ( array( 'chapters_started', 'chapters_completed', 'pages_read', 'works_completed' ) as $key ) {
+			if ( ! array_key_exists( $key, $stats['manga'] ) ) {
+				throw new RuntimeException( 'eksik alan: ' . $key );
+			}
+		}
+	}
+);
+
+step(
+	'ana sayfa rayları altı ve on ile sınırlı',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array();
+
+		$home = ( new CatalogController() )->home()->get_data();
+
+		foreach ( array( 'latest_episodes' => 6, 'latest_chapters' => 6, 'manga' => 10 ) as $rail => $cap ) {
+			if ( ! array_key_exists( $rail, $home ) ) {
+				throw new RuntimeException( 'ray yok: ' . $rail );
+			}
+			if ( count( $home[ $rail ] ) > $cap ) {
+				throw new RuntimeException( $rail . ': ' . count( $home[ $rail ] ) . ' > ' . $cap );
+			}
 		}
 	}
 );

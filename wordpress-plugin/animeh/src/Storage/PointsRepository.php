@@ -74,15 +74,19 @@ final class PointsRepository {
 	 * @param int $episode_id Episode.
 	 * @return bool Whether this was the first time.
 	 */
-	public static function award_episode( int $user_id, int $episode_id ): bool {
+	public static function award_episode( int $user_id, int $episode_id, string $kind = 'anime' ): bool {
 		if ( $episode_id <= 0 ) {
 			return false;
 		}
 
+		$manga = 'manga' === $kind;
+
 		return self::record(
 			$user_id,
-			Points::PER_EPISODE,
-			Points::REASON_EPISODE,
+			Points::per_finish( $kind ),
+			$manga ? Points::REASON_CHAPTER : Points::REASON_EPISODE,
+			// The key stays the episode's either way: a row is paid for once,
+			// and which shelf it is on does not make it two rows.
 			Points::episode_key( $episode_id ),
 			''
 		);

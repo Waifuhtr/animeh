@@ -7,6 +7,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -26,15 +29,15 @@ import com.animeh.app.data.prefs.canManage
 import com.animeh.app.data.prefs.isAdmin
 import com.animeh.app.data.prefs.isModerator
 import com.animeh.app.data.prefs.user
-import com.animeh.app.player.ui.PlayerActivity
 import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.domain.KIND_MANGA
+import com.animeh.app.player.ui.PlayerActivity
+import com.animeh.app.reader.ReaderScreen
 import com.animeh.app.ui.screens.admin.*
 import com.animeh.app.ui.screens.auth.*
 import com.animeh.app.ui.screens.detail.DetailScreen
 import com.animeh.app.ui.screens.discover.DiscoverScreen
 import com.animeh.app.ui.screens.home.HomeScreen
-import com.animeh.app.reader.ReaderScreen
 import com.animeh.app.ui.screens.leaderboard.LeaderboardScreen
 import com.animeh.app.ui.screens.library.LibraryScreen
 import com.animeh.app.ui.screens.profile.FrameShopScreen
@@ -72,6 +75,11 @@ fun AnimehApp(
     // Switching to a tab, rather than stacking another copy of it. Shared with
     // the rails' "see all", so that lands on the tab it belongs to with the
     // bottom bar intact instead of on a dead-end screen.
+    // Which shelf "Tümü" was tapped from, read once by Discover when it
+    // opens. Not a route argument: Discover is a bottom-bar destination and
+    // its route has to stay exactly "discover" for the tab to light up.
+    var discoverKind by rememberSaveable { mutableStateOf<String?>(null) }
+
     val switchTab: (String) -> Unit = { route ->
         navController.navigate(route) {
             popUpTo(navController.graph.findStartDestination().id) {
@@ -158,12 +166,18 @@ fun AnimehApp(
                     onWorkClick = { navController.navigate(Routes.detail(it.id)) },
                     onEpisodeClick = openEpisode,
                     onSeeAll = { switchTab(Routes.DISCOVER) },
+                    onSeeAllOf = { kind ->
+                        discoverKind = kind
+                        switchTab(Routes.DISCOVER)
+                    },
                 )
             }
 
             composable(Routes.DISCOVER) {
                 DiscoverScreen(
                     onWorkClick = { navController.navigate(Routes.detail(it.id)) },
+                    startKind = discoverKind,
+                    onStartKindHandled = { discoverKind = null },
                 )
             }
 

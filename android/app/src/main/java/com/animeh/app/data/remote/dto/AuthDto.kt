@@ -55,7 +55,28 @@ data class UserStatsDto(
     /** Series where every published episode has been watched through. */
     @SerialName("works_completed") val worksCompleted: Int = 0,
     val favorites: Int = 0,
+    /**
+     * Reading, counted apart from watching.
+     *
+     * A chapter is an episode row and a page counts as a second, so without
+     * this split every number above was quietly including manga — the profile
+     * said somebody had watched two hours of anime when they had read a
+     * doujinshi.
+     */
+    val manga: MangaStatsDto = MangaStatsDto(),
 )
+
+@Serializable
+data class MangaStatsDto(
+    @SerialName("chapters_started") val chaptersStarted: Int = 0,
+    @SerialName("chapters_completed") val chaptersCompleted: Int = 0,
+    @SerialName("pages_read") val pagesRead: Long = 0,
+    @SerialName("works_started") val worksStarted: Int = 0,
+    @SerialName("works_completed") val worksCompleted: Int = 0,
+) {
+    /** Whether there is anything worth drawing a card for. */
+    val any: Boolean get() = chaptersStarted > 0 || pagesRead > 0
+}
 
 @Serializable
 data class ProfileDto(

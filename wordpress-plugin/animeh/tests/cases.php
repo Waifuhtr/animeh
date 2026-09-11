@@ -2091,6 +2091,28 @@ describe( 'ChapterNumber', function (): void {
 	} );
 } );
 
+describe( 'Points: bölüm ile chapter aynı değil', function (): void {
+	it( 'anime bölümü 20, manga bölümü 10', function (): void {
+		same( 20, \Animeh\Support\Points::per_finish( 'anime' ) );
+		same( 10, \Animeh\Support\Points::per_finish( 'manga' ) );
+	} );
+
+	it( 'bilinmeyen tür animeye düşer', function (): void {
+		same( 20, \Animeh\Support\Points::per_finish( '' ) );
+		same( 20, \Animeh\Support\Points::per_finish( 'kitap' ) );
+	} );
+
+	it( 'sabitlerle uyumlu', function (): void {
+		same( \Animeh\Support\Points::PER_EPISODE, \Animeh\Support\Points::per_finish( 'anime' ) );
+		same( \Animeh\Support\Points::PER_CHAPTER, \Animeh\Support\Points::per_finish( 'manga' ) );
+	} );
+
+	it( 'okuma kendi sebebiyle yazılıyor', function (): void {
+		ok( in_array( \Animeh\Support\Points::REASON_CHAPTER, \Animeh\Support\Points::REASONS, true ) );
+		ok( \Animeh\Support\Points::REASON_CHAPTER !== \Animeh\Support\Points::REASON_EPISODE );
+	} );
+} );
+
 describe( 'PageOrder', function (): void {
 	it( 'sayfaları isimdeki sayıya göre sıralar', function (): void {
 		same(

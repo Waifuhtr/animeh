@@ -12,10 +12,15 @@
 # report only what is new. Every one of those twelve thousand is in both runs;
 # a mistake I just made is in exactly one.
 #
-# One thing it cannot do: an unresolvable receiver hides its members, so
-# renaming one — `friend.avatarUrl` to `friend.avatar` — reads as a new error
-# even when the new name is the right one. A line naming a member is worth
-# checking against the type by hand; everything else on this list is real.
+# A name that is new is not a mistake that is new: a file using `mutableStateOf`
+# for the first time produces an error that was always going to happen. So a
+# line is dropped when the file imports that exact name from a package we do
+# not own — see _new_errors_filter.py.
+#
+# What survives that and is still not real: an unresolvable receiver hides its
+# members, so renaming one — `friend.avatarUrl` to `friend.avatar` — reads as
+# new even when the new name is right. A line naming a member is worth checking
+# against its type by hand; everything else on the list is real.
 #
 #   Usage: kotlin-new-errors.sh [<baseline-ref>]   (default: HEAD)
 set -uo pipefail
@@ -52,7 +57,9 @@ echo "==> çalışma ağacı"
 compile_tree "$ROOT/android" > "$WORK/head.txt"
 
 echo
-NEW="$(comm -13 "$WORK/base.txt" "$WORK/head.txt")"
+NEW="$(comm -13 "$WORK/base.txt" "$WORK/head.txt" \
+  | python3 "$(dirname "$0")/_new_errors_filter.py" "$ROOT/android" \
+  | sed '/^$/d')"
 
 if [ -z "$NEW" ]; then
   echo "Bu değişiklikle gelen yeni hata yok. (temel: $(wc -l < "$WORK/base.txt") satır)"

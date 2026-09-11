@@ -343,6 +343,26 @@ ekranından.
 
 ---
 
+## 6.95 Okumak izlemek değildir
+
+Bir bölüm bir episode satırı ve bir sayfa bir saniye sayılıyor — bu, kataloğu
+tek tablo tutmanın bedeli ve karşılığında kütüphane, favoriler, geçmiş ve
+"devam et" bedavaya geldi. Ama sayımlar bunu bilmiyordu:
+
+- **Profil ve sıralama tablosu artık yalnızca animeyi sayıyor.** Manga okumak
+  "izlenen bölüm" ve "izlenen süre" değerlerini şişiriyordu.
+- **Profilde ayrı bir manga satırı var:** okunan bölüm, okunan sayfa, biten
+  manga. Kendi birimleriyle — bölümü episode'a, sayfayı saate eklemenin anlamı
+  yok.
+- **Puan:** anime bölümü 20, **manga bölümü 10**. Yarım akşam, yarım puan.
+- **Kitaplık ve "devam et"** manga satırlarında artık `Bölüm 10.5 · 24 sayfa`
+  yazıyor. `1. Sezon · 12. Bölüm` bir manga hakkında tek satırda iki yanlış
+  bilgiydi: mangada sezon yok, bölümde süre yok.
+- **Ana sayfa:** yeni bölümler ve yeni manga bölümleri altışar, manga rafı on.
+  Her birinin başlığında **Tümü** var; Keşfet'i o rafın türüyle açıyor.
+
+---
+
 ## 7. Ekstra: çerçeveleri toplu yükleme
 
 Aynı sürümde: Yönetim Paneli → Çerçeveler → **+** artık **birden çok dosya**

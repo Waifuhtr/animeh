@@ -159,7 +159,7 @@ fun ContinueCard(
             overflow = TextOverflow.Ellipsis,
         )
         Text(
-            text = "${item.seasonNumber}. Sezon · ${item.episodeNumber}. Bölüm",
+            text = item.subtitle,
             style = MaterialTheme.typography.labelSmall,
             color = TextMuted,
         )

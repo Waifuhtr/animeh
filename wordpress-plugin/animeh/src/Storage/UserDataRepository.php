@@ -105,10 +105,34 @@ final class UserDataRepository {
 		// the same finish at the same instant pay once.
 		$was_complete = null !== $existing && 1 === (int) $existing['completed'];
 		if ( $stored && 1 === $completed && ! $was_complete ) {
-			PointsRepository::award_episode( $user_id, $episode_id );
+			PointsRepository::award_episode( $user_id, $episode_id, self::kind_of_episode( $episode_id ) );
 		}
 
 		return $stored;
+	}
+
+	/**
+	 * Which shelf an episode belongs to.
+	 *
+	 * Asked once, at the moment something is paid for — a chapter is worth
+	 * half an episode, and the two live in the same table.
+	 *
+	 * @param int $episode_id Episode or chapter.
+	 */
+	private static function kind_of_episode( int $episode_id ): string {
+		global $wpdb;
+
+		$episodes = CatalogSchema::episodes();
+		$works    = CatalogSchema::works();
+
+		$kind = (string) $wpdb->get_var(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT w.kind FROM {$episodes} e INNER JOIN {$works} w ON w.id = e.work_id WHERE e.id = %d",
+				$episode_id
+			)
+		);
+
+		return '' !== $kind ? $kind : CatalogSchema::KIND_ANIME;
 	}
 
 	/**
@@ -154,7 +178,8 @@ final class UserDataRepository {
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT h.*, e.number AS episode_number, e.season_number, e.title AS episode_title,
-					e.thumbnail_url, w.kind AS work_kind, w.title AS work_title, w.slug AS work_slug, w.poster_url
+					e.thumbnail_url, w.kind AS work_kind, w.title AS work_title, w.slug AS work_slug, w.poster_url,
+					(SELECT COUNT(*) FROM {$sources} sp WHERE sp.episode_id = e.id AND sp.kind = 'page') AS page_count
 				 FROM {$history} h
 				 INNER JOIN {$episodes} e ON e.id = h.episode_id
 				 INNER JOIN {$works} w ON w.id = h.work_id
@@ -230,6 +255,7 @@ final class UserDataRepository {
 
 		$history  = CatalogSchema::history();
 		$episodes = CatalogSchema::episodes();
+		$sources  = CatalogSchema::sources();
 		$works    = CatalogSchema::works();
 
 		$resumable   = self::resumable_sql( '' );
@@ -238,7 +264,8 @@ final class UserDataRepository {
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT h.*, e.number AS episode_number, e.season_number, e.title AS episode_title,
-					e.thumbnail_url, w.kind AS work_kind, w.title AS work_title, w.slug AS work_slug, w.poster_url
+					e.thumbnail_url, w.kind AS work_kind, w.title AS work_title, w.slug AS work_slug, w.poster_url,
+					(SELECT COUNT(*) FROM {$sources} sp WHERE sp.episode_id = e.id AND sp.kind = 'page') AS page_count
 				 FROM {$history} h
 				 INNER JOIN {$episodes} e ON e.id = h.episode_id
 				 INNER JOIN {$works} w ON w.id = h.work_id
@@ -474,15 +501,40 @@ final class UserDataRepository {
 
 		$episodes = CatalogSchema::episodes();
 
+		$works_table = CatalogSchema::works();
+
+		// Counted per shelf. A chapter is an episode row and a page counts as
+		// a second, so reading manga was quietly adding to "bölüm izlendi" and
+		// to the hours watched — the profile said somebody had watched two
+		// hours of anime when they had read a doujinshi.
 		$row = $wpdb->get_row(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 				"SELECT
 					COUNT(*) AS episodes_started,
-					SUM(completed) AS episodes_completed,
-					SUM(watched_seconds) AS seconds_watched,
-					COUNT(DISTINCT work_id) AS works_started
-				 FROM {$history} WHERE user_id = %d",
-				$user_id
+					SUM(h.completed) AS episodes_completed,
+					SUM(h.watched_seconds) AS seconds_watched,
+					COUNT(DISTINCT h.work_id) AS works_started
+				 FROM {$history} h
+				 INNER JOIN {$works_table} w ON w.id = h.work_id
+				 WHERE h.user_id = %d AND w.kind = %s",
+				$user_id,
+				CatalogSchema::KIND_ANIME
+			),
+			ARRAY_A
+		);
+
+		$manga_row = $wpdb->get_row(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT
+					COUNT(*) AS chapters_started,
+					SUM(h.completed) AS chapters_completed,
+					SUM(h.watched_seconds) AS pages_read,
+					COUNT(DISTINCT h.work_id) AS works_started
+				 FROM {$history} h
+				 INNER JOIN {$works_table} w ON w.id = h.work_id
+				 WHERE h.user_id = %d AND w.kind = %s",
+				$user_id,
+				CatalogSchema::KIND_MANGA
 			),
 			ARRAY_A
 		);
@@ -495,31 +547,48 @@ final class UserDataRepository {
 		// finished. Compared against the episode table rather than the work's
 		// `total_episodes`, which is what the source announced and is often
 		// ahead of what has actually been added here.
-		$works_completed = (int) $wpdb->get_var(
-			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-				"SELECT COUNT(*) FROM (
-					SELECT h.work_id, COUNT(*) AS done
-					FROM {$history} h
-					WHERE h.user_id = %d AND h.completed = 1
-					GROUP BY h.work_id
-				 ) watched
-				 INNER JOIN (
-					SELECT work_id, COUNT(*) AS total
-					FROM {$episodes} WHERE published = 1
-					GROUP BY work_id
-				 ) published ON published.work_id = watched.work_id
-				 WHERE published.total > 0 AND watched.done >= published.total",
-				$user_id
-			)
-		);
+		$finished = function ( string $kind ) use ( $wpdb, $history, $episodes, $works_table, $user_id ): int {
+			return (int) $wpdb->get_var(
+				$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+					"SELECT COUNT(*) FROM (
+						SELECT h.work_id, COUNT(*) AS done
+						FROM {$history} h
+						INNER JOIN {$works_table} w ON w.id = h.work_id
+						WHERE h.user_id = %d AND h.completed = 1 AND w.kind = %s
+						GROUP BY h.work_id
+					 ) watched
+					 INNER JOIN (
+						SELECT work_id, COUNT(*) AS total
+						FROM {$episodes} WHERE published = 1
+						GROUP BY work_id
+					 ) published ON published.work_id = watched.work_id
+					 WHERE published.total > 0 AND watched.done >= published.total",
+					$user_id,
+					$kind
+				)
+			);
+		};
+
+		$works_completed = $finished( CatalogSchema::KIND_ANIME );
 
 		return array(
+			// Anime, and only anime: every key here meant "watched" and was
+			// counting reading too.
 			'episodes_started'   => (int) ( $row['episodes_started'] ?? 0 ),
 			'episodes_completed' => (int) ( $row['episodes_completed'] ?? 0 ),
 			'seconds_watched'    => (int) ( $row['seconds_watched'] ?? 0 ),
 			'works_started'      => (int) ( $row['works_started'] ?? 0 ),
 			'works_completed'    => $works_completed,
 			'favorites'          => $favorites,
+			// Reading has its own numbers because it has its own units: a
+			// chapter is not an episode and a page is not a second.
+			'manga'              => array(
+				'chapters_started'   => (int) ( $manga_row['chapters_started'] ?? 0 ),
+				'chapters_completed' => (int) ( $manga_row['chapters_completed'] ?? 0 ),
+				'pages_read'         => (int) ( $manga_row['pages_read'] ?? 0 ),
+				'works_started'      => (int) ( $manga_row['works_started'] ?? 0 ),
+				'works_completed'    => $finished( CatalogSchema::KIND_MANGA ),
+			),
 		);
 	}
 

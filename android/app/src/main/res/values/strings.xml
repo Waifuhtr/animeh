@@ -274,6 +274,9 @@
 
     <!-- Profile -->
     <string name="profile_series_completed">Tamamlanan seri</string>
+    <string name="profile_chapters_read">Okunan Bölüm</string>
+    <string name="profile_pages_read">Okunan Sayfa</string>
+    <string name="profile_manga_completed">Biten Manga</string>
     <string name="profile_change_photo">Profil fotoğrafını değiştir</string>
     <string name="profile_photo_uploading">Fotoğraf yükleniyor…</string>
 

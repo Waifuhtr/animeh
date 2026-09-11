@@ -20,17 +20,32 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.animeh.app.R
-import com.animeh.app.domain.KIND_MANGA
-import com.animeh.app.domain.KIND_ANIME
 import com.animeh.app.core.UiState
+import com.animeh.app.domain.KIND_ANIME
+import com.animeh.app.domain.KIND_MANGA
 import com.animeh.app.domain.Work
 import com.animeh.app.ui.components.*
 
 @Composable
 fun DiscoverScreen(
     onWorkClick: (Work) -> Unit,
+    /**
+     * The shelf a "Tümü" was tapped on, if this was opened by one.
+     *
+     * Applied once and then cleared, so coming back to the tab by hand keeps
+     * whatever was last being browsed rather than snapping to manga again.
+     */
+    startKind: String? = null,
+    onStartKindHandled: () -> Unit = {},
     viewModel: DiscoverViewModel = hiltViewModel(),
 ) {
+    LaunchedEffect(startKind) {
+        startKind?.let {
+            viewModel.setKind(it)
+            onStartKindHandled()
+        }
+    }
+
     val filters by viewModel.filters.collectAsStateWithLifecycle()
     val results by viewModel.results.collectAsStateWithLifecycle()
     val genres by viewModel.genres.collectAsStateWithLifecycle()

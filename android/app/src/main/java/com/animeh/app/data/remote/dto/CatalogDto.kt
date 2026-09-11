@@ -137,7 +137,11 @@ data class HistoryDto(
     @SerialName("poster_url") val posterUrl: String = "",
     @SerialName("episode_id") val episodeId: Long = 0,
     @SerialName("episode_number") val episodeNumber: Int = 0,
+    /** "10.5" where the whole number would read as 10. */
+    @SerialName("number_label") val numberLabel: String = "",
     @SerialName("season_number") val seasonNumber: Int = 1,
+    /** How a chapter says how long it is; an episode has no pages. */
+    @SerialName("page_count") val pageCount: Int = 0,
     @SerialName("episode_title") val episodeTitle: String = "",
     @SerialName("thumbnail_url") val thumbnailUrl: String = "",
     @SerialName("position_seconds") val positionSeconds: Int = 0,

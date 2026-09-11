@@ -70,12 +70,15 @@ final class LeaderboardRepository {
 	 */
 	private static function expression( string $metric ): string {
 		switch ( $metric ) {
+			// Qualified: every one of these is read alongside a join onto
+			// `works`, and an unqualified name is one added column away from
+			// becoming ambiguous without anybody noticing.
 			case self::METRIC_WORKS:
-				return 'COUNT(DISTINCT work_id)';
+				return 'COUNT(DISTINCT h.work_id)';
 			case self::METRIC_EPISODES:
-				return 'SUM(completed)';
+				return 'SUM(h.completed)';
 			default:
-				return 'SUM(watched_seconds)';
+				return 'SUM(h.watched_seconds)';
 		}
 	}
 
@@ -102,6 +105,8 @@ final class LeaderboardRepository {
 		}
 
 		$history    = CatalogSchema::history();
+		$works      = CatalogSchema::works();
+		$anime      = CatalogSchema::KIND_ANIME;
 		$expression = self::expression( $metric );
 
 		// `MIN(updated_at)` breaks ties: two people on forty episodes are not
@@ -110,10 +115,11 @@ final class LeaderboardRepository {
 		// between two refreshes that show the same numbers.
 		$rows = $wpdb->get_results(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-				"SELECT user_id, {$expression} AS value, MIN(updated_at) AS first_seen
-				 FROM {$history}
-				 WHERE user_id > 0
-				 GROUP BY user_id
+				"SELECT h.user_id, {$expression} AS value, MIN(h.updated_at) AS first_seen
+				 FROM {$history} h
+				 INNER JOIN {$works} w ON w.id = h.work_id
+				 WHERE h.user_id > 0 AND w.kind = '{$anime}'
+				 GROUP BY h.user_id
 				 HAVING value > 0
 				 ORDER BY value DESC, first_seen ASC
 				 LIMIT %d",
@@ -153,11 +159,16 @@ final class LeaderboardRepository {
 		}
 
 		$history    = CatalogSchema::history();
+		$works      = CatalogSchema::works();
+		$anime      = CatalogSchema::KIND_ANIME;
 		$expression = self::expression( $metric );
 
 		$value = (int) $wpdb->get_var(
 			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-				"SELECT {$expression} FROM {$history} WHERE user_id = %d",
+				"SELECT {$expression}
+				 FROM {$history} h
+				 INNER JOIN {$works} w ON w.id = h.work_id
+				 WHERE h.user_id = %d AND w.kind = '{$anime}'",
 				$user_id
 			)
 		);
@@ -168,10 +179,11 @@ final class LeaderboardRepository {
 					COUNT(*) AS total,
 					SUM(CASE WHEN value > %d THEN 1 ELSE 0 END) AS ahead
 				 FROM (
-					SELECT user_id, {$expression} AS value
-					FROM {$history}
-					WHERE user_id > 0
-					GROUP BY user_id
+					SELECT h.user_id, {$expression} AS value
+					FROM {$history} h
+					INNER JOIN {$works} w ON w.id = h.work_id
+					WHERE h.user_id > 0 AND w.kind = '{$anime}'
+					GROUP BY h.user_id
 					HAVING value > 0
 				 ) standings",
 				$value

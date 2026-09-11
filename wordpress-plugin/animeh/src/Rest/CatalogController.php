@@ -36,6 +36,23 @@ use WP_REST_Server;
 final class CatalogController {
 
 	/**
+	 * How many new episodes and chapters the home screen carries.
+	 *
+	 * Six of each. The rails were twenty, which is four screens of sideways
+	 * scrolling before the next section and a payload nobody reads the end
+	 * of; the rest is one tap away behind "Tümü".
+	 */
+	private const HOME_EPISODES = 6;
+
+	/**
+	 * How many manga the home screen carries.
+	 *
+	 * Ten: a shelf of covers is read at a glance in a way a list of episode
+	 * thumbnails is not, so it can be longer without becoming a chore.
+	 */
+	private const HOME_MANGA = 10;
+
+	/**
 	 * Register the routes.
 	 */
 	public function register_routes(): void {
@@ -263,18 +280,18 @@ final class CatalogController {
 			'popular'         => array_map( array( self::class, 'work_payload' ), $popular['items'] ),
 			'recently_added'  => array_map( array( self::class, 'work_payload' ), $recent['items'] ),
 			'airing'          => array_map( array( self::class, 'work_payload' ), $airing['items'] ),
-			'latest_episodes' => array_map( array( self::class, 'latest_episode_payload' ), $repo->latest_episodes( 20 ) ),
+			'latest_episodes' => array_map( array( self::class, 'latest_episode_payload' ), $repo->latest_episodes( self::HOME_EPISODES ) ),
 			// The manga rail, built the same way and kept separate. A reader
 			// and a viewer are the same person here, but "yeni bölüm" under a
 			// row of video thumbnails and "yeni bölüm" under a row of covers
 			// are two different promises.
 			'latest_chapters' => array_map(
 				array( self::class, 'latest_episode_payload' ),
-				$repo->latest_episodes( 20, CatalogSchema::KIND_MANGA )
+				$repo->latest_episodes( self::HOME_EPISODES, CatalogSchema::KIND_MANGA )
 			),
 			'manga'           => array_map(
 				array( self::class, 'work_payload' ),
-				$repo->works( array( 'kind' => CatalogSchema::KIND_MANGA, 'sort' => 'recent', 'per_page' => 20 ) )['items']
+				$repo->works( array( 'kind' => CatalogSchema::KIND_MANGA, 'sort' => 'recent', 'per_page' => self::HOME_MANGA ) )['items']
 			),
 			'continue'        => array(),
 		);
@@ -635,8 +652,13 @@ final class CatalogController {
 			'work_slug'        => (string) ( $row['work_slug'] ?? '' ),
 			'poster_url'       => (string) ( $row['poster_url'] ?? '' ),
 			'episode_id'       => (int) $row['episode_id'],
-			'episode_number'   => (int) ( $row['episode_number'] ?? 0 ),
+			'episode_number'   => ChapterNumber::whole( $row['episode_number'] ?? 0 ),
+			// "10.5" rather than "10": a manga's half chapters are chapters.
+			'number_label'     => ChapterNumber::label( $row['episode_number'] ?? 0 ),
 			'season_number'    => (int) ( $row['season_number'] ?? 1 ),
+			// How a manga row says how long it is. A chapter has no runtime,
+			// and "1. Sezon" means nothing on a shelf that has no seasons.
+			'page_count'       => (int) ( $row['page_count'] ?? 0 ),
 			'episode_title'    => (string) ( $row['episode_title'] ?? '' ),
 			'thumbnail_url'    => (string) ( $row['thumbnail_url'] ?? '' ),
 			'position_seconds' => (int) $row['position_seconds'],

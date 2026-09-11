@@ -28,8 +28,29 @@ final class Points {
 	 */
 	public const PER_EPISODE = 20;
 
+	/**
+	 * What finishing a manga chapter is worth.
+	 *
+	 * Half an episode, because it is half an evening: a chapter is ten
+	 * minutes and an episode is twenty-odd, and paying the same for both
+	 * would make reading the cheapest way to a frame.
+	 */
+	public const PER_CHAPTER = 10;
+
+	/**
+	 * What one finished thing is worth, by the kind of work it belongs to.
+	 *
+	 * @param string $kind `anime` or `manga`.
+	 */
+	public static function per_finish( string $kind ): int {
+		return 'manga' === $kind ? self::PER_CHAPTER : self::PER_EPISODE;
+	}
+
 	/** An episode was watched to the end. */
 	public const REASON_EPISODE = 'episode';
+
+	/** A manga chapter was read to the end. */
+	public const REASON_CHAPTER = 'chapter';
 
 	/** An administrator sent points to somebody. */
 	public const REASON_GRANT = 'grant';
@@ -38,7 +59,7 @@ final class Points {
 	public const REASON_FRAME = 'frame';
 
 	/** The whole set, for validating what arrives over the wire. */
-	public const REASONS = array( self::REASON_EPISODE, self::REASON_GRANT, self::REASON_FRAME );
+	public const REASONS = array( self::REASON_EPISODE, self::REASON_CHAPTER, self::REASON_GRANT, self::REASON_FRAME );
 
 	/**
 	 * Most an administrator may send in one go.

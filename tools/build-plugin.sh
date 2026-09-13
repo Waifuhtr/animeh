@@ -29,6 +29,12 @@ php "$PLUGIN_DIR/tests/run.php" > /dev/null
 # edit failed to add parses fine, passes every unit test, and 500s the site on
 # the first request that has data to format.
 php "$PLUGIN_DIR/tests/smoke/run.php" > /dev/null
+# And a third question neither of the above asks: does the SQL mean what it is
+# meant to mean. The smoke runner's $wpdb hands back the same fixture rows
+# whatever the query says, so a tag page whose count and whose listing
+# disagreed passed everything. This one creates the plugin's real tables in
+# SQLite and runs the real queries against real rows.
+php "$PLUGIN_DIR/tests/sql/run.php" > /dev/null
 
 # And the bridge, which installs on a different site and so is easy to forget:
 # its own 500 was a rename that landed on a definition and not on its call

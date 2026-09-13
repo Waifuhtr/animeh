@@ -34,6 +34,19 @@ data class ShortGridState(
     val cover: String = "",
     val items: List<ShortDto> = emptyList(),
     val loading: Boolean = true,
+    /**
+     * Whether the last load came back with nothing because it failed.
+     *
+     * Kept apart from [message]: a snackbar is gone in four seconds and what
+     * is left behind is a page that looks exactly like a tag nobody has ever
+     * used. This is what lets the page say "could not be loaded" and offer to
+     * try again instead of "no videos yet".
+     */
+    val failed: Boolean = false,
+    /** How many the server says there are in total, when it says. */
+    val total: Int = -1,
+    val appending: Boolean = false,
+    val endReached: Boolean = false,
     val message: String? = null,
     /** Only a creator page has these; the others leave them null. */
     val creator: ShortCreatorDto? = null,
@@ -41,7 +54,18 @@ data class ShortGridState(
     val following: Boolean = false,
     val isSelf: Boolean = false,
     val soundId: Long = 0,
-)
+) {
+    /**
+     * The page counted videos and then showed none of them.
+     *
+     * Its own state because it is its own fault: an empty grid under a heading
+     * that says there are two is the page contradicting itself, and telling
+     * somebody "no videos yet" underneath that number is worse than saying
+     * nothing. Offering to load it again is the only honest thing left.
+     */
+    val countedButEmpty: Boolean
+        get() = !loading && !failed && total > 0 && items.isEmpty()
+}
 
 /**
  * The tag page.
@@ -65,7 +89,7 @@ class ShortTagViewModel @Inject constructor(
     }
 
     fun load() {
-        _state.update { it.copy(loading = true) }
+        _state.update { it.copy(loading = true, failed = false) }
 
         viewModelScope.launch {
             when (val result = repository.tagPage(tag)) {
@@ -73,19 +97,57 @@ class ShortTagViewModel @Inject constructor(
                     it.copy(
                         title = "#${result.data.tag}",
                         subtitle = result.data.count.toString(),
+                        total = result.data.count,
                         items = result.data.items,
+                        endReached = result.data.items.size < ShortsRepository.GRID_PAGE,
                         loading = false,
+                        failed = false,
                     )
                 }
 
                 is AppResult.Failure -> _state.update {
-                    it.copy(loading = false, message = result.error.explain())
+                    it.copy(loading = false, failed = true, message = result.error.explain())
+                }
+            }
+        }
+    }
+
+    /** The next page, when the grid has been scrolled to the end of this one. */
+    fun loadMore() {
+        val current = _state.value
+        if (current.loading || current.appending || current.endReached) return
+
+        _state.update { it.copy(appending = true) }
+
+        viewModelScope.launch {
+            when (val result = repository.tagPage(tag, offset = current.items.size)) {
+                is AppResult.Success -> _state.update { it.append(result.data.items) }
+                is AppResult.Failure -> _state.update {
+                    it.copy(appending = false, message = result.error.explain())
                 }
             }
         }
     }
 
     fun messageShown() = _state.update { it.copy(message = null) }
+}
+
+/**
+ * One more page onto the end.
+ *
+ * Ids already on screen are dropped rather than trusted: a page boundary is
+ * not a fixed line when the ordering can move under it, and a duplicate key is
+ * a crash in a lazy grid rather than a cosmetic fault.
+ */
+private fun ShortGridState.append(more: List<ShortDto>): ShortGridState {
+    val known = items.mapTo(mutableSetOf()) { it.id }
+    val fresh = more.filterNot { it.id in known }
+
+    return copy(
+        items = items + fresh,
+        appending = false,
+        endReached = more.size < ShortsRepository.GRID_PAGE,
+    )
 }
 
 /** The sound page: everything using one piece of audio. */
@@ -105,7 +167,7 @@ class ShortSoundViewModel @Inject constructor(
     }
 
     fun load() {
-        _state.update { it.copy(loading = true) }
+        _state.update { it.copy(loading = true, failed = false) }
 
         viewModelScope.launch {
             when (val result = repository.soundPage(soundId)) {
@@ -115,13 +177,35 @@ class ShortSoundViewModel @Inject constructor(
                         subtitle = result.data.sound.author,
                         cover = result.data.sound.coverUrl,
                         soundId = result.data.sound.id,
+                        // No total here on purpose. A tag's count is a COUNT
+                        // run on the spot; a sound's is a stored counter, and
+                        // a counter that has drifted would have this page
+                        // insisting there are videos it can never fetch.
                         items = result.data.items,
+                        endReached = result.data.items.size < ShortsRepository.GRID_PAGE,
                         loading = false,
+                        failed = false,
                     )
                 }
 
                 is AppResult.Failure -> _state.update {
-                    it.copy(loading = false, message = result.error.explain())
+                    it.copy(loading = false, failed = true, message = result.error.explain())
+                }
+            }
+        }
+    }
+
+    fun loadMore() {
+        val current = _state.value
+        if (current.loading || current.appending || current.endReached) return
+
+        _state.update { it.copy(appending = true) }
+
+        viewModelScope.launch {
+            when (val result = repository.soundPage(soundId, offset = current.items.size)) {
+                is AppResult.Success -> _state.update { it.append(result.data.items) }
+                is AppResult.Failure -> _state.update {
+                    it.copy(appending = false, message = result.error.explain())
                 }
             }
         }
@@ -147,7 +231,7 @@ class ShortCreatorViewModel @Inject constructor(
     }
 
     fun load() {
-        _state.update { it.copy(loading = true) }
+        _state.update { it.copy(loading = true, failed = false) }
 
         viewModelScope.launch {
             when (val result = repository.creatorPage(creatorId)) {
@@ -160,13 +244,32 @@ class ShortCreatorViewModel @Inject constructor(
                         stats = result.data.stats,
                         following = result.data.following,
                         isSelf = result.data.isSelf,
+                        total = result.data.stats.videos,
                         items = result.data.items,
+                        endReached = result.data.items.size < ShortsRepository.GRID_PAGE,
                         loading = false,
+                        failed = false,
                     )
                 }
 
                 is AppResult.Failure -> _state.update {
-                    it.copy(loading = false, message = result.error.explain())
+                    it.copy(loading = false, failed = true, message = result.error.explain())
+                }
+            }
+        }
+    }
+
+    fun loadMore() {
+        val current = _state.value
+        if (current.loading || current.appending || current.endReached) return
+
+        _state.update { it.copy(appending = true) }
+
+        viewModelScope.launch {
+            when (val result = repository.creatorPage(creatorId, offset = current.items.size)) {
+                is AppResult.Success -> _state.update { it.append(result.data.items) }
+                is AppResult.Failure -> _state.update {
+                    it.copy(appending = false, message = result.error.explain())
                 }
             }
         }

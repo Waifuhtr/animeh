@@ -452,6 +452,56 @@ describe( 'S3Signer', static function () {
 		$url = $signer->presign_url( 'GET', 'https://s3.example.com/b/o', 99999999, array(), $stamp );
 		ok( str_contains( $url, 'X-Amz-Expires=604800' ), $url );
 	} );
+
+	it( 'signs the same object to the same URL across a window', static function () {
+		// The whole point: a URL that changes every second is a URL no cache
+		// can hold, and the app's video cache never hit once because of it.
+		// Driven through the pure half so the clock is an argument — two
+		// presigns in a test land in the same second and would agree however
+		// broken this was.
+		// A window boundary, so "inside" and "outside" are exact rather than
+		// wherever this number happens to fall.
+		$opens = 1_700_000_100;
+
+		$first  = S3Signer::anchor( $opens, 3600 );
+		$second = S3Signer::anchor( $opens + 1, 3600 );
+		$later  = S3Signer::anchor( $opens + 899, 3600 );
+
+		same( $first[0], $second[0] );
+		same( $first[0], $later[0] );
+	} );
+
+	it( 'moves to a new window once the old one is over', static function () {
+		// Stable is not the same as frozen: a link has to keep being reissued,
+		// or every URL in the app would eventually be an expired one.
+		$opens  = 1_700_000_100;
+		$inside = S3Signer::anchor( $opens + 899, 3600 );
+		$beyond = S3Signer::anchor( $opens + 900, 3600 );
+
+		ok( $beyond[0] > $inside[0], 'pencere ilerlemedi' );
+	} );
+
+	it( 'still gives an anchored link the lifetime that was asked for', static function () {
+		// Anchoring the clock backwards shortens a link unless the lifetime is
+		// extended to match, and the worst case is a URL minted at the very
+		// last second of a window.
+		$window = 900;
+		$worst  = 1_700_000_100 + $window - 1;
+
+		list( $signed, $expires ) = S3Signer::anchor( $worst, 3600 );
+
+		ok( ( $signed + $expires ) - $worst >= 3600, 'kalan ömür kısaldı' );
+		// And never wildly more than asked for: a quarter over is the deal.
+		ok( ( $signed + $expires ) - $worst <= 3600 + $window, 'kalan ömür fazla uzadı' );
+	} );
+
+	it( 'gives a very short link a window it can still be cached in', static function () {
+		// A quarter of five minutes is 75 seconds, which is long enough to be
+		// worth something; the floor only matters below that.
+		list( , $expires ) = S3Signer::anchor( 1_700_000_000, 60 );
+
+		same( 120, $expires );
+	} );
 } );
 
 /* ── StorageKey ─────────────────────────────────────────────────────────── */

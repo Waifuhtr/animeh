@@ -52,7 +52,7 @@ function absint( $v ) { return abs( (int) $v ); }
 function wp_json_encode( $v ) { return json_encode( $v ); }
 function current_time( $t, $gmt = 0 ) { return gmdate( 'Y-m-d H:i:s' ); }
 function is_user_logged_in() { return false; }
-function get_current_user_id() { return 0; }
+function get_current_user_id() { return (int) ( $GLOBALS["__viewer"] ?? 0 ); }
 function get_option( $k, $d = false ) { return $GLOBALS['__options'][ $k ] ?? $d; }
 function update_option( $k, $v, $a = null ) { $GLOBALS['__options'][ $k ] = $v; return true; }
 function delete_option( $k ) { unset( $GLOBALS['__options'][ $k ] ); return true; }

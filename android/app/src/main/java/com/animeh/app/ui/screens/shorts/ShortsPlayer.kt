@@ -6,8 +6,10 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
+import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -44,12 +46,40 @@ import java.io.File
  *
  * **3. Nothing was kept.** Swiping back re-downloaded a video that had just
  * been watched. A small disk cache makes going back instant and makes a second
- * pass over the same feed free.
+ * pass over the same feed free — but only once it is keyed on something that
+ * stays still; see [PathCacheKeys].
  *
  * **4. A fresh connection per video.** The default data source opens its own
  * sockets; sharing the app's OkHttp client reuses the pool and the TLS session
  * that the feed request itself just established.
  */
+/**
+ * What the disk cache files a video under.
+ *
+ * The default is the whole URI, and a video's URI is a presigned link: it
+ * carries the moment it was signed and a signature over that. Ask for the same
+ * feed twice and every URL is different, so a cache keyed on the URI stored
+ * every video twice and served none of them from disk — the cache was pure
+ * cost. Keyed on host and path instead, one object in the bucket is one entry
+ * for as long as it sits there.
+ *
+ * Safe because the path is what identifies the object: the query string is
+ * proof of permission, and permission is checked when the bytes are fetched,
+ * not when they are read back from a cache the app already wrote.
+ */
+@OptIn(UnstableApi::class)
+private object PathCacheKeys : CacheKeyFactory {
+    override fun buildCacheKey(dataSpec: DataSpec): String {
+        val path = dataSpec.uri.path
+
+        return if (path.isNullOrEmpty()) {
+            dataSpec.uri.toString()
+        } else {
+            "${dataSpec.uri.host.orEmpty()}$path"
+        }
+    }
+}
+
 @OptIn(UnstableApi::class)
 class ShortsPlayer(
     context: Context,
@@ -94,6 +124,7 @@ class ShortsPlayer(
 
         val cached = CacheDataSource.Factory()
             .setCache(cacheOf(context))
+            .setCacheKeyFactory(PathCacheKeys)
             .setUpstreamDataSourceFactory(DefaultDataSource.Factory(context, http))
             // A half-written entry must never be served as if it were whole:
             // on a swipe mid-download the write is abandoned, and without this

@@ -13,6 +13,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -28,6 +29,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,7 +58,14 @@ fun ShortTagScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    ShortGridPage(state = state, onBack = onBack, onMessageShown = viewModel::messageShown, onOpenShort = onOpenShort) {
+    ShortGridPage(
+        state = state,
+        onBack = onBack,
+        onMessageShown = viewModel::messageShown,
+        onOpenShort = onOpenShort,
+        onRetry = viewModel::load,
+        onLoadMore = viewModel::loadMore,
+    ) {
         PageHeader(
             title = state.title,
             subtitle = stringResource(R.string.tok_tag_videos, state.subtitle.toIntOrNull() ?: 0),
@@ -73,7 +82,14 @@ fun ShortSoundScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    ShortGridPage(state = state, onBack = onBack, onMessageShown = viewModel::messageShown, onOpenShort = onOpenShort) {
+    ShortGridPage(
+        state = state,
+        onBack = onBack,
+        onMessageShown = viewModel::messageShown,
+        onOpenShort = onOpenShort,
+        onRetry = viewModel::load,
+        onLoadMore = viewModel::loadMore,
+    ) {
         PageHeader(
             title = state.title,
             subtitle = state.subtitle,
@@ -91,7 +107,14 @@ fun ShortCreatorScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
 
-    ShortGridPage(state = state, onBack = onBack, onMessageShown = viewModel::messageShown, onOpenShort = onOpenShort) {
+    ShortGridPage(
+        state = state,
+        onBack = onBack,
+        onMessageShown = viewModel::messageShown,
+        onOpenShort = onOpenShort,
+        onRetry = viewModel::load,
+        onLoadMore = viewModel::loadMore,
+    ) {
         CreatorHeader(state = state, onFollow = viewModel::toggleFollow)
     }
 }
@@ -108,15 +131,29 @@ private fun ShortGridPage(
     onBack: () -> Unit,
     onMessageShown: () -> Unit,
     onOpenShort: (Long) -> Unit,
+    onRetry: () -> Unit,
+    onLoadMore: () -> Unit,
     header: @Composable () -> Unit,
 ) {
     val snackbar = remember { SnackbarHostState() }
+    val grid = rememberLazyGridState()
 
     LaunchedEffect(state.message) {
         state.message?.let {
             snackbar.showSnackbar(it)
             onMessageShown()
         }
+    }
+
+    // The next page, asked for two rows before the end rather than at it, so
+    // the grid is already longer by the time a thumb gets there.
+    LaunchedEffect(grid, state.items.size) {
+        snapshotFlow { grid.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0 }
+            .collect { last ->
+                if (state.items.isNotEmpty() && last >= state.items.size - PAGE_AHEAD) {
+                    onLoadMore()
+                }
+            }
     }
 
     Scaffold(
@@ -139,6 +176,7 @@ private fun ShortGridPage(
             }
 
             LazyVerticalGrid(
+                state = grid,
                 columns = GridCells.Fixed(3),
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -148,20 +186,57 @@ private fun ShortGridPage(
 
                 if (state.items.isEmpty()) {
                     fullWidth {
-                        EmptyState(
-                            message = stringResource(R.string.tok_empty),
-                            modifier = Modifier.fillMaxWidth().padding(32.dp),
-                        )
+                        // Three different reasons for an empty grid, and only
+                        // one of them is "nobody has posted here". Saying that
+                        // under a heading counting two videos is the page
+                        // contradicting itself, and it leaves nothing to do
+                        // about it either.
+                        when {
+                            state.failed -> EmptyState(
+                                message = stringResource(R.string.tok_grid_failed),
+                                actionLabel = stringResource(R.string.retry),
+                                onAction = onRetry,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            state.countedButEmpty -> EmptyState(
+                                message = stringResource(R.string.tok_grid_missing, state.total),
+                                actionLabel = stringResource(R.string.retry),
+                                onAction = onRetry,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+
+                            else -> EmptyState(
+                                message = stringResource(R.string.tok_empty),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
 
                 items(state.items, key = { it.id }) { short ->
                     ShortTile(short = short, onClick = { onOpenShort(short.id) })
                 }
+
+                if (state.appending) {
+                    fullWidth {
+                        Box(Modifier.fillMaxWidth().padding(16.dp), Alignment.Center) {
+                            CircularProgressIndicator()
+                        }
+                    }
+                }
             }
         }
     }
 }
+
+/**
+ * How many videos before the end the next page is asked for.
+ *
+ * Two rows. Enough that the grid has grown before a thumb reaches the bottom,
+ * few enough that opening a page does not immediately fetch a second one.
+ */
+private const val PAGE_AHEAD = 6
 
 /** A row that spans every column, for a heading or an empty state. */
 private fun LazyGridScope.fullWidth(content: @Composable () -> Unit) {
@@ -272,12 +347,43 @@ private fun ShortTile(short: ShortDto, onClick: () -> Unit) {
             .background(SurfaceOverlay)
             .clickable(onClick = onClick)
     ) {
-        AsyncImage(
-            model = short.coverUrl,
-            contentDescription = short.description.take(60),
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        )
+        if (short.coverUrl.isNotBlank()) {
+            AsyncImage(
+                model = short.coverUrl,
+                contentDescription = short.description.take(60),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            // A cover is best-effort: the frame is grabbed on the phone after
+            // the video is already in the bucket, and a video whose cover
+            // never made it is still a video. Without this the tile is a flat
+            // rectangle, and a grid of them reads as an empty page rather than
+            // as videos waiting to be tapped.
+            Column(
+                Modifier.fillMaxSize().padding(8.dp),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(
+                    Icons.Filled.Movie,
+                    contentDescription = null,
+                    tint = AccentPrimary,
+                    modifier = Modifier.size(28.dp),
+                )
+
+                if (short.description.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        short.description.take(40),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextSecondary,
+                        maxLines = 3,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+        }
 
         Row(
             Modifier.align(Alignment.BottomStart).padding(6.dp),

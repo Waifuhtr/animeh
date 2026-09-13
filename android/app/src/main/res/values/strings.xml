@@ -489,6 +489,8 @@
     <string name="tok_for_you">Senin İçin</string>
     <string name="tok_following">Takip</string>
     <string name="tok_empty">Henüz video yok.</string>
+    <string name="tok_grid_failed">Videolar yüklenemedi.</string>
+    <string name="tok_grid_missing">Burada %d video sayılıyor ama listesi gelmedi.</string>
     <string name="tok_empty_following">Takip ettiğin kimse henüz video atmamış.</string>
     <string name="tok_like">Beğen</string>
     <string name="tok_comment">Yorum</string>

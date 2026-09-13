@@ -362,10 +362,37 @@ class ShortsRepository @Inject constructor(
             ?: retriever.getFrameAtTime(0)
             ?: return@withRetriever null
 
-        ByteArrayOutputStream().use { out ->
-            frame.compress(Bitmap.CompressFormat.JPEG, COVER_QUALITY, out)
-            out.toByteArray()
+        // A frame straight off a 1080p recording is a quarter of a megabyte of
+        // JPEG, and it is shown on a grid three to a row. Capped at the same
+        // short edge the video itself is capped at, so a cover is never larger
+        // than the video it stands in for.
+        val cover = fit(frame, ShortsCompressor.MAX_SHORT_EDGE)
+
+        try {
+            ByteArrayOutputStream().use { out ->
+                cover.compress(Bitmap.CompressFormat.JPEG, COVER_QUALITY, out)
+                out.toByteArray()
+            }
+        } finally {
+            if (cover !== frame) cover.recycle()
+            frame.recycle()
         }
+    }
+
+    /** [source] scaled so neither edge passes [shortEdge], or itself if it already fits. */
+    private fun fit(source: Bitmap, shortEdge: Int): Bitmap {
+        val smallest = minOf(source.width, source.height)
+
+        if (smallest <= shortEdge || smallest <= 0) return source
+
+        val factor = shortEdge.toFloat() / smallest
+
+        return Bitmap.createScaledBitmap(
+            source,
+            (source.width * factor).toInt().coerceAtLeast(1),
+            (source.height * factor).toInt().coerceAtLeast(1),
+            true,
+        )
     }
 
     /**
@@ -472,6 +499,16 @@ class ShortsRepository @Inject constructor(
 
         /** How many videos one feed request brings back. */
         const val FEED_PAGE = 10
+
+        /**
+         * How many a grid page brings back.
+         *
+         * 21, which is seven full rows of three. It has to match what the
+         * server's routes default to: a page that comes back short is how the
+         * grid knows it has reached the end, and a client that guessed a
+         * different number would either stop early or ask forever.
+         */
+        const val GRID_PAGE = 21
 
         /** Longest video the server will take, so the phone can say so first. */
         const val MAX_DURATION_MS = 180_000L

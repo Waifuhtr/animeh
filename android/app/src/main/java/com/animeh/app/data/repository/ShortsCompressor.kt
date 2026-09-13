@@ -267,7 +267,7 @@ class ShortsCompressor @Inject constructor(
     private fun workspace(): File =
         File(context.cacheDir, WORKSPACE).apply { mkdirs() }
 
-    private companion object {
+    companion object {
         /**
          * Largest short edge, in pixels.
          *
@@ -275,12 +275,15 @@ class ShortsCompressor @Inject constructor(
          * what every app of this shape calls 720p. Above it the extra pixels
          * are invisible on a phone held at arm's length and very visible on
          * the bill.
+         *
+         * The cover frame is held to the same number, so a thumbnail is never
+         * larger than the video it stands in for.
          */
         const val MAX_SHORT_EDGE = 720
 
-        const val WORKSPACE = "animehtok-upload"
+        internal const val WORKSPACE = "animehtok-upload"
 
         /** How often the encode is asked how far along it is. */
-        const val PROGRESS_POLL_MS = 400L
+        private const val PROGRESS_POLL_MS = 400L
     }
 }

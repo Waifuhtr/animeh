@@ -311,6 +311,69 @@ Bu sütun `ShortsSchema::VERSION`'ı `1`'den `2`'ye çıkardı; eklenti yükleni
 
 ---
 
+## 6.7 İmzalı adresler ve hiç isabet etmeyen önbellek
+
+6.5'te akışa 256 MB'lık bir disk önbelleği eklendi. **Bir kez bile isabet
+etmedi.**
+
+Videonun adresi imzalı bir bağlantı: imzalandığı anı ve o ana atılmış bir imzayı
+taşıyor. Aynı akışı iki kez istediğinde her URL farklı geliyor — bayt bayt aynı
+dosya, sadece sorgu dizesi oynuyor. Aşağıdaki her şey URL'e göre anahtarlanır:
+
+* ExoPlayer'ın disk önbelleği → aynı videoyu iki kere yazdı, hiçbirini
+  diskten servis etmedi.
+* Coil'in görsel önbelleği → kapaklar her ekranda yeniden indi.
+* Kovanın önündeki herhangi bir CDN → hiçbir şeyi tutamazdı.
+
+İki yerden düzeltildi.
+
+**Sunucu — imza saniyeye değil pencereye sabitlendi.** `S3Signer::anchor()`
+saati aşağı yuvarlıyor ve ömrü aynı pencere kadar uzatıyor, böylece pencerenin
+son saniyesinde üretilen bir bağlantı da istenen süreyi tam taşıyor. Pencere,
+istenen ömrün dörtte biri: bir bağlantı ayarda yazandan en fazla çeyrek kadar
+uzun yaşıyor, ayar ne olursa olsun. Varsayılan bir saatlik ömürde bu, aynı
+videonun on beş dakika boyunca aynı adresi alması demek.
+
+**Uygulama — önbellek anahtarı imzayı yok sayıyor.** Varsayılan anahtar URL'in
+tamamı; artık `host + yol`. Kovadaki bir nesne, orada durduğu sürece tek bir
+önbellek girdisi. Bayt anahtarı doğrulanmıyor diye bir güvenlik kaybı yok:
+sorgu dizesi *indirme* izninin kanıtı, ve o izin baytlar çekilirken kontrol
+ediliyor — uygulamanın kendi yazdığı bir önbellekten okurken değil.
+
+Kapak resmi de küçüldü: 1080p bir kareden çıkan JPEG çeyrek megabayttı ve grid
+onu satırda üçe gösteriyordu. Artık videonun kendisiyle aynı kısa kenara (720)
+sığdırılıyor — bir küçük resim, temsil ettiği videodan büyük olmamalı.
+
+---
+
+## 6.8 Grid sayfaları: sayıp göstermemek
+
+Etiket sayfası başlıkta "2 video" deyip altında hiçbir şey göstermiyordu.
+
+Sorgular suçlu değildi — `tests/sql/run.php` bunu kanıtlıyor: eklentinin kendi
+tabloları kuruluyor, satırlar kendi deposuyla yazılıyor, sayım ve liste kendi
+sorgularıyla okunuyor, ve her yazımda, her sayfa sınırında, yayından kaldırılan
+ve silinen videolarla birlikte aynı sayıyı veriyorlar.
+
+Boş kalabilmesinin geriye kalan yolları kapatıldı:
+
+* **Kapaksız video artık boş bir dikdörtgen değil.** Kapak en iyi çaba —
+  video kovaya girdikten sonra telefonda çekiliyor — ve gelmediğinde kare
+  düz bir renkti. Bir grid dolusu düz renk, "video yok" gibi okunuyor.
+  Artık simge ve açıklamayla dolu.
+* **Başarısız yükleme artık "henüz video yok" demiyor.** Snackbar dört
+  saniyede gidiyordu, geriye hiç kullanılmamış bir etiket gibi görünen bir
+  sayfa kalıyordu. Artık "yüklenemedi" diyor ve tekrar deneme sunuyor.
+* **Sayıp gösteremediğinde bunu söylüyor.** Başlık iki video sayıp grid
+  boşsa sayfa kendi kendisiyle çelişiyor demektir; altına "henüz video yok"
+  yazmak bunun üstüne yalan söylemek olur. Artık ne olduğunu söylüyor ve
+  tekrar deneme sunuyor — ve bir daha olursa hangi tarafın yanıldığı
+  ekrandan okunabiliyor.
+* **Sayfalama eklendi.** Üç grid sayfası da ilk 21 videoyu alıp duruyordu;
+  artık sona iki satır kala bir sonrakini istiyorlar.
+
+---
+
 ## 7. REST yüzeyi
 
 Namespace `animeh/v1`. **Her rotada gerçek bir `permission_callback`.**
@@ -406,6 +469,16 @@ Kendi videonu beğenmen bildirim üretmiyor.
   rotası var (`tools/checks/rest_routes.py`).
 - **Alan denetimi** — 519 DTO anahtarının hepsini sunucu gerçekten yazıyor
   (`tools/checks/dto_payload_keys.py`).
+- **Sorgular gerçekten koşuldu** — `tests/sql/run.php`: eklentinin kendi
+  tabloları SQLite'ta kuruluyor, satırlar kendi deposuyla yazılıyor, okumalar
+  kendi sorgularıyla yapılıyor. 9 kontrol; `by_tag`'i yazılmış etikete
+  bakacak şekilde bozmak ve silmenin etiket satırını bırakması, ikisi de
+  düşürerek doğrulandı.
+- **İmza penceresi** — 4 birim testi: aynı nesne pencere içinde aynı URL'i
+  veriyor, pencere dolunca ilerliyor, sabitlenmiş bağlantı istenen ömrü tam
+  taşıyor, çok kısa bağlantıya da taban pencere veriliyor. Sabitlemeyi
+  kaldırarak düşürüldü. SigV4 çapraz kontrolünün 22 vektörü değişmedi:
+  zaman damgasını açıkça veren bir çağrı hâlâ tam o anı imzalıyor.
 - **Ekrana yerleşme tercihi** — iki duman adımı: `fit_mode` akışa geçiyor, ve
   tanımadığı bir değer (`''`, `zoom`, `crop`, `FILL`) kırpmayan moda düşüyor.
   İkisi de hatayı geri koyarak düşürüldü.

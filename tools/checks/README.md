@@ -19,6 +19,14 @@ uydurulmuş bir string kaynağı.
 | `rest_routes.py` | Uygulamanın çağırdığı her yol eklentide kayıtlı mı? (`GET /admin/works/{id}` bir sürüm önce gitti: düzenleme formu boş, altta `rest_no_route`.) |
 | `dto_payload_keys.py` | Bir DTO'nun beklediği her anahtarı sunucu gerçekten yazıyor mu? Her alanın varsayılanı olduğu için eksik bir anahtar hata vermez, sessizce 0 / `""` olur. |
 
+Ayrıca üç PHP koşucusu, `build-plugin.sh` içinde sırayla:
+
+| | |
+| --- | --- |
+| `wordpress-plugin/animeh/tests/run.php` | Saf mantık: `Support/` içindeki her şey, WordPress'e hiç dokunmadan. |
+| `wordpress-plugin/animeh/tests/smoke/run.php` | WordPress katmanı yükleniyor, rotalar kayıt oluyor, uçlar sahte satırlarla çalışıyor mu. **SQL'i çalıştırmaz** — `$wpdb` sorgu ne derse desin aynı satırları verir. |
+| `wordpress-plugin/animeh/tests/sql/run.php` | Sorgular gerçekten ne demek: eklentinin kendi tabloları SQLite'ta kuruluyor, satırlar eklentinin kendi deposuyla yazılıyor, okumalar eklentinin kendi sorgularıyla yapılıyor. Başlığı "2 video" diyip altı boş kalan etiket sayfası yüzünden yazıldı — bir üstteki koşucu bunu göremezdi. |
+
 Ayrıca `tools/` içinde, `build-plugin.sh` tarafından koşulanlar:
 
 - `php-call-check.php` — yerleşik PHP fonksiyonlarına verilen argüman sayısı
@@ -38,4 +46,7 @@ python3 tools/checks/rest_routes.py
 python3 tools/checks/dto_payload_keys.py
 php tools/php-call-check.php wordpress-plugin/animeh/src wordpress-plugin/animeh-manga-bridge
 php tools/php-method-check.php
+php wordpress-plugin/animeh/tests/run.php
+php wordpress-plugin/animeh/tests/smoke/run.php
+php wordpress-plugin/animeh/tests/sql/run.php
 ```

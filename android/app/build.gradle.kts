@@ -202,6 +202,10 @@ dependencies {
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.datasource.okhttp)
+    // The feed's disk cache. Both arrive with media3-exoplayer anyway; named
+    // here so the classpath does not depend on that staying true.
+    implementation(libs.media3.datasource)
+    implementation(libs.media3.database)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.common)

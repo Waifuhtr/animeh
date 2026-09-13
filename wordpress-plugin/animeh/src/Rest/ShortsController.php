@@ -1308,28 +1308,65 @@ final class ShortsController {
 			return array();
 		}
 
-		$ids = array_map( static fn( array $row ): int => (int) $row['id'], $rows );
+		$ids      = array();
+		$creators = array();
+		$sounds   = array();
 
-		// One query for the whole page rather than one per video: a feed page
-		// is twenty rows and forty round trips is the difference between a
-		// feed that opens and one that does not.
+		foreach ( $rows as $row ) {
+			$ids[]      = (int) $row['id'];
+			$creators[] = (int) $row['user_id'];
+
+			if ( (int) $row['sound_id'] > 0 ) {
+				$sounds[] = (int) $row['sound_id'];
+			}
+		}
+
+		// Six queries for the whole page, whatever its length.
+		//
+		// This loop used to run one query per video for the sound, one for the
+		// tags, one for the follow and one more for the video a sound is played
+		// from — plus a signature for each URL and another for each creator's
+		// avatar. Ten videos was fifty queries and forty HMACs before the phone
+		// had been handed a single byte of video, and that delay sat in front of
+		// a feed whose whole promise is that the next thing is already there.
 		$relations = $repo->relations( $ids, $user_id );
+		$tags      = $repo->tags_for( $ids );
+		$following = $repo->following_among( $creators, $user_id );
+		$sound_map = $repo->sounds_for( $sounds );
+
+		// A sound is played from a video, so those are fetched together too.
+		$origins = array();
+		foreach ( $sound_map as $sound ) {
+			if ( (int) $sound['origin_short_id'] > 0 ) {
+				$origins[] = (int) $sound['origin_short_id'];
+			}
+		}
+
+		$origin_map = $repo->find_many( $origins );
 
 		$settings = StorageSettings::load();
 		$client   = $settings->is_configured() ? new B2Client( $settings ) : null;
+
+		// One creator appears on several videos in a feed; their name and
+		// avatar are resolved once each.
+		$people = array();
 
 		$out = array();
 		foreach ( $rows as $row ) {
 			$id       = (int) $row['id'];
 			$creator  = (int) $row['user_id'];
 			$sound_id = (int) $row['sound_id'];
-			$sound    = $sound_id > 0 ? $repo->sound( $sound_id ) : null;
+			$sound    = $sound_map[ $sound_id ] ?? null;
+
+			if ( ! isset( $people[ $creator ] ) ) {
+				$people[ $creator ] = $this->creator_payload( $creator );
+			}
 
 			$out[] = array(
 				'id'            => $id,
 				'slug'          => (string) $row['slug'],
 				'description'   => (string) $row['description'],
-				'tags'          => $repo->tags_of( $id ),
+				'tags'          => $tags[ $id ] ?? array(),
 				'video_url'     => $this->url_for( (string) $row['storage_key'], $settings, $client ),
 				'cover_url'     => $this->url_for( (string) $row['thumb_key'], $settings, $client ),
 				'duration_ms'   => (int) $row['duration_ms'],
@@ -1344,10 +1381,12 @@ final class ShortsController {
 				'liked'         => isset( $relations['liked'][ $id ] ),
 				'saved'         => isset( $relations['saved'][ $id ] ),
 				'created_at'    => (string) $row['created_at'],
-				'creator'       => $this->creator_payload( $creator ),
-				'following'     => $repo->follows( $user_id, $creator ),
+				'creator'       => $people[ $creator ],
+				'following'     => isset( $following[ $creator ] ),
 				'is_mine'       => $user_id > 0 && $user_id === $creator,
-				'sound'         => null === $sound ? null : $this->sound_payload( $sound, $repo ),
+				'sound'         => null === $sound
+					? null
+					: $this->sound_row( $sound, $origin_map, $settings, $client ),
 			);
 		}
 
@@ -1406,6 +1445,33 @@ final class ShortsController {
 
 		$settings = StorageSettings::load();
 		$client   = $settings->is_configured() ? new B2Client( $settings ) : null;
+
+		return $this->sound_row(
+			$sound,
+			null === $short ? array() : array( $origin => $short ),
+			$settings,
+			$client
+		);
+	}
+
+	/**
+	 * A sound, from rows a caller already has.
+	 *
+	 * The same shape as {@see self::sound_payload()}, without going back to the
+	 * database or building a second storage client. The feed calls this one: it
+	 * has already fetched every sound on the page and every video those sounds
+	 * are played from, and doing it again per row is how a page of ten became
+	 * fifty queries.
+	 *
+	 * @param array<string, mixed>                $sound    Sound row.
+	 * @param array<int, array<string, mixed>>    $origins  Videos, by id.
+	 * @param StorageSettings                     $settings Storage settings.
+	 * @param B2Client|null                       $client   Client, when configured.
+	 * @return array<string, mixed>
+	 */
+	private function sound_row( array $sound, array $origins, StorageSettings $settings, ?B2Client $client ): array {
+		$origin = (int) $sound['origin_short_id'];
+		$short  = $origins[ $origin ] ?? null;
 
 		return array(
 			'id'        => (int) $sound['id'],

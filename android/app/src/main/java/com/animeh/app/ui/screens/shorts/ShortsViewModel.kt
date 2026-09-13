@@ -16,7 +16,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import okhttp3.OkHttpClient
 import javax.inject.Inject
+import javax.inject.Named
 
 @Immutable
 data class ShortsFeedState(
@@ -43,6 +45,15 @@ data class ShortsFeedState(
 @HiltViewModel
 class ShortsViewModel @Inject constructor(
     private val repository: ShortsRepository,
+    /**
+     * The app's own HTTP client, handed to the feed's player.
+     *
+     * Injected here rather than reached for in the composable so the screen
+     * stays free of Hilt entry points. Media over the same client means the
+     * same connection pool and the same TLS session the feed request opened —
+     * one fewer handshake per video.
+     */
+    @Named("base_client") val httpClient: OkHttpClient,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ShortsFeedState())

@@ -473,6 +473,154 @@ final class ShortsRepository {
 		return array_map( 'strval', (array) $rows );
 	}
 
+	/* ── Batched reads for one page ──────────────────────────────────── */
+
+	/**
+	 * The tags on several videos at once.
+	 *
+	 * One query for the page instead of one per video. A feed page is ten
+	 * videos and this was ten round trips inside a loop — the shape that makes
+	 * a page take a second before the first byte of video is even asked for.
+	 *
+	 * @param array<int, int> $short_ids Ids on the page.
+	 * @return array<int, array<int, string>> Tags, by short id.
+	 */
+	public function tags_for( array $short_ids ): array {
+		global $wpdb;
+
+		$ids = $this->id_list( $short_ids );
+		if ( '' === $ids ) {
+			return array();
+		}
+
+		$rows = $wpdb->get_results(
+			// Every value is an int by id_list(), so the list is safe to place
+			// directly; prepare() cannot hold a variable-length list.
+			'SELECT short_id, tag FROM ' . ShortsSchema::tags() . " WHERE short_id IN ({$ids}) ORDER BY id ASC", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			ARRAY_A
+		);
+
+		$out = array();
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			$out[ (int) $row['short_id'] ][] = (string) $row['tag'];
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Several sounds at once.
+	 *
+	 * @param array<int, int> $sound_ids Sound ids.
+	 * @return array<int, array<string, mixed>> Rows, by id.
+	 */
+	public function sounds_for( array $sound_ids ): array {
+		global $wpdb;
+
+		$ids = $this->id_list( $sound_ids );
+		if ( '' === $ids ) {
+			return array();
+		}
+
+		$rows = $wpdb->get_results(
+			'SELECT * FROM ' . ShortsSchema::sounds() . " WHERE id IN ({$ids})", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			ARRAY_A
+		);
+
+		$out = array();
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			$out[ (int) $row['id'] ] = $row;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Several videos at once, by id.
+	 *
+	 * Used to resolve the videos a page's sounds are played from without one
+	 * lookup per sound.
+	 *
+	 * @param array<int, int> $short_ids Ids.
+	 * @return array<int, array<string, mixed>> Rows, by id.
+	 */
+	public function find_many( array $short_ids ): array {
+		global $wpdb;
+
+		$ids = $this->id_list( $short_ids );
+		if ( '' === $ids ) {
+			return array();
+		}
+
+		$rows = $wpdb->get_results(
+			'SELECT * FROM ' . ShortsSchema::shorts() . " WHERE id IN ({$ids})", // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+			ARRAY_A
+		);
+
+		$out = array();
+		foreach ( is_array( $rows ) ? $rows : array() as $row ) {
+			$out[ (int) $row['id'] ] = $row;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Which of these creators the viewer follows.
+	 *
+	 * @param array<int, int> $creator_ids Creators on the page.
+	 * @param int             $user_id     Viewer.
+	 * @return array<int, bool>
+	 */
+	public function following_among( array $creator_ids, int $user_id ): array {
+		global $wpdb;
+
+		if ( $user_id <= 0 ) {
+			return array();
+		}
+
+		$ids = $this->id_list( $creator_ids );
+		if ( '' === $ids ) {
+			return array();
+		}
+
+		$rows = $wpdb->get_col(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				'SELECT target_id FROM ' . ShortsSchema::follows() . " WHERE follower_id = %d AND target_id IN ({$ids})",
+				$user_id
+			)
+		);
+
+		$out = array();
+		foreach ( (array) $rows as $value ) {
+			$out[ (int) $value ] = true;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * A comma-separated list of unique, positive ids, or '' when there are none.
+	 *
+	 * Every value is cast, so what comes back is safe to place into SQL
+	 * directly — which is necessary, because prepare() has no placeholder for
+	 * a list of unknown length.
+	 *
+	 * @param array<int, int> $ids Raw ids.
+	 */
+	private function id_list( array $ids ): string {
+		$clean = array();
+
+		foreach ( $ids as $id ) {
+			$id = (int) $id;
+			if ( $id > 0 ) {
+				$clean[ $id ] = $id;
+			}
+		}
+
+		return implode( ',', $clean );
+	}
+
 	/* ── Likes, saves and views ──────────────────────────────────────── */
 
 	/**

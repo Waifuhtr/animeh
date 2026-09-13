@@ -36,8 +36,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.media3.common.MediaItem
-import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -57,15 +55,13 @@ import com.animeh.app.ui.theme.TextSecondary
 /**
  * AnimehTok's feed.
  *
- * One video per page, swiped vertically. The whole page list is handed to a
- * single ExoPlayer as a playlist rather than one player being torn down and
- * rebuilt per page: that is what makes the next video start instantly, because
- * ExoPlayer buffers ahead on its own, and it is also the only arrangement a
- * phone's decoder count can sustain while somebody flicks through twenty
- * videos in a minute.
+ * One video per page, swiped vertically, over one engine holding the whole page
+ * list as a playlist — one player rather than one per page, because a phone has
+ * a small number of hardware decoders and somebody flicking through twenty
+ * videos a minute would exhaust them.
  *
- * `REPEAT_MODE_ONE` because a short loops until you swipe. Advancing is the
- * pager's job, never the player's.
+ * How quickly a swipe reaches its first frame is decided entirely in
+ * [ShortsPlayer]; the reasoning lives there, next to the numbers.
  */
 @Composable
 fun ShortsScreen(
@@ -77,65 +73,38 @@ fun ShortsScreen(
     onSearch: () -> Unit,
     viewModel: ShortsViewModel = hiltViewModel(),
 ) {
+    // The app's own client, so media reuses the pool and the TLS session the
+    // feed request itself just opened rather than starting from nothing.
+    val httpClient = viewModel.httpClient
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val snackbar = remember { SnackbarHostState() }
 
-    val player = remember {
-        ExoPlayer.Builder(context).build().apply {
-            repeatMode = Player.REPEAT_MODE_ONE
-            playWhenReady = true
-            volume = 1f
-        }
-    }
+    // Everything about how fast a swipe reaches its first frame is in here.
+    val engine = remember(httpClient) { ShortsPlayer(context, httpClient) }
 
-    DisposableEffect(Unit) {
-        onDispose { player.release() }
+    DisposableEffect(engine) {
+        onDispose { engine.release() }
     }
 
     val pagerState = rememberPagerState(pageCount = { state.items.size })
 
-    // The playlist follows the list. Compared by id rather than by the whole
+    // The playlist follows the list. Keyed on the ids rather than the whole
     // list because a like arrives as a new ShortDto for one row, and rebuilding
     // the playlist for that would restart the video under the viewer's thumb.
     val ids = remember(state.items) { state.items.map { it.id } }
 
     LaunchedEffect(ids, state.tab) {
-        if (ids.isEmpty()) {
-            player.clearMediaItems()
-            return@LaunchedEffect
-        }
-
-        val wanted = state.items.map { MediaItem.fromUri(it.videoUrl) }
-        val current = pagerState.currentPage.coerceIn(0, wanted.lastIndex)
-
-        if (player.mediaItemCount == 0) {
-            player.setMediaItems(wanted, current, 0L)
-            player.prepare()
-        } else if (player.mediaItemCount < wanted.size) {
-            // A page was appended: add only the new tail, so the video playing
-            // right now is not interrupted.
-            player.addMediaItems(wanted.subList(player.mediaItemCount, wanted.size))
-        }
+        engine.setFeed(state.items.map { it.videoUrl }, pagerState.currentPage)
     }
 
     LaunchedEffect(pagerState.currentPage, ids) {
         val page = pagerState.currentPage
 
-        if (page in ids.indices && player.mediaItemCount > page) {
-            if (player.currentMediaItemIndex != page) {
-                player.seekToDefaultPosition(page)
-            }
-            player.playWhenReady = true
-        }
+        engine.playPage(page)
 
         state.items.getOrNull(page)?.let { viewModel.watched(it.id) }
         viewModel.loadMoreIfNeeded(page)
-    }
-
-    // Leaving the screen must not leave audio playing behind it.
-    DisposableEffect(Unit) {
-        onDispose { player.playWhenReady = false }
     }
 
     LaunchedEffect(state.message) {
@@ -185,7 +154,7 @@ fun ShortsScreen(
                     ShortPage(
                         short = short,
                         active = page == pagerState.currentPage,
-                        player = player,
+                        player = engine.exo,
                         onLike = { viewModel.toggleLike(short) },
                         onSave = { viewModel.toggleSave(short) },
                         onFollow = { viewModel.toggleFollow(short) },

@@ -1166,6 +1166,56 @@ step(
 );
 
 step(
+	'akış sayfası sabit sayıda sorgu yapıyor',
+	static function () use ( $wpdb ): void {
+		$controller = new ShortsController();
+
+		// The same page, once with one video and once with eight. A loop that
+		// queries per video grows with the second number; a batched one does
+		// not. This is the check, not the absolute count: what matters is that
+		// adding videos to a page does not add round trips.
+		$counts = array();
+
+		foreach ( array( 1, 8 ) as $size ) {
+			$rows = array();
+			for ( $i = 0; $i < $size; $i++ ) {
+				$rows[] = animeh_short_row(
+					array(
+						'id'       => 100 + $i,
+						'user_id'  => 7 + $i,
+						'slug'     => 'v' . $i,
+						'sound_id' => 3 + $i,
+					)
+				);
+			}
+
+			$wpdb->rows    = array( 'shorts' => $rows );
+			$wpdb->queries = array();
+
+			$controller->feed(
+				new WP_REST_Request( array( 'tab' => 'foryou', 'per_page' => 10, 'offset' => 0 ) )
+			);
+
+			$counts[ $size ] = count( $wpdb->queries );
+		}
+
+		$wpdb->rows = array();
+
+		// A little slack: the fixture hands the same rows back for every query,
+		// so a couple of lookups shift with the data. Anything approaching one
+		// query per video is the shape this test exists to catch — the feed
+		// used to run five.
+		$growth = $counts[8] - $counts[1];
+
+		if ( $growth > 3 ) {
+			throw new RuntimeException(
+				"video başına sorgu ekleniyor: 1 video {$counts[1]}, 8 video {$counts[8]}"
+			);
+		}
+	}
+);
+
+step(
 	'AnimehTok hiçbir şekilde geçmişe ya da puana dokunmuyor',
 	static function () use ( $wpdb ): void {
 		$wpdb->rows    = array( 'shorts' => array( animeh_short_row() ) );

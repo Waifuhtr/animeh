@@ -1253,6 +1253,48 @@ step(
 	}
 );
 
+step(
+	'ekrana yerleşme tercihi akışa geçiyor',
+	static function () use ( $wpdb ): void {
+		$wpdb->rows = array( 'shorts' => array( animeh_short_row( array( 'fit_mode' => 'fill' ) ) ) );
+
+		$items = ( new ShortsController() )->feed(
+			new WP_REST_Request( array( 'tab' => 'foryou', 'per_page' => 10, 'offset' => 0 ) )
+		)->get_data()['items'] ?? array();
+
+		// Without this key the app falls back to its own default and a video
+		// the uploader asked to fill the screen quietly stops filling it.
+		if ( 'fill' !== ( $items[0]['fit_mode'] ?? null ) ) {
+			throw new RuntimeException( 'fit_mode akışa geçmedi' );
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
+step(
+	'tanımadığı yerleşme tercihi hiçbir şeyi kırpmıyor',
+	static function () use ( $wpdb ): void {
+		// Two cases in one, because they are the same case: a row written
+		// before the column existed reads as '', and a value nobody recognises
+		// could be anything. Both have to land on the mode that cuts nothing —
+		// guessing 'fill' here is how half a picture goes missing.
+		foreach ( array( '', 'zoom', 'crop', 'FILL' ) as $stored ) {
+			$wpdb->rows = array( 'shorts' => array( animeh_short_row( array( 'fit_mode' => $stored ) ) ) );
+
+			$items = ( new ShortsController() )->feed(
+				new WP_REST_Request( array( 'tab' => 'foryou', 'per_page' => 10, 'offset' => 0 ) )
+			)->get_data()['items'] ?? array();
+
+			if ( 'original' !== ( $items[0]['fit_mode'] ?? null ) ) {
+				throw new RuntimeException( "'" . $stored . "' kırpan bir moda düştü" );
+			}
+		}
+
+		$wpdb->rows = array();
+	}
+);
+
 echo "\n" . $passed . '/' . ( $passed + $failures ) . " kontrol geçti\n";
 
 exit( $failures > 0 ? 1 : 0 );

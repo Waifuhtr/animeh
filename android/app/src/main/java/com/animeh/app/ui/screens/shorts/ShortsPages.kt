@@ -548,6 +548,22 @@ fun ShortUploadScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary,
                 )
+
+                if (facts.durationMs > 0) {
+                    TrimRow(
+                        durationMs = facts.durationMs,
+                        startMs = state.trimStartMs,
+                        endMs = state.trimEndMs,
+                        enabled = !state.uploading,
+                        onChange = viewModel::setTrim,
+                    )
+                }
+
+                FitRow(
+                    mode = state.fitMode,
+                    enabled = !state.uploading,
+                    onChange = viewModel::setFitMode,
+                )
             }
 
             if (state.tooLong) {
@@ -561,6 +577,14 @@ fun ShortUploadScreen(
             if (state.tooLarge) {
                 Text(
                     stringResource(R.string.tok_upload_too_large),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            if (state.emptyCut) {
+                Text(
+                    stringResource(R.string.tok_upload_empty_cut),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -620,6 +644,113 @@ fun ShortUploadScreen(
             }
         }
     }
+}
+
+/**
+ * The cut, as two handles over the video's length.
+ *
+ * Optional in the sense that matters: leaving it alone keeps the whole video
+ * and skips the re-encode entirely, so nobody pays for a feature they did not
+ * use. Moving either handle is what turns the trim on.
+ *
+ * There is no frame preview behind it. Decoding thumbnails across a video the
+ * phone has not finished reading is a second, slower pipeline, and a clip of
+ * this length is one somebody just recorded and already knows the shape of.
+ */
+@Composable
+private fun TrimRow(
+    durationMs: Long,
+    startMs: Long,
+    endMs: Long,
+    enabled: Boolean,
+    onChange: (Long, Long) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.tok_upload_trim), style = MaterialTheme.typography.bodyMedium)
+
+            Text(
+                "${clock(startMs)} – ${clock(endMs)} · ${(endMs - startMs) / 1000}s",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+        }
+
+        // Seconds rather than milliseconds: a Float carries about seven
+        // significant digits, and a three-minute video in milliseconds is
+        // already six of them.
+        RangeSlider(
+            value = (startMs / 1000f)..(endMs / 1000f),
+            onValueChange = { range ->
+                onChange((range.start * 1000).toLong(), (range.endInclusive * 1000).toLong())
+            },
+            valueRange = 0f..(durationMs / 1000f),
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * How the video should meet the edge of the screen.
+ *
+ * The default keeps the whole frame, which is the choice that cannot lose
+ * anything: a horizontal video gets bars above and below rather than having
+ * its sides cut off. Filling the screen is offered because a video shot to be
+ * watched full-bleed should be, and because the alternative — deciding for the
+ * uploader — is how half a picture goes missing.
+ *
+ * Neither choice touches the pixels. It is stored beside the video and applied
+ * when it is played, so changing your mind costs nothing.
+ */
+@Composable
+private fun FitRow(
+    mode: String,
+    enabled: Boolean,
+    onChange: (String) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(stringResource(R.string.tok_upload_fit), style = MaterialTheme.typography.bodyMedium)
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = mode == ShortsRepository.FIT_ORIGINAL,
+                onClick = { onChange(ShortsRepository.FIT_ORIGINAL) },
+                enabled = enabled,
+                label = { Text(stringResource(R.string.tok_upload_fit_original)) },
+            )
+
+            FilterChip(
+                selected = mode == ShortsRepository.FIT_FILL,
+                onClick = { onChange(ShortsRepository.FIT_FILL) },
+                enabled = enabled,
+                label = { Text(stringResource(R.string.tok_upload_fit_fill)) },
+            )
+        }
+
+        Text(
+            stringResource(
+                if (mode == ShortsRepository.FIT_FILL) {
+                    R.string.tok_upload_fit_fill_hint
+                } else {
+                    R.string.tok_upload_fit_original_hint
+                }
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = TextSecondary,
+        )
+    }
+}
+
+/** `0:07`, which is how long a short video is read. */
+private fun clock(ms: Long): String {
+    val total = (ms / 1000).coerceAtLeast(0)
+
+    return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
 }
 
 /* ── The profile block ───────────────────────────────────────────────── */

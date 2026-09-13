@@ -130,6 +130,11 @@ final class ShortsController {
 					'sound_title' => array( 'type' => 'string', 'default' => '', 'sanitize_callback' => 'sanitize_text_field' ),
 					'sound_id'    => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
 					'adult'       => array( 'type' => 'boolean', 'default' => false ),
+					'fit_mode'    => array(
+						'type'    => 'string',
+						'default' => ShortsRepository::FIT_ORIGINAL,
+						'enum'    => array( ShortsRepository::FIT_ORIGINAL, ShortsRepository::FIT_FILL ),
+					),
 				),
 			)
 		);
@@ -699,6 +704,7 @@ final class ShortsController {
 				'mime'        => 'video/mp4',
 				'published'   => true,
 				'adult'       => (bool) $request->get_param( 'adult' ),
+				'fit_mode'    => (string) $request->get_param( 'fit_mode' ),
 			)
 		);
 
@@ -1372,6 +1378,9 @@ final class ShortsController {
 				'duration_ms'   => (int) $row['duration_ms'],
 				'width'         => (int) $row['width'],
 				'height'        => (int) $row['height'],
+				// Rows written before this column existed read as '', which
+				// folds to 'original' — the mode that shows the whole frame.
+				'fit_mode'      => ShortsRepository::fit_mode( $row['fit_mode'] ?? '' ),
 				'adult'         => (bool) (int) $row['adult'],
 				'published'     => (bool) (int) $row['published'],
 				'view_count'    => (int) $row['view_count'],

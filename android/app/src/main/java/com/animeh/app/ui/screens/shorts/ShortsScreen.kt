@@ -278,15 +278,25 @@ private fun ShortPage(
     var paused by remember(short.id) { mutableStateOf(false) }
     var confirmDelete by remember(short.id) { mutableStateOf(false) }
 
-    Box(Modifier.fillMaxSize().background(Color.Black)) {
+    BoxWithConstraints(Modifier.fillMaxSize().background(Color.Black)) {
+        // Measured rather than assumed: the rule below compares the video's
+        // shape with the shape of the space it is going into, and that space is
+        // this page.
+        val resize = remember(short.id, short.fitMode, short.width, short.height, maxWidth, maxHeight) {
+            resizeFor(short, maxWidth.value, maxHeight.value)
+        }
+
+        val fills = resize == AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+
         // The cover, under the surface. It is what fills the frame while the
         // first bytes are still arriving, and it is why a video does not open
-        // on black.
+        // on black. It is laid in the same way the video will be, so the
+        // picture does not jump when the first frame replaces it.
         if (short.coverUrl.isNotBlank()) {
             AsyncImage(
                 model = short.coverUrl,
                 contentDescription = null,
-                contentScale = ContentScale.Crop,
+                contentScale = if (fills) ContentScale.Crop else ContentScale.Fit,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -299,14 +309,15 @@ private fun ShortPage(
                         // Compose over the top.
                         useController = false
                         setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
-                        // Fill rather than fit: a vertical video should not sit
-                        // in letterbox bars, and a horizontal one is cropped
-                        // the way every app of this shape crops it.
-                        resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         setKeepContentOnPlayerReset(true)
                     }
                 },
-                update = { view -> view.player = player },
+                // Both in update: a page's video can change shape under it when
+                // the feed grows, and the factory only ever runs once.
+                update = { view ->
+                    view.player = player
+                    view.resizeMode = resize
+                },
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -387,6 +398,59 @@ private fun ShortPage(
         )
     }
 }
+
+/**
+ * How a video should be laid into the frame it plays in.
+ *
+ * Filling the screen is right when a video very nearly fits: a 9:16 clip on a
+ * 20:9 phone loses about a fifth of its width to the sides, and putting bars
+ * around something that was shot to be watched full-bleed would be the wrong
+ * answer. It is wrong when the two shapes disagree — a landscape video cropped
+ * to a vertical screen loses most of its picture, which is the complaint this
+ * exists to answer.
+ *
+ * So the question asked is how much would be lost rather than which way up the
+ * video is, and [ShortsRepository.FIT_FILL] is the uploader saying to fill it
+ * regardless. Nothing here changes the file: every pixel is still in the
+ * bucket, and this only decides which of them reach the screen.
+ *
+ * Unknown dimensions fall to fitting. A video whose size the server never
+ * recorded is more likely to be something unusual than something 9:16, and
+ * fitting is the choice that cannot cut anything off.
+ */
+private fun resizeFor(short: ShortDto, frameWidth: Float, frameHeight: Float): Int {
+    if (short.fitMode == ShortsRepository.FIT_FILL) {
+        return AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    }
+
+    if (short.width <= 0 || short.height <= 0 || frameWidth <= 0f || frameHeight <= 0f) {
+        return AspectRatioFrameLayout.RESIZE_MODE_FIT
+    }
+
+    val video = short.height.toFloat() / short.width
+    val frame = frameHeight / frameWidth
+
+    // What covering the frame would cut off, as a share of the video. The
+    // shorter of the two ratios against the longer, whichever way round they
+    // are: the overflow is in width when the video is the flatter of the two
+    // and in height when it is the taller.
+    val lost = 1f - minOf(video, frame) / maxOf(video, frame)
+
+    return if (lost <= MAX_CROP) {
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    } else {
+        AspectRatioFrameLayout.RESIZE_MODE_FIT
+    }
+}
+
+/**
+ * How much of a video may be cut off to make it fill the screen.
+ *
+ * A quarter. Under it the crop reads as the video simply fitting the phone;
+ * over it — a square clip on a tall screen, and every landscape one — what goes
+ * missing is the picture.
+ */
+private const val MAX_CROP = 0.25f
 
 /**
  * Who made it, what they said, and what it is playing.

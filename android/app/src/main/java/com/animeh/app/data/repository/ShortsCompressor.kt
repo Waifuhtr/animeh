@@ -2,6 +2,7 @@ package com.animeh.app.data.repository
 
 import android.content.Context
 import androidx.annotation.OptIn
+import androidx.media3.common.Effect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
@@ -11,11 +12,11 @@ import androidx.media3.transformer.EditedMediaItem
 import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
+import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import com.google.common.collect.ImmutableList
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -24,6 +25,17 @@ import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
+
+/**
+ * The slice of a picked video the uploader chose to keep.
+ *
+ * Milliseconds from the start of the original file, end exclusive. Absent
+ * rather than a full-length range when nothing was trimmed, so the compressor
+ * can tell "keep all of it" from "keep all of it, and re-encode to prove it".
+ */
+data class ShortTrim(val startMs: Long, val endMs: Long) {
+    val durationMs: Long get() = (endMs - startMs).coerceAtLeast(0)
+}
 
 /**
  * Shrinks a picked video before it is uploaded.
@@ -58,8 +70,10 @@ class ShortsCompressor @Inject constructor(
     /**
      * A smaller file, or null to upload what was picked.
      *
-     * Null is not a failure the caller has to report: it means "this one is
-     * already fine, or could not be re-encoded", and both end the same way.
+     * Null means "this one is already fine, or could not be re-encoded". For a
+     * plain shrink both end the same way and the caller need not report it —
+     * but a null when [trim] was asked for is a real failure, because the file
+     * that would go up is not the one the uploader chose. The caller checks.
      *
      * @param onProgress fraction 0f..1f while encoding.
      */
@@ -67,9 +81,14 @@ class ShortsCompressor @Inject constructor(
         source: Uri,
         widthPx: Int,
         heightPx: Int,
+        trim: ShortTrim? = null,
         onProgress: (Float) -> Unit = {},
     ): File? {
-        val height = targetHeight(widthPx, heightPx) ?: return null
+        val height = targetHeight(widthPx, heightPx)
+
+        // Nothing to scale and nothing to cut: the picked file is already the
+        // one to send, and a re-encode would cost battery and quality for it.
+        if (height == null && trim == null) return null
 
         val target = File(workspace(), "tok-${System.currentTimeMillis()}.mp4")
 
@@ -78,7 +97,7 @@ class ShortsCompressor @Inject constructor(
         // is the one guaranteed to have one; the encoding itself happens on
         // Media3's own threads, so nothing here blocks the UI.
         val exported = withContext(Dispatchers.Main) {
-            runCatching { export(source, target, height, onProgress) }.getOrDefault(false)
+            runCatching { export(source, target, height, trim, onProgress) }.getOrDefault(false)
         }
 
         if (!exported || !target.isFile || target.length() <= 0) {
@@ -134,19 +153,30 @@ class ShortsCompressor @Inject constructor(
     private suspend fun export(
         source: Uri,
         target: File,
-        height: Int,
+        height: Int?,
+        trim: ShortTrim?,
         onProgress: (Float) -> Unit,
     ): Boolean = suspendCancellableCoroutine { waiting ->
-        val edited = EditedMediaItem.Builder(MediaItem.fromUri(source))
-            .setEffects(
-                Effects(
-                    ImmutableList.of(),
-                    // Proportional: the width follows, so a portrait clip stays
-                    // portrait and a landscape one stays landscape.
-                    ImmutableList.of(Presentation.createForHeight(height)),
-                )
-            )
+        // Declared rather than inlined so the element type is the one the Java
+        // parameter asks for. Effects takes List<Effect>, and a Java List in
+        // Kotlin is invariant: a List<Presentation> is not a List<Effect>.
+        val effects: List<Effect> = when (height) {
+            // Trim only. Nothing to rescale, so the frames pass through at the
+            // size they were recorded at.
+            null -> listOf()
+            // Proportional: the width follows, so a portrait clip stays
+            // portrait and a landscape one stays landscape.
+            else -> listOf(Presentation.createForHeight(height))
+        }
+
+        val edited = EditedMediaItem.Builder(itemFor(source, trim))
+            .setEffects(Effects(listOf(), effects))
             .build()
+
+        // Polling runs on this same looper, which is the only thread allowed to
+        // ask a Transformer anything.
+        val progress = ProgressHolder()
+        val poller = Handler(Looper.getMainLooper())
 
         val transformer = Transformer.Builder(context)
             // H.264 rather than H.265: every phone decodes it, and the feed is
@@ -155,6 +185,7 @@ class ShortsCompressor @Inject constructor(
             .addListener(
                 object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, result: ExportResult) {
+                        poller.removeCallbacksAndMessages(null)
                         onProgress(1f)
                         if (waiting.isActive) waiting.resume(true)
                     }
@@ -164,13 +195,31 @@ class ShortsCompressor @Inject constructor(
                         result: ExportResult,
                         exception: ExportException,
                     ) {
-                        // Not surfaced: the upload carries on with the original
-                        // file, which is what it did before this step existed.
+                        // Not surfaced from here: a plain shrink carries on with
+                        // the original file, and a failed trim is turned into a
+                        // real error by the caller, which knows one was asked
+                        // for.
+                        poller.removeCallbacksAndMessages(null)
                         if (waiting.isActive) waiting.resume(false)
                     }
                 }
             )
             .build()
+
+        // Re-encoding a minute of video takes tens of seconds on a mid-range
+        // phone. Without this the bar sits at zero under a label saying
+        // "compressing", which reads as a hang rather than as work.
+        val tick = object : Runnable {
+            override fun run() {
+                if (!waiting.isActive) return
+
+                if (transformer.getProgress(progress) == Transformer.PROGRESS_STATE_AVAILABLE) {
+                    onProgress(progress.progress / 100f)
+                }
+
+                poller.postDelayed(this, PROGRESS_POLL_MS)
+            }
+        }
 
         waiting.invokeOnCancellation {
             // This runs on whoever cancelled, which is not necessarily the
@@ -178,12 +227,41 @@ class ShortsCompressor @Inject constructor(
             // from a second thread is undefined behaviour. Posted back rather
             // than called here.
             Handler(Looper.getMainLooper()).post {
+                poller.removeCallbacksAndMessages(null)
                 runCatching { transformer.cancel() }
                 target.delete()
             }
         }
 
         transformer.start(edited, target.absolutePath)
+        poller.postDelayed(tick, PROGRESS_POLL_MS)
+    }
+
+    /**
+     * The source, with the uploader's cut applied.
+     *
+     * Clipping belongs to the MediaItem rather than to the export: Transformer
+     * reads the same ClippingConfiguration the player does, so the range the
+     * trim UI previewed is exactly the range that gets encoded.
+     *
+     * `startsAtKeyFrame` is left alone deliberately. Snapping the start to the
+     * nearest key frame would be cheaper, but key frames sit seconds apart in a
+     * phone recording, and a cut that lands up to two seconds away from where
+     * somebody put the handle is not a cut they asked for.
+     */
+    private fun itemFor(source: Uri, trim: ShortTrim?): MediaItem {
+        val builder = MediaItem.Builder().setUri(source)
+
+        if (trim != null) {
+            builder.setClippingConfiguration(
+                MediaItem.ClippingConfiguration.Builder()
+                    .setStartPositionMs(trim.startMs.coerceAtLeast(0))
+                    .setEndPositionMs(trim.endMs)
+                    .build()
+            )
+        }
+
+        return builder.build()
     }
 
     private fun workspace(): File =
@@ -201,5 +279,8 @@ class ShortsCompressor @Inject constructor(
         const val MAX_SHORT_EDGE = 720
 
         const val WORKSPACE = "animehtok-upload"
+
+        /** How often the encode is asked how far along it is. */
+        const val PROGRESS_POLL_MS = 400L
     }
 }

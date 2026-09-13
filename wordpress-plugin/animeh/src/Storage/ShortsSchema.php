@@ -25,7 +25,7 @@ final class ShortsSchema {
 	/**
 	 * Bumped whenever a table definition changes.
 	 */
-	public const VERSION = '1';
+	public const VERSION = '2';
 
 	/**
 	 * Option holding the installed version.
@@ -119,6 +119,11 @@ final class ShortsSchema {
 		// carries. Counters live on the row rather than being counted on every
 		// read: a feed request touches twenty videos and a COUNT per video per
 		// request is the query that kills the page.
+		//
+		// `fit_mode` is how the uploader wants their video to meet the edge of
+		// the screen — 'original' to keep the whole frame, 'fill' to cover it
+		// and let the sides go. It is stored rather than baked into the file so
+		// the choice stays reversible: the pixels are all still there.
 		$shorts = 'CREATE TABLE ' . self::shorts() . " (
 			id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 			user_id bigint(20) unsigned NOT NULL DEFAULT 0,
@@ -132,6 +137,7 @@ final class ShortsSchema {
 			height smallint(5) unsigned NOT NULL DEFAULT 0,
 			size_bytes bigint(20) unsigned NOT NULL DEFAULT 0,
 			mime varchar(64) NOT NULL DEFAULT 'video/mp4',
+			fit_mode varchar(12) NOT NULL DEFAULT 'original',
 			published tinyint(1) NOT NULL DEFAULT 1,
 			adult tinyint(1) NOT NULL DEFAULT 0,
 			view_count bigint(20) unsigned NOT NULL DEFAULT 0,

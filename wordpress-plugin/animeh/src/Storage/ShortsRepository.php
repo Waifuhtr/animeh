@@ -31,6 +31,12 @@ use WP_Error;
  */
 final class ShortsRepository {
 
+	/** Keep the whole frame; the feed letterboxes what does not fit. */
+	public const FIT_ORIGINAL = 'original';
+
+	/** Cover the screen; the feed crops whatever hangs over the edge. */
+	public const FIT_FILL = 'fill';
+
 	/**
 	 * Largest page any listing returns.
 	 */
@@ -71,6 +77,7 @@ final class ShortsRepository {
 			'height'      => (int) ( $data['height'] ?? 0 ),
 			'size_bytes'  => (int) ( $data['size_bytes'] ?? 0 ),
 			'mime'        => (string) ( $data['mime'] ?? 'video/mp4' ),
+			'fit_mode'    => self::fit_mode( $data['fit_mode'] ?? '' ),
 			'published'   => empty( $data['published'] ) ? 0 : 1,
 			'adult'       => empty( $data['adult'] ) ? 0 : 1,
 			'created_at'  => $now,
@@ -90,6 +97,20 @@ final class ShortsRepository {
 		$this->sync_tags( $id, $description );
 
 		return $id;
+	}
+
+	/**
+	 * Fold a fit mode down to one the column recognises.
+	 *
+	 * A whitelist rather than a sanitiser: anything unexpected becomes
+	 * 'original', which shows the whole frame. The failure mode of guessing
+	 * wrong here is a video with its sides cut off, so the safe default is the
+	 * one that cuts nothing.
+	 *
+	 * @param mixed $value Whatever arrived.
+	 */
+	public static function fit_mode( $value ): string {
+		return self::FIT_FILL === $value ? self::FIT_FILL : self::FIT_ORIGINAL;
 	}
 
 	/**

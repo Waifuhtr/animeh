@@ -14,6 +14,7 @@ import com.animeh.app.data.remote.dto.ShortStatsDto
 import com.animeh.app.data.remote.dto.ShortTagDto
 import com.animeh.app.data.repository.ShortsCompressor
 import com.animeh.app.data.repository.ShortsRepository
+import com.animeh.app.data.repository.ShortTrim
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -269,25 +270,75 @@ data class ShortUploadState(
     val description: String = "",
     val soundTitle: String = "",
     val adult: Boolean = false,
+    /** Where the kept part starts and ends, in ms from the start of the file. */
+    val trimStartMs: Long = 0,
+    val trimEndMs: Long = 0,
+    /** See `ShortsRepository.FIT_*`. */
+    val fitMode: String = ShortsRepository.FIT_ORIGINAL,
     val progress: Float = 0f,
     val uploading: Boolean = false,
     val done: Boolean = false,
     val message: String? = null,
 ) {
+    /** How long the video will be once the cut is applied. */
+    val keptMs: Long
+        get() = (trimEndMs - trimStartMs).coerceAtLeast(0)
+
     /**
-     * Whether the picked file is something the server will take.
+     * The cut to send to the compressor, or null for the whole video.
+     *
+     * Null rather than a full-length range on purpose: a video nobody trimmed
+     * should not be re-encoded just to prove it was left alone.
+     */
+    val trim: ShortTrim?
+        get() {
+            val whole = facts?.durationMs ?: 0
+
+            if (whole <= 0) return null
+            if (trimStartMs <= 0 && trimEndMs >= whole) return null
+
+            return ShortTrim(trimStartMs, trimEndMs)
+        }
+
+    /**
+     * Roughly what will actually be uploaded.
+     *
+     * The share of the file the cut keeps, at the file's own bitrate. It takes
+     * no account of the re-encode, which only ever makes it smaller — so this
+     * over-estimates, which is the right direction for a limit to err in. It
+     * is also why trimming lets a long recording through: fifteen seconds of a
+     * four-hundred-megabyte video is not four hundred megabytes.
+     */
+    val estimatedBytes: Long
+        get() {
+            val whole = facts?.durationMs ?: 0
+            val size = facts?.sizeBytes ?: 0
+
+            if (whole <= 0 || keptMs >= whole) return size
+
+            return size * keptMs / whole
+        }
+
+    /**
+     * Whether what would go up is something the server will take.
      *
      * Checked here so a three-hour film is refused before a single byte goes
-     * up rather than after three hundred megabytes of it.
+     * up rather than after three hundred megabytes of it — and checked against
+     * the trimmed length, so cutting one down is a way past the limit rather
+     * than a thing the limit ignores.
      */
     val tooLong: Boolean
-        get() = (facts?.durationMs ?: 0) > ShortsRepository.MAX_DURATION_MS
+        get() = keptMs > ShortsRepository.MAX_DURATION_MS
 
     val tooLarge: Boolean
-        get() = (facts?.sizeBytes ?: 0) > ShortsRepository.MAX_SIZE_BYTES
+        get() = estimatedBytes > ShortsRepository.MAX_SIZE_BYTES
+
+    /** A cut that keeps nothing. Only reachable once a duration was readable. */
+    val emptyCut: Boolean
+        get() = (facts?.durationMs ?: 0) > 0 && keptMs < ShortsRepository.MIN_DURATION_MS
 
     val canSend: Boolean
-        get() = uri != null && facts != null && !tooLong && !tooLarge && !uploading
+        get() = uri != null && facts != null && !emptyCut && !tooLong && !tooLarge && !uploading
 }
 
 @HiltViewModel
@@ -307,11 +358,19 @@ class ShortUploadViewModel @Inject constructor(
     }
 
     fun pick(uri: Uri) {
-        _state.update { it.copy(uri = uri, facts = null) }
+        _state.update { it.copy(uri = uri, facts = null, trimStartMs = 0, trimEndMs = 0) }
 
         viewModelScope.launch {
             when (val result = repository.inspect(uri)) {
-                is AppResult.Success -> _state.update { it.copy(facts = result.data) }
+                // The handles start at the two ends, so the slider shows what
+                // will be uploaded if nobody touches it: all of it.
+                is AppResult.Success -> _state.update {
+                    it.copy(
+                        facts = result.data,
+                        trimStartMs = 0,
+                        trimEndMs = result.data.durationMs,
+                    )
+                }
                 is AppResult.Failure -> _state.update {
                     it.copy(uri = null, message = result.error.explain())
                 }
@@ -324,6 +383,30 @@ class ShortUploadViewModel @Inject constructor(
     fun setSoundTitle(value: String) = _state.update { it.copy(soundTitle = value) }
 
     fun setAdult(value: Boolean) = _state.update { it.copy(adult = value) }
+
+    fun setFitMode(value: String) = _state.update { it.copy(fitMode = value) }
+
+    /**
+     * Move the cut's handles.
+     *
+     * Clamped rather than trusted: a slider hands back whatever the finger did,
+     * and an end before its start is a range the control cannot draw and the
+     * encoder cannot cut. Videos shorter than the minimum keep both handles at
+     * the ends, where they can do no harm.
+     */
+    fun setTrim(startMs: Long, endMs: Long) = _state.update { current ->
+        val whole = current.facts?.durationMs ?: 0
+
+        if (whole <= 0) return@update current
+        if (whole <= ShortsRepository.MIN_DURATION_MS) {
+            return@update current.copy(trimStartMs = 0, trimEndMs = whole)
+        }
+
+        val start = startMs.coerceIn(0, whole - ShortsRepository.MIN_DURATION_MS)
+        val end = endMs.coerceIn(start + ShortsRepository.MIN_DURATION_MS, whole)
+
+        current.copy(trimStartMs = start, trimEndMs = end)
+    }
 
     fun send() {
         val current = _state.value
@@ -341,6 +424,8 @@ class ShortUploadViewModel @Inject constructor(
                 description = current.description,
                 soundTitle = current.soundTitle,
                 adult = current.adult,
+                trim = current.trim,
+                fitMode = current.fitMode,
                 onProgress = { fraction -> _state.update { it.copy(progress = fraction) } },
             )
 

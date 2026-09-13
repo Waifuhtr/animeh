@@ -95,6 +95,32 @@ videonun adresi, ve ikisi de istemcinin seçeceği şey değil.
 Uzunluk ve boyut telefonda da kontrol ediliyor, yani üç saatlik bir film
 üç yüz megabayt yüklendikten sonra değil, seçildiği anda reddediliyor.
 
+### Kesme
+
+Yükleme ekranında videonun uzunluğu boyunca iki tutamaklı bir çubuk var.
+Dokunulmazsa videonun tamamı gider ve **yeniden kodlama hiç çalışmaz** —
+kullanmadığın bir özellik için pil harcamıyorsun. Tutamaklardan biri
+oynatıldığı anda kesme devreye giriyor.
+
+Kesme `MediaItem.ClippingConfiguration` ile yapılıyor, yani oynatıcının
+okuduğu aynı yapı. `startsAtKeyFrame` bilerek açılmadı: anahtar kareye
+yuvarlamak daha ucuz olurdu ama telefon kayıtlarında anahtar kareler
+saniyelerce aralıklı, ve tutamağı koyduğun yerden iki saniye uzakta biten
+bir kesme senin istediğin kesme değil.
+
+İki sonucu var:
+
+* **Sınırlar kesilmiş uzunluğa bakıyor.** Dört dakikalık bir kaydın on beş
+  saniyesini yükleyebilirsin; eskiden bütünüyle reddedilirdi. Boyut sınırı da
+  aynı şekilde oranlanıyor — kesilen payın dosyanın kendi bit hızındaki
+  karşılığı. Yeniden kodlama bunu daha da küçülttüğü için tahmin hep yukarı
+  yanılıyor, ki bir sınır için doğru yön bu.
+* **Kesme başarısız olursa yükleme durur.** Küçültme için "olmazsa orijinali
+  gönder" doğru takas, kesme için değil: on beş saniye isteyip üç dakika
+  yüklemiş olmayı ancak yayınladığın şeyi izleyerek fark ederdin.
+
+Kapak karesi kesilmiş dosyadan alınıyor, orijinalden değil.
+
 ---
 
 ## 4. Özellikler
@@ -232,6 +258,59 @@ düşüyor, yani bu adım var olmadan önce ne oluyorsa o.
 
 ---
 
+## 6.6 Ekrana yerleşme: yatay videonun yarısı neden kayboluyordu
+
+İlk sürüm her videoyu `RESIZE_MODE_ZOOM` ile çiziyordu — yani ekranı
+dolduruyor, taşanı kırpıyordu. Dikey bir video için doğru; yatay bir video
+için görüntünün yarısını atmak demek.
+
+Ama çözüm "her zaman sığdır" da değil. 9:16 bir klip 20:9 bir telefonda
+genişliğinin yaklaşık beşte birini kenarlara veriyor, ve tam ekran izlensin
+diye çekilmiş bir şeyi siyah çubuklara almak da yanlış cevap.
+
+Bu yüzden sorulan soru **videonun ne kadarının kaybolacağı**, hangi yöne
+uzun olduğu değil:
+
+```
+video  = yükseklik / genişlik
+çerçeve = ekran yüksekliği / ekran genişliği
+
+kayıp = 1 − min(video, çerçeve) / max(video, çerçeve)
+```
+
+`kayıp ≤ 0.25` ise doldur, değilse sığdır. Rakamlarla:
+
+| video | 20:9 telefonda kayıp | sonuç |
+| --- | --- | --- |
+| 9:16 dikey | %20 | doldurur |
+| 9:20 uzun dikey | %5 | doldurur |
+| 1:1 kare | %55 | sığdırır |
+| 16:9 yatay | %75 | sığdırır |
+
+Boyutu bilinmeyen video sığdırılıyor: sunucunun ölçüsünü kaydetmediği bir
+video 9:16 olmaktan çok alışılmadık bir şey olma ihtimalindedir, ve sığdırmak
+hiçbir şeyi kesmeyen seçenek.
+
+Kapak resmi de aynı kurala uyuyor, böylece ilk kare geldiğinde görüntü
+yerinden oynamıyor.
+
+### Yükleyenin seçimi
+
+Bunun üstünde `fit_mode` sütunu var: `original` (varsayılan, yukarıdaki
+kural) ya da `fill` (her zaman doldur, taşanı kes). Yükleme ekranında iki
+çipli bir seçim.
+
+**Piksellere dokunulmuyor.** Tercih videonun yanında duruyor ve oynatılırken
+uygulanıyor — dosyaya işlenseydi fikir değiştirmenin bedeli videoyu yeniden
+yüklemek olurdu. Tanımadığı bir değer `original`'a düşüyor: burada yanlış
+tahmin etmenin bedeli kenarları kesilmiş bir video, o yüzden güvenli
+varsayılan hiçbir şey kesmeyen.
+
+Bu sütun `ShortsSchema::VERSION`'ı `1`'den `2`'ye çıkardı; eklenti yüklenince
+`maybe_upgrade()` `ALTER TABLE` ile ekliyor.
+
+---
+
 ## 7. REST yüzeyi
 
 Namespace `animeh/v1`. **Her rotada gerçek bir `permission_callback`.**
@@ -325,8 +404,11 @@ Kendi videonu beğenmen bildirim üretmiyor.
   bir şey sütun sanılıyor mu, ifadenin içinde yorum ya da noktalı virgül var mı.
 - **Yol denetimi** — uygulamanın çağırdığı 149 yolun hepsinin eklentide bir
   rotası var (`tools/checks/rest_routes.py`).
-- **Alan denetimi** — 518 DTO anahtarının hepsini sunucu gerçekten yazıyor
+- **Alan denetimi** — 519 DTO anahtarının hepsini sunucu gerçekten yazıyor
   (`tools/checks/dto_payload_keys.py`).
+- **Ekrana yerleşme tercihi** — iki duman adımı: `fit_mode` akışa geçiyor, ve
+  tanımadığı bir değer (`''`, `zoom`, `crop`, `FILL`) kırpmayan moda düşüyor.
+  İkisi de hatayı geri koyarak düşürüldü.
 - Kotlin fark taraması: bu değişiklikle gelen 223 hatanın tamamı, aynı hata
   metninin halihazırda çalışan dosyalarda da çıktığı gösterilerek androidx'in
   bu ortamda görünmemesine bağlandı. İki tanesi **gerçekti** ve düzeltildi:
@@ -339,10 +421,14 @@ Kendi videonu beğenmen bildirim üretmiyor.
 
 - Gerçek bir cihazda kaydırma akıcılığı ve ilk kare süresi. Tampon eşiği,
   ön yükleme ve önbellek doğru düzen ama burada ölçülemedi.
-- Yeniden kodlama. Transformer API'si belgelere karşı doğrulandı ama tek bir
-  cihazda koşulmadı: hangi telefonun kodlayıcısının ne kabul ettiği burada
-  denenemez. Başarısız olursa orijinal yükleniyor, yani en kötü durum bu
-  adımın olmadığı hali.
+- Yeniden kodlama ve kesme. Transformer API'si belgelere karşı doğrulandı ama
+  tek bir cihazda koşulmadı: hangi telefonun kodlayıcısının ne kabul ettiği
+  burada denenemez. Küçültme başarısız olursa orijinal yükleniyor — en kötü
+  durum bu adımın olmadığı hali. Kesme başarısız olursa yükleme hata veriyor,
+  çünkü sessizce kesilmemiş videoyu göndermek daha kötü.
+- Kesme çubuğunun ve `fit_mode` çiplerinin ekrandaki görünümü. Compose
+  burada derlenemiyor; iki kontrol de projede zaten kullanılan bileşenlerden
+  (`RangeSlider` imzası resmi API referansına karşı doğrulandı).
 - `MediaMetadataRetriever` ile kare alma ve süre okuma: her içerik
   sağlayıcısının her alana cevap vermesi zorunlu değil, o yüzden her alan
   düşüyor ama hangi telefonun ne verdiği burada denenemedi.

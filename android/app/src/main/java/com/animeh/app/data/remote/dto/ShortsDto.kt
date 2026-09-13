@@ -26,6 +26,12 @@ data class ShortDto(
     @SerialName("duration_ms") val durationMs: Long = 0,
     val width: Int = 0,
     val height: Int = 0,
+    /**
+     * How the uploader wants it to meet the edge of the screen: `original` to
+     * keep the whole frame, `fill` to cover the screen and let the sides go.
+     * See `ShortsRepository.FIT_*`.
+     */
+    @SerialName("fit_mode") val fitMode: String = "original",
     @Serializable(with = LenientBoolean::class) val adult: Boolean = false,
     @Serializable(with = LenientBoolean::class) val published: Boolean = true,
     @SerialName("view_count") val viewCount: Long = 0,
@@ -218,6 +224,7 @@ data class ShortUploadCompleteRequest(
     @SerialName("sound_title") val soundTitle: String = "",
     @SerialName("sound_id") val soundId: Long = 0,
     val adult: Boolean = false,
+    @SerialName("fit_mode") val fitMode: String = "original",
 )
 
 @Serializable

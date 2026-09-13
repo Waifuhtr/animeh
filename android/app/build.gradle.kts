@@ -206,13 +206,12 @@ dependencies {
     // here so the classpath does not depend on that staying true.
     implementation(libs.media3.datasource)
     implementation(libs.media3.database)
-    // Re-encoding a picked video before it is uploaded. Transformer needs
-    // media3-effect for Presentation, and Effects takes Guava lists — all
-    // three arrive with media3 anyway, named here so the classpath does not
-    // depend on that staying true.
+    // Re-encoding and trimming a picked video before it is uploaded.
+    // media3-effect carries the Presentation that resizes it. Both arrive with
+    // media3-exoplayer anyway; named here so the classpath does not depend on
+    // that staying true.
     implementation(libs.media3.transformer)
     implementation(libs.media3.effect)
-    implementation(libs.guava)
     implementation(libs.media3.ui)
     implementation(libs.media3.session)
     implementation(libs.media3.common)

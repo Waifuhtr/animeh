@@ -183,23 +183,41 @@ class ShortsRepository @Inject constructor(
         description: String,
         soundTitle: String = "",
         adult: Boolean = false,
+        trim: ShortTrim? = null,
+        fitMode: String = FIT_ORIGINAL,
         onProgress: (Float) -> Unit = {},
     ): AppResult<ShortDto> = withContext(Dispatchers.IO) {
         // Re-encoded first, when it is worth it. A phone records at ten to
         // twenty-five megabits and nothing downstream can make that stream
         // instantly — the bytes are simply there. Best-effort: when it cannot
         // be done, the original goes up exactly as it did before.
-        val shrunk = compressor.shrink(uri, facts.width, facts.height) { fraction ->
+        val shrunk = compressor.shrink(uri, facts.width, facts.height, trim) { fraction ->
             onProgress(COMPRESS_SHARE * fraction)
+        }
+
+        // Best-effort is the right trade for a shrink and the wrong one for a
+        // cut. Falling back to the original after a failed re-encode would put
+        // the whole video up when the uploader asked for fifteen seconds of
+        // it, and they would only find out by watching what they posted.
+        if (trim != null && shrunk == null) {
+            return@withContext AppResult.Failure(
+                AppError.Storage("video kesilemedi: bu cihaz videoyu yeniden kodlayamadı")
+            )
         }
 
         val sending = shrunk?.let(Uri::fromFile) ?: uri
         val measured = shrunk?.let { file ->
-            facts.copy(sizeBytes = file.length(), filename = file.name)
+            facts.copy(
+                sizeBytes = file.length(),
+                filename = file.name,
+                // Only when there is a re-encoded file, because only then is
+                // the cut actually in the bytes being sent.
+                durationMs = trim?.durationMs ?: facts.durationMs,
+            )
         } ?: facts
 
         try {
-            sendUp(sending, measured, description, soundTitle, adult, onProgress)
+            sendUp(sending, measured, description, soundTitle, adult, fitMode, onProgress)
         } finally {
             // The re-encoded copy has done its job either way.
             compressor.discard(shrunk)
@@ -218,6 +236,7 @@ class ShortsRepository @Inject constructor(
         description: String,
         soundTitle: String,
         adult: Boolean,
+        fitMode: String,
         onProgress: (Float) -> Unit,
     ): AppResult<ShortDto> = withContext(Dispatchers.IO) {
         val begin = ApiErrorMapper.call {
@@ -302,6 +321,7 @@ class ShortsRepository @Inject constructor(
                     size = facts.sizeBytes,
                     soundTitle = soundTitle,
                     adult = adult,
+                    fitMode = fitMode,
                 )
             )
         }
@@ -438,11 +458,26 @@ class ShortsRepository @Inject constructor(
         const val TAB_FOR_YOU = "foryou"
         const val TAB_FOLLOWING = "following"
 
+        /**
+         * How a video should meet the edge of the screen.
+         *
+         * [FIT_ORIGINAL] keeps the whole frame and lets the feed put bars
+         * where the video does not reach; [FIT_FILL] covers the screen and
+         * lets whatever hangs over the edge go. The uploader picks, and the
+         * pixels are kept either way — this decides how they are shown, not
+         * what is stored.
+         */
+        const val FIT_ORIGINAL = "original"
+        const val FIT_FILL = "fill"
+
         /** How many videos one feed request brings back. */
         const val FEED_PAGE = 10
 
         /** Longest video the server will take, so the phone can say so first. */
         const val MAX_DURATION_MS = 180_000L
+
+        /** Shortest cut worth uploading, and the closest the trim handles go. */
+        const val MIN_DURATION_MS = 1_000L
 
         /** Largest file the server will take. */
         const val MAX_SIZE_BYTES = 300L * 1024 * 1024

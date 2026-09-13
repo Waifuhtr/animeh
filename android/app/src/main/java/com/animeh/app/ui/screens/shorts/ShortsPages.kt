@@ -35,6 +35,7 @@ import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.data.remote.dto.ShortDto
 import com.animeh.app.data.remote.dto.ShortStatsDto
+import com.animeh.app.data.repository.ShortsRepository
 import com.animeh.app.ui.components.EmptyState
 import com.animeh.app.ui.theme.AccentPrimary
 import com.animeh.app.ui.theme.SurfaceOverlay
@@ -589,6 +590,21 @@ fun ShortUploadScreen(
             }
 
             if (state.uploading) {
+                // Which half of the bar this is. Re-encoding is slower than it
+                // looks and a bar that creeps with no explanation reads as a
+                // stuck upload.
+                Text(
+                    stringResource(
+                        if (state.progress < ShortsRepository.COMPRESS_SHARE) {
+                            R.string.tok_upload_compressing
+                        } else {
+                            R.string.tok_upload_sending
+                        }
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                )
+
                 LinearProgressIndicator(
                     progress = { state.progress },
                     modifier = Modifier.fillMaxWidth(),

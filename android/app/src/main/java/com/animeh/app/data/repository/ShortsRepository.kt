@@ -43,6 +43,7 @@ class ShortsRepository @Inject constructor(
     private val userApi: UserApi,
     @Named("base_client") private val uploadClient: OkHttpClient,
     private val contentResolver: ContentResolver,
+    private val compressor: ShortsCompressor,
 ) {
 
     /* ── Reading ─────────────────────────────────────────────────────── */
@@ -184,6 +185,41 @@ class ShortsRepository @Inject constructor(
         adult: Boolean = false,
         onProgress: (Float) -> Unit = {},
     ): AppResult<ShortDto> = withContext(Dispatchers.IO) {
+        // Re-encoded first, when it is worth it. A phone records at ten to
+        // twenty-five megabits and nothing downstream can make that stream
+        // instantly — the bytes are simply there. Best-effort: when it cannot
+        // be done, the original goes up exactly as it did before.
+        val shrunk = compressor.shrink(uri, facts.width, facts.height) { fraction ->
+            onProgress(COMPRESS_SHARE * fraction)
+        }
+
+        val sending = shrunk?.let(Uri::fromFile) ?: uri
+        val measured = shrunk?.let { file ->
+            facts.copy(sizeBytes = file.length(), filename = file.name)
+        } ?: facts
+
+        try {
+            sendUp(sending, measured, description, soundTitle, adult, onProgress)
+        } finally {
+            // The re-encoded copy has done its job either way.
+            compressor.discard(shrunk)
+        }
+    }
+
+    /**
+     * Put a file in the bucket and register the row.
+     *
+     * Split out of [upload] so the compression step above reads as one thing
+     * and this one keeps the shape the episode uploader proved.
+     */
+    private suspend fun sendUp(
+        uri: Uri,
+        facts: VideoFacts,
+        description: String,
+        soundTitle: String,
+        adult: Boolean,
+        onProgress: (Float) -> Unit,
+    ): AppResult<ShortDto> = withContext(Dispatchers.IO) {
         val begin = ApiErrorMapper.call {
             userApi.beginShortUpload(
                 ShortUploadBeginRequest(
@@ -239,10 +275,11 @@ class ShortsRepository @Inject constructor(
                         etags += UploadedPartDto(part.partNumber, etag.trim('"'))
                     }
 
-                    // The last tenth is the completion call and the cover, so
-                    // the bar does not sit at 100% while two requests are
-                    // still in flight.
-                    onProgress(0.9f * (index + 1) / plan.parts.size)
+                    // Compression took the first share of the bar and the
+                    // completion call and cover take the last, so this fills
+                    // what is between rather than running 0 to 1 twice.
+                    val sent = (index + 1).toFloat() / plan.parts.size
+                    onProgress(COMPRESS_SHARE + (UPLOAD_SHARE * sent))
                 }
             }
         } catch (error: Exception) {
@@ -274,7 +311,7 @@ class ShortsRepository @Inject constructor(
             is AppResult.Failure -> return@withContext completed
         }
 
-        onProgress(0.95f)
+        onProgress(COMPRESS_SHARE + UPLOAD_SHARE + 0.02f)
 
         // The cover is best-effort: a video without one still plays, and the
         // feed falls back to its first frame. Failing the whole upload over a
@@ -412,6 +449,16 @@ class ShortsRepository @Inject constructor(
 
         private const val COVER_FRAME_US = 1_000_000L
         private const val COVER_QUALITY = 82
+
+        /**
+         * How the progress bar is divided.
+         *
+         * Re-encoding is not instant and neither is the upload, so one bar
+         * covers both rather than filling twice and looking stuck the second
+         * time. The remainder is the completion call and the cover.
+         */
+        const val COMPRESS_SHARE = 0.35f
+        private const val UPLOAD_SHARE = 0.55f
 
         private val VIDEO_MEDIA_TYPE = "video/mp4".toMediaTypeOrNull()
         private val JPEG_MEDIA_TYPE = "image/jpeg".toMediaTypeOrNull()

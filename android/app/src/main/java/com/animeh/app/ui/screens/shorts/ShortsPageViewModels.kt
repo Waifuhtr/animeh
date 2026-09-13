@@ -12,6 +12,7 @@ import com.animeh.app.data.remote.dto.ShortDto
 import com.animeh.app.data.remote.dto.ShortSearchDto
 import com.animeh.app.data.remote.dto.ShortStatsDto
 import com.animeh.app.data.remote.dto.ShortTagDto
+import com.animeh.app.data.repository.ShortsCompressor
 import com.animeh.app.data.repository.ShortsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Job
@@ -292,10 +293,18 @@ data class ShortUploadState(
 @HiltViewModel
 class ShortUploadViewModel @Inject constructor(
     private val repository: ShortsRepository,
+    private val compressor: ShortsCompressor,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ShortUploadState())
     val state: StateFlow<ShortUploadState> = _state.asStateFlow()
+
+    init {
+        // An upload killed mid-encode leaves a part-written mp4 in the cache.
+        // Android clears that directory under pressure, but not before it has
+        // sat there for a week taking up room on somebody's full phone.
+        compressor.sweep()
+    }
 
     fun pick(uri: Uri) {
         _state.update { it.copy(uri = uri, facts = null) }

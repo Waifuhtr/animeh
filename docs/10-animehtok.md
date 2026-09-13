@@ -159,8 +159,76 @@ kendine ileriyi tamponluyor. Ayrıca bir telefonun kod çözücü sayısının, 
 bir dakikada yirmi videoyu geçerken ayakta kalabileceği tek düzen bu — her
 sayfa için bir oynatıcı kurup yıkmak değil.
 
-`REPEAT_MODE_ONE`, çünkü bir kısa video kaydırana kadar döner. İlerlemek
-pager'ın işi, oynatıcının değil.
+Döngü `REPEAT_MODE_ONE` ile **değil**, sona gelince başa sararak yapılıyor —
+sebebi aşağıdaki 6.5'te. İlerlemek pager'ın işi, oynatıcının değil.
+
+---
+
+## 6.5 Hız: neden onlarca saniye sürüyordu
+
+İlk sürümde videolar başlamadan önce onlarca saniye geçiyordu. Dört sebep
+vardı ve en büyüğü hiç dokunmadığım bir varsayılandı.
+
+### 1. ExoPlayer ilk kareden önce 2.5 saniyelik medya bekliyor
+
+`bufferForPlaybackMs` varsayılanı 2500. Telefonla çekilmiş bir klip 10–25 Mbps
+akıyor, yani 2.5 saniyesi **üç ila sekiz megabayt** — hiçbir şey görünmeden
+önce yirmi saniyelik indirme. O varsayılan iki saatlik bir film için yazılmış:
+jenerikten önceki fazladan bir saniye görünmez, ortadaki bir takılma görünür.
+Kısa videoda denklem ters.
+
+Artık **250 ms**. Kısa video on beş saniye ve kendi kendine baştan başlıyor;
+korunacak derin bir ön yükleme yok.
+
+### 2. `REPEAT_MODE_ONE` bütün ön yüklemeyi kapatıyordu
+
+ExoPlayer zaman çizelgesindeki *bir sonraki pencereye* doğru tamponluyor.
+Repeat-one altında bir sonraki pencere mevcut pencerenin kendisi — yani
+oynatıcı sonraki videoya **hiç dokunmuyordu**. İkinci, üçüncü, onuncu videonun
+da yavaş olmasının sebebi buydu; "yavaş" değil "bozuk" hissettiren kısım da bu.
+
+Repeat artık kapalı; döngü sona gelince başa sarılarak yapılıyor. Çalma
+listesi ileriye tamponlamakta serbest.
+
+### 3. Hiçbir şey saklanmıyordu
+
+Geri kaydırmak az önce izlenen videoyu yeniden indiriyordu. 256 MB'lık disk
+önbelleği geri dönmeyi anlık yapıyor.
+
+### 4. Akış yükü video başına beş sorgu yapıyordu
+
+Ses, etiket, takip, yaratıcı ve sesin çalındığı video — hepsi döngünün içinde,
+her video için ayrı. On videoluk bir sayfa, telefona tek bayt video verilmeden
+önce elli sorgu ve kırk imza. Hepsi sayfa başına tek sorguya indi.
+
+Ölçüldü: **1 video 4 sorgu, 8 video 4 sorgu.** Geri aldığımda 1 video 6,
+8 video 20 oluyor. Duman koşucusundaki kontrol mutlak sayıyı değil, video
+sayısıyla artan sorgu sayısını arıyor.
+
+### Ve asıl tavan: bit hızı
+
+Yukarıdakiler ilk kare için gereken **bayt miktarını** düşürüyor ama **bit
+hızını** düşürmüyor. 20 Mbps'lik bir dosya hiçbir ayarla mobil bağlantıda
+akıcı olmaz — baytlar orada.
+
+Bu yüzden video artık **yüklenmeden önce telefonda yeniden kodlanıyor**: kısa
+kenar 720'ye kapatılıyor, yani 1080×1920 bir kayıt 720×1280 oluyor. Üç kez
+ödüyor: izleyici baytların bir kısmını bekliyor, yükleyen yüklemenin bir
+kısmını bekliyor, ve kova depolamanın ve çıkış trafiğinin bir kısmı için
+faturalandırılıyor.
+
+Kısa kenar, yükseklik değil. Telefon videosu dikey, yani yüksekliği uzun
+kenarı: "720 yüksek" istemek 1080×1920'yi **405×720** yapardı — herkesin 720p
+dediği şeyin dörtte bir genişliği, ve gözle görülür bulanık.
+
+Kodlayıcı ayarlarına kasıtlı olarak dokunulmuyor. Media3 bit hızını çıktı
+çözünürlüğünden türetiyor; belirli bir bit hızı istemek, başarısızlığı
+cihaza özel bir dışa aktarma hatası olan ikinci bir API demek. İşi çözünürlük
+yapıyor.
+
+Her şey **en iyi çaba**: kodlayıcısı reddeden bir cihaz, beklenmedik bir
+codec, muxer'ın kabul etmediği bir dosya — hepsi orijinali yüklemeye geri
+düşüyor, yani bu adım var olmadan önce ne oluyorsa o.
 
 ---
 
@@ -269,8 +337,12 @@ Kendi videonu beğenmen bildirim üretmiyor.
 
 **Doğrulanamadı — ilk gerçek çalıştırma sende olacak:**
 
-- Gerçek bir cihazda kaydırma akıcılığı ve ilk kare süresi. Oynatma düzeni
-  (tek oynatıcı + çalma listesi) doğru düzen ama burada ölçülemedi.
+- Gerçek bir cihazda kaydırma akıcılığı ve ilk kare süresi. Tampon eşiği,
+  ön yükleme ve önbellek doğru düzen ama burada ölçülemedi.
+- Yeniden kodlama. Transformer API'si belgelere karşı doğrulandı ama tek bir
+  cihazda koşulmadı: hangi telefonun kodlayıcısının ne kabul ettiği burada
+  denenemez. Başarısız olursa orijinal yükleniyor, yani en kötü durum bu
+  adımın olmadığı hali.
 - `MediaMetadataRetriever` ile kare alma ve süre okuma: her içerik
   sağlayıcısının her alana cevap vermesi zorunlu değil, o yüzden her alan
   düşüyor ama hangi telefonun ne verdiği burada denenemedi.

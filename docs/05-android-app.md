@@ -254,6 +254,27 @@ AndroidX, Compose, Hilt'in Android kısmı ve Media3'ün tamamı**.
 Politikayı dolanmadım: aynı içeriği başka bir aynadan çekmek tam olarak
 engellenen şeyi yapmak olurdu.
 
+### Düzeltme (14 Eylül 2026): "bu ortam" gerçekten tek bir ortam
+
+Yukarıdaki ölçüm doğru ama bir süre yanlış genellendi — "her oturumda, her
+modelde aynı" diye. Değil. **Ağ politikası ortam başına belirleniyor.**
+
+Aynı depo, aynı dal, aynı gün, iki ortam:
+
+| Ortam | `dl.google.com` | `./gradlew assembleDebug` |
+| --- | --- | --- |
+| `Default` | CONNECT 403 | AGP çözülemedi, ilk adımda düştü |
+| `rpgmaker` | 200 | **BUILD SUCCESSFUL** — 20.3 MB APK, `0.1.0-debug` |
+
+İkincisinde Android SDK kurulu değildi, oturum onu Google'ın kendi
+sunucusundan kurdu ve derleme tamamlandı. Tek gerçek pürüz Maven Central'dan
+gelen 429 "Too Many Requests" oldu — geçici bir hız sınırı, engel değil, ve
+tekrar denemekle değil beklemekle açıldı.
+
+Yani bu bölümdeki "yapılamadı", **o oturumun ortamı** için doğru; proje için
+bir kısıt değil. Derlemeye ihtiyaç duyan bir oturum, Google Maven'a izinli bir
+ortamda açılmalı.
+
 ### Yine de doğrulanabilen
 
 Maven Central erişilebilir olduğu için standalone Kotlin derleyicisi indirildi

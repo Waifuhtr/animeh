@@ -727,6 +727,10 @@ class ShortMineViewModel @Inject constructor(
 
     init {
         load()
+
+        // The card counts videos, so a video added or removed anywhere else
+        // makes it wrong until something tells it.
+        viewModelScope.launch { repository.changed.collect { load() } }
     }
 
     fun load() {

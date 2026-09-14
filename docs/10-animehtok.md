@@ -540,6 +540,44 @@ duvarı.
 
 ---
 
+## 6.15 Kırpılmış yükleme
+
+`ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE`: oynatıcı, dosyanın kendi sonundan
+ötesindeki bir baytı istedi. Yani kovadaki nesne, mp4 başlığının söylediğinden
+**kısa** — video eksik yüklenmiş.
+
+Sebep 6.11'deki parça boyutu değişikliğinin yan etkisi, ve benim hatam. Parça
+sayısı `ceil(boyut / parça)` ile hesaplanıyor ve boyut uygulamanın bildirdiği
+sayı. Otuz iki megabaytken bütün kısa video **tek parçaydı**, ve tek parça akış
+bitene kadar okunur — yanlış bir boyut hiçbir şeyi bozmuyordu. Beş megabaytta
+altı parça, ve altı bu sayıdan geliyor: boyut olduğundan küçükse plan kısa
+kalıyor ve dosyanın kuyruğu hiç gönderilmiyor.
+
+Boyut nereden geliyordu: içerik sağlayıcısının `SIZE` sütunu — yani dosya
+hakkında birinin yazdığı sayı. Artık önce işletim sistemine soruluyor
+(`statSize`), sütun ikinci sırada.
+
+Ve bir ağ daha: bütün parçalar dolduğu hâlde akışta hâlâ bayt kaldıysa yükleme
+tamamlanmıyor, hata veriyor. Kuyruğu eksik bir video kovaya koymak, hata
+vermekten çok daha kötü — bir saniye oynayıp kendi sonunun ötesini istiyor, ve
+"tekrar dene" onu asla kurtaramıyor. Oynatıcı da artık bu hatayı adıyla
+söylüyor: silip yeniden yüklemek gerektiğini.
+
+---
+
+## 6.16 Yükledikten sonra görmek
+
+Video yükleyince akış eskimiş oluyordu ve görmek için Tok modundan çıkıp
+girmek gerekiyordu. Depo artık tek bir değişiklik sinyali yayınlıyor; akış ve
+profil kartı onu dinliyor.
+
+Ekran çiftleri arasına tek tek geri çağrı bağlamak yerine tek sinyal: yükleme
+kimin dinlediğini bilmek zorunda değil, ve geri yığında olmayan bir ekran
+zaten açılırken yeniden yükleniyor. Sinyalle birlikte sayılmış izlenmeler de
+temizleniyor — yeni liste yeni bir liste.
+
+---
+
 ## 7. REST yüzeyi
 
 Namespace `animeh/v1`. **Her rotada gerçek bir `permission_callback`.**

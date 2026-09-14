@@ -66,6 +66,17 @@ class ShortsViewModel @Inject constructor(
 
     init {
         load(ShortsRepository.TAB_FOR_YOU)
+
+        // A video uploaded on another screen is a feed that is now out of date,
+        // and the only way to see it used to be leaving AnimehTok and coming
+        // back. `counted` is cleared with it: the new list is a new list, and
+        // the views already sent were for the old one.
+        viewModelScope.launch {
+            repository.changed.collect {
+                counted.clear()
+                load(_state.value.tab)
+            }
+        }
     }
 
     fun setTab(tab: String) {

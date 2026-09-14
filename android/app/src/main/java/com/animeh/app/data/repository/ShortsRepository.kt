@@ -16,6 +16,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -51,6 +54,30 @@ class ShortsRepository @Inject constructor(
     private val contentResolver: ContentResolver,
     private val compressor: ShortsCompressor,
 ) {
+
+    /**
+     * Something was added or taken away.
+     *
+     * A screen that has already loaded has no way to know that another screen
+     * changed what it is showing, and the one that mattered was the feed: you
+     * uploaded a video and had to leave AnimehTok and come back to see it.
+     *
+     * One signal for the whole feature rather than a callback wired between
+     * each pair of screens: the upload does not need to know who is listening,
+     * and a screen that is not on the back stack simply loads fresh when it
+     * next opens.
+     *
+     * Replayless and with room for one: a listener that is not collecting yet
+     * has nothing to catch up on, because it is about to load anyway.
+     */
+    private val _changed = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
+    val changed: SharedFlow<Unit> = _changed.asSharedFlow()
+
+    /** Say that the catalogue of videos is no longer what it was. */
+    fun announceChange() {
+        _changed.tryEmit(Unit)
+    }
 
     /* ── Reading ─────────────────────────────────────────────────────── */
 
@@ -151,8 +178,13 @@ class ShortsRepository @Inject constructor(
     suspend fun updateDescription(id: Long, description: String): AppResult<ShortDto> =
         ApiErrorMapper.call { userApi.updateShort(id, ShortUpdateRequest(description)) }
 
-    suspend fun delete(id: Long): AppResult<Unit> =
-        ApiErrorMapper.call({ Unit }) { userApi.deleteShort(id) }
+    suspend fun delete(id: Long): AppResult<Unit> {
+        val result = ApiErrorMapper.call({ Unit }) { userApi.deleteShort(id) }
+
+        if (result is AppResult.Success) announceChange()
+
+        return result
+    }
 
     /* ── Uploading ───────────────────────────────────────────────────── */
 
@@ -335,6 +367,10 @@ class ShortsRepository @Inject constructor(
 
         onProgress(1f)
 
+        // The feed, the profile card and anything else looking at this account's
+        // videos are now out of date, and nobody told them.
+        announceChange()
+
         AppResult.Success(if (withCover is AppResult.Success) withCover.data else short)
     }
 
@@ -370,6 +406,8 @@ class ShortsRepository @Inject constructor(
         val stream = contentResolver.openInputStream(uri) ?: throw UploadFailed("dosya açılamadı")
 
         try {
+            var exhausted = false
+
             for (part in plan.parts) {
                 // Held before the read, so at most this many parts are ever in
                 // memory at once whatever the file's size.
@@ -384,6 +422,7 @@ class ShortsRepository @Inject constructor(
 
                 if (chunk.isEmpty()) {
                     slots.release()
+                    exhausted = true
                     break
                 }
 
@@ -402,6 +441,15 @@ class ShortsRepository @Inject constructor(
                         slots.release()
                     }
                 }
+            }
+
+            // Every part was filled and the file still has more in it: the plan
+            // was made from a size smaller than the file, and finishing here
+            // would store a video with its tail missing. That object plays for
+            // a second and then asks for a byte past its own end, which is a
+            // far worse thing to hand somebody than an error.
+            if (!exhausted && stream.read() >= 0) {
+                throw UploadFailed("dosya bildirilen boyuttan uzun; yükleme yarım kalırdı")
             }
         } finally {
             stream.close()
@@ -536,7 +584,30 @@ class ShortsRepository @Inject constructor(
     private fun MediaMetadataRetriever.meta(key: Int): Long =
         extractMetadata(key)?.toLongOrNull() ?: 0L
 
+    /**
+     * How many bytes the file actually has.
+     *
+     * The descriptor first, the metadata column second — and that order is the
+     * fix for a real fault. The number decides how many parts the upload is
+     * planned as, so a size that is too small plans too few parts and the
+     * object in the bucket ends up short: the video's own header then promises
+     * more than the file holds, and the player asks for a byte past the end.
+     *
+     * It only started mattering when parts got small. At thirty-two megabytes
+     * a whole short video was one part, and one part is read until the stream
+     * ends whatever any number said. At five it is six parts, and six is
+     * counted from this.
+     *
+     * So the operating system is asked before the content provider is: a
+     * `statSize` is the file, a `SIZE` column is what somebody wrote about it.
+     */
     private fun fileSize(uri: Uri): Long? {
+        runCatching {
+            contentResolver.openFileDescriptor(uri, "r")?.use { handle ->
+                handle.statSize.takeIf { it > 0 }?.let { return it }
+            }
+        }
+
         contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
                 val index = cursor.getColumnIndex(OpenableColumns.SIZE)

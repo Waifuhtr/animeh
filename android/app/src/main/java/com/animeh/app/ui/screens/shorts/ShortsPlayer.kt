@@ -329,6 +329,13 @@ class ShortsPlayer(
             failure.errorCode == PlaybackException.ERROR_CODE_DECODING_FAILED ->
                 "Bu video bu cihazda çözülemedi."
 
+            // The file is shorter than its own header says it is, which is a
+            // video that was stored incomplete rather than anything the player
+            // can retry its way out of. Saying so is the only useful thing
+            // here: "try again" on this one will fail the same way forever.
+            failure.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE ->
+                "Bu video eksik yüklenmiş: dosya kendi başlığının söylediğinden kısa. Silip yeniden yüklemek gerekiyor."
+
             else -> "Video oynatılamadı (${failure.errorCodeName})."
         }
     }

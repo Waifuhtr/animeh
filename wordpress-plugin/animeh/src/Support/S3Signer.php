@@ -28,14 +28,6 @@ final class S3Signer {
 	private const TERMINATOR = 'aws4_request';
 
 	/**
-	 * Shortest signing window, in seconds.
-	 *
-	 * A floor under the quarter-of-TTL rule so a very short link still signs
-	 * to a stable URL for long enough to be worth caching.
-	 */
-	private const MIN_PRESIGN_WINDOW = 60;
-
-	/**
 	 * Payload hash used when the body is not signed.
 	 *
 	 * Required for presigned URLs, where the body is unknown at signing time,
@@ -139,40 +131,6 @@ final class S3Signer {
 	}
 
 	/**
-	 * When a link should say it was signed, and how long it should live.
-	 *
-	 * Anchored to a window rather than to this second. Signed at the current
-	 * second, the same object produces a different URL on every request — a
-	 * new `X-Amz-Date` and a new signature — and every cache downstream keys
-	 * on the URL. The app's video cache never hit once, images were fetched
-	 * again on every screen, and no CDN in front of the bucket could hold
-	 * anything. The bytes were identical each time; only the query string
-	 * moved.
-	 *
-	 * Rounding the clock backwards would shorten the link, so the lifetime is
-	 * extended by the same window: a URL minted at the very end of one still
-	 * carries the full time that was asked for. The window is a quarter of the
-	 * requested lifetime, which keeps the promise proportional — a link never
-	 * outlives the setting by more than a quarter, whatever it is set to.
-	 *
-	 * Pure, and separate from the signing, so both halves of that bargain can
-	 * be checked without a clock.
-	 *
-	 * @param int $now        Unix time.
-	 * @param int $expires_in Requested lifetime in seconds.
-	 * @return array{0: int, 1: int} Anchored timestamp, adjusted lifetime.
-	 */
-	public static function anchor( int $now, int $expires_in ): array {
-		$expires_in = max( 1, min( $expires_in, 604800 ) );
-		$window     = max( self::MIN_PRESIGN_WINDOW, intdiv( $expires_in, 4 ) );
-
-		return array(
-			intdiv( $now, $window ) * $window,
-			min( $expires_in + $window, 604800 ),
-		);
-	}
-
-	/**
 	 * Build a URL that carries its own signature.
 	 *
 	 * This is what lets the app talk to storage directly — uploading a two
@@ -192,16 +150,13 @@ final class S3Signer {
 		array $headers = array(),
 		?int $timestamp = null
 	): string {
+		$timestamp ??= time();
+		$amz_date   = gmdate( 'Ymd\THis\Z', $timestamp );
+		$short_date = gmdate( 'Ymd', $timestamp );
+
 		// Seven days is the protocol maximum; a longer request is silently
 		// rejected at use time, which is far harder to debug than here.
 		$expires_in = max( 1, min( $expires_in, 604800 ) );
-
-		if ( null === $timestamp ) {
-			list( $timestamp, $expires_in ) = self::anchor( time(), $expires_in );
-		}
-
-		$amz_date   = gmdate( 'Ymd\THis\Z', $timestamp );
-		$short_date = gmdate( 'Ymd', $timestamp );
 
 		$parts   = self::split_url( $url );
 		$headers = self::with_host( $headers, $parts['host'] );

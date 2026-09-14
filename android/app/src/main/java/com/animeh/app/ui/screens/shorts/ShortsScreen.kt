@@ -103,9 +103,19 @@ fun ShortsScreen(
 
         engine.playPage(page)
 
+        // The ones after this one, pulled down while this one plays. ExoPlayer
+        // buffers into the next item by itself; this is what keeps a fast
+        // scroll ahead of the thumb rather than only a steady one.
+        engine.warm(state.items.drop(page + 1).map { it.videoUrl })
+
         state.items.getOrNull(page)?.let { viewModel.watched(it.id) }
         viewModel.loadMoreIfNeeded(page)
     }
+
+    // Why nothing is playing, when nothing is playing. Named apart from the
+    // feed's own `failure` below: one is the list not arriving, the other is a
+    // video that arrived and would not play.
+    val playbackError by engine.failure.collectAsStateWithLifecycle()
 
     LaunchedEffect(state.message) {
         state.message?.let {
@@ -164,6 +174,37 @@ fun ShortsScreen(
                         onCreator = onOpenCreator,
                         onDelete = { viewModel.delete(short) },
                     )
+                }
+            }
+
+            playbackError?.let { reason ->
+                // Over the video rather than instead of it: the cover is still
+                // there underneath, and a feed that blanks itself on one bad
+                // video is worse than one that says which video is bad.
+                Column(
+                    Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 32.dp)
+                        .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(14.dp))
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Icon(
+                        Icons.Filled.ErrorOutline,
+                        contentDescription = null,
+                        tint = StatusError,
+                        modifier = Modifier.size(30.dp),
+                    )
+
+                    Spacer(Modifier.height(8.dp))
+
+                    Text(reason, color = Color.White, fontSize = 14.sp)
+
+                    Spacer(Modifier.height(6.dp))
+
+                    TextButton(onClick = engine::retry) {
+                        Text(stringResource(R.string.retry), color = AccentPrimary)
+                    }
                 }
             }
 

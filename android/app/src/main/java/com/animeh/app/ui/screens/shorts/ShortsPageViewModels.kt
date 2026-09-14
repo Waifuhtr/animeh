@@ -79,7 +79,17 @@ class ShortTagViewModel @Inject constructor(
     handle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val tag: String = handle.get<String>("tag").orEmpty()
+    /**
+     * Decoded on the way in, because the route encodes it on the way out.
+     *
+     * `Routes.shortsTag()` percent-encodes the tag so a route stays one path
+     * segment, and if that value arrives here still encoded, it is encoded a
+     * second time by the HTTP path — at which point the server sees `%25C5`
+     * and there is nothing left to decode it back from. Decoding here costs
+     * nothing when it has already been done: a tag holds letters, digits and
+     * underscores, so a `%` in one is never anything but an encoding.
+     */
+    private val tag: String = Uri.decode(handle.get<String>("tag").orEmpty())
 
     private val _state = MutableStateFlow(ShortGridState(title = "#$tag"))
     val state: StateFlow<ShortGridState> = _state.asStateFlow()

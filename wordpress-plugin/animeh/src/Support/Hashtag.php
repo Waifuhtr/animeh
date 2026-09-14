@@ -112,6 +112,47 @@ final class Hashtag {
 	}
 
 	/**
+	 * A tag as it arrives in a URL path, made safe without being destroyed.
+	 *
+	 * `sanitize_text_field()` cannot be used for this, and the reason is worth
+	 * writing down: it deletes every `%XX` sequence it finds. A Turkish tag is
+	 * percent-encoded on its way into a path — `keşfet` becomes `ke%C5%9Ffet`
+	 * — and if it reaches the callback still encoded, sanitising it removes
+	 * the `ş` and leaves `kefet`. The page then opens on a word nobody wrote,
+	 * headed "0 video", with no sign anything went wrong.
+	 *
+	 * So it is decoded first, up to twice: a client that encodes a path
+	 * segment and a router that hands it over still encoded each add a layer.
+	 * Decoding can never destroy meaning here, because a tag holds only
+	 * letters, digits and underscores — nothing legitimate contains a `%`.
+	 *
+	 * Then the same character class the parser uses, rather than a second and
+	 * looser rule: what a caption would have read as a tag is exactly what a
+	 * tag page may be asked for.
+	 *
+	 * @param mixed $value Whatever the request carried.
+	 */
+	public static function from_path( $value ): string {
+		$text = is_string( $value ) ? $value : '';
+
+		for ( $pass = 0; $pass < 2 && str_contains( $text, '%' ); $pass++ ) {
+			$decoded = rawurldecode( $text );
+
+			// A half-decoded octet is not text; better the layer above than a
+			// string of broken bytes.
+			if ( $decoded === $text || ! mb_check_encoding( $decoded, 'UTF-8' ) ) {
+				break;
+			}
+
+			$text = $decoded;
+		}
+
+		$text = preg_replace( '/[^\p{L}\p{N}_]+/u', '', $text ) ?? '';
+
+		return mb_substr( $text, 0, self::MAX_LENGTH, 'UTF-8' );
+	}
+
+	/**
 	 * Whether a string could be a tag at all.
 	 *
 	 * @param string $tag Tag as written, without the `#`.

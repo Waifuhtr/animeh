@@ -301,7 +301,9 @@ final class ShortsController {
 				'callback'            => array( $this, 'tag_page' ),
 				'permission_callback' => '__return_true',
 				'args'                => array(
-					'tag'      => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
+					// Not sanitize_text_field: it deletes percent-encoded octets,
+					// which is every Turkish letter in a path. See Hashtag::from_path.
+					'tag'      => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => array( Hashtag::class, 'from_path' ) ),
 					'offset'   => array( 'type' => 'integer', 'default' => 0, 'sanitize_callback' => 'absint' ),
 					'per_page' => array( 'type' => 'integer', 'default' => 21, 'sanitize_callback' => 'absint' ),
 				),

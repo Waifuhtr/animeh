@@ -44,7 +44,14 @@ function esc_url_raw( $u ) { return $u; }
 function esc_attr( $v ) { return $v; }
 function esc_html( $v ) { return $v; }
 function esc_js( $v ) { return $v; }
-function sanitize_text_field( $v ) { return is_string( $v ) ? trim( $v ) : ''; }
+function sanitize_text_field( $v ) {
+	// Faithful to the real one in the way that matters here: WordPress deletes
+	// every percent-encoded octet it finds, which is every Turkish letter in a
+	// URL path. A stub that only trimmed hid exactly the bug this catches.
+	$text = is_string( $v ) ? trim( $v ) : '';
+	while ( preg_match( '/%[a-f0-9]{2}/i', $text, $m ) ) { $text = str_replace( $m[0], '', $text ); }
+	return $text;
+}
 function sanitize_key( $v ) { return strtolower( (string) $v ); }
 function sanitize_title( $v ) { return strtolower( preg_replace( '/[^a-z0-9]+/i', '-', (string) $v ) ); }
 function sanitize_file_name( $v ) { return (string) $v; }
@@ -221,7 +228,13 @@ function add_action( ...$a ) { return true; }
 function add_filter( ...$a ) { return true; }
 function do_action( ...$a ) { return null; }
 function apply_filters( $t, $v, ...$rest ) { return $v; }
-function register_rest_route( ...$a ) { $GLOBALS['__routes'][] = $a[1] ?? ''; return true; }
+function register_rest_route( ...$a ) {
+	$GLOBALS['__routes'][] = $a[1] ?? '';
+	// The options too, so a check can ask what a route does with a parameter
+	// rather than only whether the route exists.
+	$GLOBALS['__route_options'][ (string) ( $a[1] ?? '' ) ] = $a[2] ?? array();
+	return true;
+}
 function wp_count_posts( $t ) { return (object) array( 'publish' => 0 ); }
 function get_post_meta( ...$a ) { return ''; }
 function get_the_terms( ...$a ) { return false; }

@@ -231,6 +231,20 @@ her video için ayrı. On videoluk bir sayfa, telefona tek bayt video verilmeden
 8 video 20 oluyor. Duman koşucusundaki kontrol mutlak sayıyı değil, video
 sayısıyla artan sorgu sayısını arıyor.
 
+### 5. Hızlı kaydırma ön yüklemeyi aşıyordu
+
+ExoPlayer kendi kendine ileriyi tamponluyor ama yalnızca **bir sonraki** öğeye,
+ve ancak o andaki öğe dolduktan sonra. Düzenli bir kaydırma için yeterli, hızlı
+bir kaydırma için değil: iki saniyede üç fiske ve dördüncü video sıfırdan
+başlıyor — bir akışın "anında" hissini kaybettiği an tam olarak burası.
+
+Artık sonraki **üç** videonun ilk birer megabaytı, oynatıcının okuduğu aynı
+önbelleğe doğrudan yazılıyor (`CacheWriter`). Bir megabayt, 720p'ye yeniden
+kodlanmış bir kısa videoda birkaç saniye — oynatıcının ilk kareyi göstermek
+için beklediği çeyrek saniyenin kat kat üstünde. Ekrandaki video ilk 800
+milisaniye bağlantıyı kendine alıyor, ondan sonra diğerleri başlıyor, ve her
+kaydırma önceki ön yüklemeyi iptal ediyor.
+
 ### Ve asıl tavan: bit hızı
 
 Yukarıdakiler ilk kare için gereken **bayt miktarını** düşürüyor ama **bit
@@ -323,22 +337,24 @@ dosya, sadece sorgu dizesi oynuyor. Aşağıdaki her şey URL'e göre anahtarlan
 * ExoPlayer'ın disk önbelleği → aynı videoyu iki kere yazdı, hiçbirini
   diskten servis etmedi.
 * Coil'in görsel önbelleği → kapaklar her ekranda yeniden indi.
-* Kovanın önündeki herhangi bir CDN → hiçbir şeyi tutamazdı.
 
-İki yerden düzeltildi.
+**Düzeltme tamamen istemcide.** Önbellek anahtarı artık URL'in tamamı değil:
+video için `host + yol`, görsel için sorgu dizesi atılmış hâli. Kovadaki bir
+nesne, orada durduğu sürece tek bir önbellek girdisi. İstek yine imzalı gidiyor
+— değişen tek şey girdinin *adı*. Bir güvenlik kaybı yok: sorgu dizesi indirme
+izninin kanıtı ve o izin baytlar çekilirken kontrol ediliyor, uygulamanın kendi
+yazdığı bir önbellekten okurken değil.
 
-**Sunucu — imza saniyeye değil pencereye sabitlendi.** `S3Signer::anchor()`
-saati aşağı yuvarlıyor ve ömrü aynı pencere kadar uzatıyor, böylece pencerenin
-son saniyesinde üretilen bir bağlantı da istenen süreyi tam taşıyor. Pencere,
-istenen ömrün dörtte biri: bir bağlantı ayarda yazandan en fazla çeyrek kadar
-uzun yaşıyor, ayar ne olursa olsun. Varsayılan bir saatlik ömürde bu, aynı
-videonun on beş dakika boyunca aynı adresi alması demek.
+### Sunucuda denenip geri alınan yol
 
-**Uygulama — önbellek anahtarı imzayı yok sayıyor.** Varsayılan anahtar URL'in
-tamamı; artık `host + yol`. Kovadaki bir nesne, orada durduğu sürece tek bir
-önbellek girdisi. Bayt anahtarı doğrulanmıyor diye bir güvenlik kaybı yok:
-sorgu dizesi *indirme* izninin kanıtı, ve o izin baytlar çekilirken kontrol
-ediliyor — uygulamanın kendi yazdığı bir önbellekten okurken değil.
+Bir sürüm boyunca imza sunucuda pencereye sabitlenmişti: saat aşağı yuvarlanıp
+ömür aynı kadar uzatılıyordu, böylece aynı nesne on beş dakika aynı adresi
+alıyordu. Bütün önbelleklerin isabet etmesi için en temiz yol buydu ve **geri
+alındı**: o sürümde videolar hiç açılmadı, ve imzanın `X-Amz-Date`'i geçmişe
+taşıması tek makul şüpheliydi. AWS bunu kabul eder, Backblaze'in aynısını yapıp
+yapmadığı buradan sınanamıyor — ve sınanamayan bir varsayım uğruna her medya
+adresini riske atmaya değmez. İstemci tarafındaki anahtar aynı kazancı hiçbir
+protokol riski olmadan veriyor.
 
 Kapak resmi de küçüldü: 1080p bir kareden çıkan JPEG çeyrek megabayttı ve grid
 onu satırda üçe gösteriyordu. Artık videonun kendisiyle aynı kısa kenara (720)
@@ -371,6 +387,45 @@ Boş kalabilmesinin geriye kalan yolları kapatıldı:
   ekrandan okunabiliyor.
 * **Sayfalama eklendi.** Üç grid sayfası da ilk 21 videoyu alıp duruyordu;
   artık sona iki satır kala bir sonrakini istiyorlar.
+
+---
+
+## 6.9 Türkçe etiket yolda nasıl kayboluyordu
+
+`#keşfet` etiketine basınca açılan sayfanın başlığı **`#kefet`** yazıyor ve
+altında hiçbir şey olmuyordu. `ş` yolda yok olmuştu.
+
+`sanitize_text_field()` bulduğu **her `%XX` dizisini siler**. Bir yol
+segmentindeki `ş` `%C5%9F`'tir. Etiket sunucuya hâlâ kodlanmış hâlde ulaştığında
+sanitize onu `kefet`e çeviriyor, ve `kefet` kimsenin yazmadığı bir kelime —
+sayfa doğru çalışıp doğru cevabı veriyordu: sıfır video.
+
+Kodlamanın iki katmanı vardı: rota `Uri.encode` ile bir segment yapıyor,
+Retrofit yol segmentini bir kez daha kodluyor. İkisi de düzeltildi:
+
+* **İstemci** — `ShortTagViewModel` etiketi okurken `Uri.decode` ediyor. Zaten
+  çözülmüş bir etikette hiçbir şey yapmıyor; bir etiket harf, rakam ve alt
+  çizgiden ibaret olduğu için içindeki `%` her zaman bir kodlamadır.
+* **Sunucu** — `Hashtag::from_path()` önce çözüyor (en fazla iki kat, ve ancak
+  sonuç geçerli UTF-8 ise), sonra ayrıştırıcının kullandığı karakter sınıfını
+  uyguluyor. Böylece `keşfet`, `ke%C5%9Ffet` ve `ke%25C5%259Ffet` aynı sayfaya
+  çıkıyor.
+
+Duman koşucusunun `sanitize_text_field` taklidi sadece `trim` yapıyordu, yani
+bu hatayı asla gösteremezdi; artık gerçeğinin yaptığı gibi octet siliyor ve
+`ShortsController` de rota kayıt listesinde — AnimehTok'un kırk küsur rotası o
+listede hiç yokmuş.
+
+---
+
+## 6.10 Sessiz siyah ekran
+
+Bir video açılmadığında akış hiçbir şey söylemiyordu: kovanın reddettiği bir
+bağlantı, bu telefonun çözemediği bir kodek ve hâlâ inmekte olan bir video
+ekranda birbirinin aynı siyah dikdörtgen. "Hiç yüklenmiyor" raporunun
+arkasında hangisinin olduğunu anlamanın yolu yoktu.
+
+Artık sebep ekranda, **HTTP kodu dahil**, ve yanında tekrar deneme var.
 
 ---
 
@@ -474,11 +529,14 @@ Kendi videonu beğenmen bildirim üretmiyor.
   kendi sorgularıyla yapılıyor. 9 kontrol; `by_tag`'i yazılmış etikete
   bakacak şekilde bozmak ve silmenin etiket satırını bırakması, ikisi de
   düşürerek doğrulandı.
-- **İmza penceresi** — 4 birim testi: aynı nesne pencere içinde aynı URL'i
-  veriyor, pencere dolunca ilerliyor, sabitlenmiş bağlantı istenen ömrü tam
-  taşıyor, çok kısa bağlantıya da taban pencere veriliyor. Sabitlemeyi
-  kaldırarak düşürüldü. SigV4 çapraz kontrolünün 22 vektörü değişmedi:
-  zaman damgasını açıkça veren bir çağrı hâlâ tam o anı imzalıyor.
+- **Yoldan gelen etiket** — 3 birim + 1 duman testi: `keşfet`, `ke%C5%9Ffet` ve
+  `ke%25C5%259Ffet` aynı anahtara düşüyor, çözülen `%2F` etikette kalmıyor, ve
+  rotanın gerçekten bu geri çağrıyı kullandığı kontrol ediliyor.
+  `sanitize_text_field`'a geri dönerek düşürüldü — ve duman koşucusundaki
+  taklidi artık gerçeğinin yaptığı gibi octet siliyor, yoksa bu hatayı
+  gösteremezdi.
+- **`ShortsController` rota kaydı** — kırk küsur rota artık duman koşusunda
+  gerçekten kaydediliyor; listede hiç yokmuş.
 - **Ekrana yerleşme tercihi** — iki duman adımı: `fit_mode` akışa geçiyor, ve
   tanımadığı bir değer (`''`, `zoom`, `crop`, `FILL`) kırpmayan moda düşüyor.
   İkisi de hatayı geri koyarak düşürüldü.

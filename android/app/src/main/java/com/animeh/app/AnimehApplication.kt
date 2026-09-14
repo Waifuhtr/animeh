@@ -3,6 +3,8 @@ package com.animeh.app
 import android.app.Application
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.intercept.Interceptor
+import coil.request.ImageResult
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import com.animeh.app.data.prefs.AuthState
@@ -106,6 +108,7 @@ class AnimehApplication : Application(), ImageLoaderFactory {
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .okHttpClient { imageClient }
+            .components { add(SignedMediaKeys) }
             .memoryCache {
                 MemoryCache.Builder(this)
                     .maxSizePercent(0.20)
@@ -138,4 +141,38 @@ class AnimehApplication : Application(), ImageLoaderFactory {
      */
     private fun decodeThreads(): Int =
         (Runtime.getRuntime().availableProcessors() / 2).coerceIn(2, 4)
+}
+
+/**
+ * What a signed storage URL is filed under in the image caches.
+ *
+ * Covers and avatars come from the bucket as presigned links: the moment they
+ * were signed and a signature over it ride in the query string, so asking for
+ * the same feed twice hands back two different URLs for one unchanged file.
+ * Coil keys on the URL, so every screen re-downloaded every picture it had
+ * just shown.
+ *
+ * The signature is stripped for the purpose of *naming* the entry — the
+ * request still goes out signed, so nothing is fetched that could not be
+ * fetched before. Only our own storage URLs are touched, recognised by the
+ * signature parameter itself; every other image keeps Coil's own key.
+ */
+private object SignedMediaKeys : Interceptor {
+    override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+        val request = chain.request
+        val url = request.data as? String ?: return chain.proceed(request)
+
+        if (!url.contains(SIGNATURE)) return chain.proceed(request)
+
+        val stable = url.substringBefore('?')
+
+        return chain.proceed(
+            request.newBuilder()
+                .memoryCacheKey(stable)
+                .diskCacheKey(stable)
+                .build()
+        )
+    }
+
+    private const val SIGNATURE = "X-Amz-Signature"
 }

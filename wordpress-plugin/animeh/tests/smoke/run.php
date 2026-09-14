@@ -90,6 +90,10 @@ $controllers = array(
 	'AuthController', 'CatalogController', 'MeController', 'CommunityController',
 	'SocialController', 'AdminController', 'RewardsController', 'MangaController',
 	'StorageController', 'FontsController', 'TestController', 'MigrationController',
+	// AnimehTok was missing from this list, so its forty-odd routes had never
+	// once been registered here — the one check that would have run the
+	// argument definitions rather than reading them.
+	'ShortsController',
 );
 
 foreach ( $controllers as $controller ) {
@@ -1292,6 +1296,31 @@ step(
 		}
 
 		$wpdb->rows = array();
+	}
+);
+
+step(
+	'etiket yolu Türkçe harfi yolda kaybetmiyor',
+	static function (): void {
+		// The fault this replaces, in one line: `#keşfet` opened a page headed
+		// `#kefet` with nothing on it, because `sanitize_text_field()` deletes
+		// every `%XX` it finds and `ş` in a path is `%C5%9F`. The check is on
+		// the route rather than on the helper, because the helper was always
+		// going to be right — what mattered was which callback the route used.
+		$options = $GLOBALS['__route_options']['/shorts/tags/(?P<tag>[^/]+)'] ?? array();
+		$sanitize = $options['args']['tag']['sanitize_callback'] ?? null;
+
+		if ( ! is_callable( $sanitize ) ) {
+			throw new RuntimeException( 'etiket için sanitize_callback yok' );
+		}
+
+		foreach ( array( 'keşfet', 'ke%C5%9Ffet', 'ke%25C5%259Ffet' ) as $spelling ) {
+			$cleaned = (string) call_user_func( $sanitize, $spelling );
+
+			if ( 'keşfet' !== $cleaned ) {
+				throw new RuntimeException( "'" . $spelling . "' → '" . $cleaned . "'" );
+			}
+		}
 	}
 );
 

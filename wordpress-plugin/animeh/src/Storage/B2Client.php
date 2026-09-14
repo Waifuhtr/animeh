@@ -36,6 +36,33 @@ final class B2Client {
 	 */
 	public const PART_BYTES = 32 * 1024 * 1024;
 
+	/**
+	 * How many times one request is sent when it never left the building.
+	 *
+	 * Three. A resolver having a bad moment usually answers on the second ask;
+	 * past the third, something is wrong that waiting will not fix.
+	 */
+	private const ATTEMPTS = 3;
+
+	/** Pause before the next attempt, in microseconds, multiplied by the try. */
+	private const RETRY_PAUSE_US = 250000;
+
+	/**
+	 * Seconds a retry may spend resolving and connecting.
+	 *
+	 * Short, and deliberately shorter than the attempt that just failed. The
+	 * whole budget has to stay under the host's `max_execution_time`, which on
+	 * shared hosting is thirty seconds: the first attempt already spent ten,
+	 * and two more twenty-second waits would turn a clean "storage
+	 * unreachable" into a blank page with nothing in it to read.
+	 *
+	 * Six is generous for the case this exists for. A resolve and a connect
+	 * that are going to work take well under a second; one that needs longer
+	 * than six is not having a bad moment, it is broken, and waiting is not
+	 * the answer.
+	 */
+	private const CONNECT_SECONDS = 6;
+
 	private StorageSettings $settings;
 	private S3Signer $signer;
 
@@ -262,6 +289,126 @@ final class B2Client {
 	}
 
 	/**
+	 * One request to storage, tried more than once when it never left.
+	 *
+	 * Written after a live failure: `cURL error 28: Resolving timed out after
+	 * 10002 milliseconds`. The name of the bucket's endpoint could not be
+	 * resolved, so the request never reached anybody — and an upload that is
+	 * four taps in died on a resolver having a bad ten seconds.
+	 *
+	 * Only failures that provably happened *before* anything was sent are
+	 * retried. That distinction is the whole of the safety: a request that
+	 * never left cannot have created a multipart upload or stored an object,
+	 * so sending it again cannot do anything twice. A timeout after the bytes
+	 * went out is a different animal and is left alone.
+	 *
+	 * The second attempt also asks cURL for IPv4. A host whose IPv6 is
+	 * advertised but dead is the ordinary cause of a resolve that hangs rather
+	 * than fails, and this is the ordinary fix — held back to the retry so a
+	 * host that is genuinely IPv6-only is not broken by it.
+	 *
+	 * @param string               $url  Absolute URL.
+	 * @param array<string, mixed> $args wp_remote_request arguments.
+	 * @return array<string, mixed>|WP_Error
+	 */
+	private static function send( string $url, array $args ) {
+		$last = null;
+
+		for ( $attempt = 1; $attempt <= self::ATTEMPTS; $attempt++ ) {
+			if ( $attempt > 1 ) {
+				add_action( 'http_api_curl', array( self::class, 'steady_connection' ), 99 );
+			}
+
+			$response = wp_remote_request( $url, $args );
+
+			if ( $attempt > 1 ) {
+				remove_action( 'http_api_curl', array( self::class, 'steady_connection' ), 99 );
+			}
+
+			if ( ! is_wp_error( $response ) ) {
+				return $response;
+			}
+
+			$last = $response;
+
+			if ( ! self::never_left( $response ) ) {
+				break;
+			}
+
+			// A resolver that just timed out does not answer faster for being
+			// asked again immediately.
+			if ( $attempt < self::ATTEMPTS ) {
+				usleep( self::RETRY_PAUSE_US * $attempt );
+			}
+		}
+
+		return $last;
+	}
+
+	/**
+	 * Whether a transport failure happened before anything was sent.
+	 *
+	 * cURL 6 is a name that would not resolve, 7 a host that would not accept
+	 * a connection, and 28 a timeout — which is only safe to retry when the
+	 * message says it timed out resolving or connecting rather than waiting
+	 * for a reply.
+	 *
+	 * @param WP_Error $error What the transport said.
+	 */
+	private static function never_left( WP_Error $error ): bool {
+		$message = strtolower( $error->get_error_message() );
+
+		foreach ( array( 'cURL error 6:', 'cURL error 7:', 'resolving timed out', 'connection timed out', 'could not resolve' ) as $mark ) {
+			if ( str_contains( $message, strtolower( $mark ) ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Give the retry a fair chance: IPv4, and time to finish resolving.
+	 *
+	 * Hooked at a late priority so it is the last word on these two options —
+	 * a host that caps the connect timeout in its own hook has already run.
+	 *
+	 * @param resource|\CurlHandle $handle cURL handle.
+	 */
+	public static function steady_connection( $handle ): void {
+		if ( ! function_exists( 'curl_setopt' ) ) {
+			return;
+		}
+
+		if ( defined( 'CURLOPT_IPRESOLVE' ) && defined( 'CURL_IPRESOLVE_V4' ) ) {
+			curl_setopt( $handle, CURLOPT_IPRESOLVE, CURL_IPRESOLVE_V4 ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		}
+
+		if ( defined( 'CURLOPT_CONNECTTIMEOUT' ) ) {
+			curl_setopt( $handle, CURLOPT_CONNECTTIMEOUT, self::CONNECT_SECONDS ); // phpcs:ignore WordPress.WP.AlternativeFunctions
+		}
+	}
+
+	/**
+	 * The transport's message, with what it means when that is not obvious.
+	 *
+	 * "Resolving timed out" is the site's own DNS failing, not a bad key and
+	 * not a bucket that is down — and without saying so the only thing left to
+	 * do about it is guess.
+	 *
+	 * @param WP_Error $error What the transport said.
+	 */
+	private static function explain_transport( WP_Error $error ): string {
+		$message = $error->get_error_message();
+
+		if ( self::never_left( $error ) ) {
+			return $message . ' — ' . __( 'sunucu depolama adresine ulaşamadı (DNS ya da giden bağlantı). Barındırıcının ayarı; anahtarlarla ilgisi yok.', 'animeh' );
+		}
+
+		return $message;
+	}
+
+	/**
 	 * Finish a multipart upload.
 	 *
 	 * @param string                                     $key       Object key.
@@ -379,7 +526,7 @@ final class B2Client {
 
 		$signed = $this->signer->sign_request( $method, $url, $headers, hash( 'sha256', $body ) );
 
-		$response = wp_remote_request(
+		$response = self::send(
 			$url,
 			array(
 				'method'  => $method,
@@ -397,7 +544,7 @@ final class B2Client {
 				sprintf(
 					/* translators: %s: underlying transport error. */
 					__( 'Depolamaya ulaşılamadı: %s', 'animeh' ),
-					$response->get_error_message()
+					self::explain_transport( $response )
 				),
 				array( 'status' => 502 )
 			);

@@ -503,6 +503,43 @@ tamamlanıyor, çünkü insanların yazdığı şey o.
 
 ---
 
+## 6.14 Depolamaya ulaşamamak
+
+Canlı bir hata: `POST /shorts/uploads` → 502,
+`cURL error 28: Resolving timed out after 10002 milliseconds`.
+
+Bu bir anahtar hatası değil, bir kova arızası da değil: **sitenin sunucusu
+Backblaze'in adresini çözemedi**. İstek hiç kimseye ulaşmadı — ve dört
+dokunuş ilerideki bir yükleme, kötü on saniye geçiren bir çözümleyici yüzünden
+öldü.
+
+Eklenti artık buna dayanıklı:
+
+* **Hiç gitmemiş istekler yeniden deneniyor.** Güvenliğin tamamı bu ayrımda:
+  yola çıkmamış bir istek ne çok parçalı bir yükleme başlatmış ne de bir nesne
+  yazmış olabilir, yani ikinci kez göndermek hiçbir şeyi iki kez yapamaz.
+  Baytlar gittikten *sonra* gelen bir zaman aşımı başka bir hayvan ve ona
+  dokunulmuyor — cURL 6 ve 7, ve 28'in yalnızca "resolving"/"connection timed
+  out" diyen hâli yeniden denenir.
+* **İkinci deneme IPv4 istiyor.** Duyurulmuş ama ölü bir IPv6, bir çözümlemenin
+  hata vermek yerine asılı kalmasının olağan sebebi, ve bu da olağan çözümü.
+  İlk denemeye değil yeniden denemeye konuldu, ki gerçekten IPv6-only bir
+  barındırıcı bundan zarar görmesin.
+* **Bütçe barındırıcının sınırının altında.** İlk deneme zaten on saniye
+  harcadı; yeniden denemelerin bağlanma süresi altı saniyeyle sınırlı, yani en
+  kötü durum ~23 saniye. Paylaşımlı barındırmada `max_execution_time` otuz
+  saniyedir, ve iki yirmi saniyelik bekleme temiz bir 502'yi okunacak hiçbir
+  şeyi olmayan boş bir sayfaya çevirirdi.
+* **Mesaj kimin sorunu olduğunu söylüyor.** "Depolamaya ulaşılamadı" tek başına
+  bozuk bir anahtar gibi okunuyor; artık yanında DNS/giden bağlantı olduğunu ve
+  barındırıcının ayarı olduğunu söylüyor.
+
+Bu üç denemenin de düşmesi hâlâ mümkün, ve o zaman sorun gerçekten dışarıda:
+barındırıcının çözümleyicisi ya da giden bağlantılara izin vermeyen bir güvenlik
+duvarı.
+
+---
+
 ## 7. REST yüzeyi
 
 Namespace `animeh/v1`. **Her rotada gerçek bir `permission_callback`.**
@@ -619,6 +656,11 @@ Kendi videonu beğenmen bildirim üretmiyor.
   boşa düşüyor; çıplak alan adı tamamlanıyor.
 - **Çan** — üç tabloyu da sorduğu ve kendi eylemlerini dışarıda bıraktığı
   kontrol ediliyor.
+- **Depolamaya ulaşamamak** — 2 duman kontrolü: çözülemeyen bir adres yeniden
+  deneniyor ve sebebi söyleniyor, cevap verdikten sonra düşen bir istek
+  denenmiyor. İkisi de ilgili yarısını kaldırarak düşürüldü. Koşucunun
+  `wp_remote_*` taklidi artık istenen bir taşıma hatasını da verebiliyor;
+  önceden yalnızca durum kodu verebiliyordu, yani bu yol hiç koşulamazdı.
 - **Ekrana yerleşme tercihi** — iki duman adımı: `fit_mode` akışa geçiyor, ve
   tanımadığı bir değer (`''`, `zoom`, `crop`, `FILL`) kırpmayan moda düşüyor.
   İkisi de hatayı geri koyarak düşürüldü.

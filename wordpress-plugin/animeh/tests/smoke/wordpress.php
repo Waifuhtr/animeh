@@ -163,8 +163,9 @@ function animeh_http_reply( string $needle, int $code, $body ): void {
 
 /** Forget every registered reply, and the log of what was asked for. */
 function animeh_http_reset(): void {
-	$GLOBALS['__http']     = array();
-	$GLOBALS['__http_log'] = array();
+	$GLOBALS['__http']      = array();
+	$GLOBALS['__http_fail'] = array();
+	$GLOBALS['__http_log']  = array();
 $GLOBALS['__delta'] = array();
 }
 
@@ -193,7 +194,28 @@ function animeh_http( string $url, $args = array() ) {
 		}
 	}
 
+	// A transport failure the caller asked for, so the retry path can be run.
+	// It is registered per URL like a reply, and cleared with the replies.
+	foreach ( $GLOBALS['__http_fail'] ?? array() as $needle => $message ) {
+		if ( str_contains( $url, (string) $needle ) ) {
+			return new WP_Error( 'http_request_failed', (string) $message );
+		}
+	}
+
 	return new WP_Error( 'http_request_failed', 'harness: fixture yok — ' . $url );
+}
+
+/**
+ * Make a URL fail the way a transport fails.
+ *
+ * Not a status code: `wp_remote_*` returns a WP_Error when the request never
+ * got a reply at all, and that is a different path from a 500.
+ *
+ * @param string $needle  Substring of the URL this answers.
+ * @param string $message What cURL would have said.
+ */
+function animeh_http_fail( string $needle, string $message ): void {
+	$GLOBALS['__http_fail'][ $needle ] = $message;
 }
 function current_user_can( $c ) { return false; }
 function user_can( $u, $c ) { return false; }
@@ -225,6 +247,7 @@ function get_users( $args = array() ) { return $GLOBALS['__users'] ?? array(); }
 function get_role( $r ) { return null; }
 function add_role( ...$a ) { return null; }
 function add_action( ...$a ) { return true; }
+function remove_action( ...$a ) { return true; }
 function add_filter( ...$a ) { return true; }
 function do_action( ...$a ) { return null; }
 function apply_filters( $t, $v, ...$rest ) { return $v; }

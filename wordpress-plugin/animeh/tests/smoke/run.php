@@ -26,6 +26,8 @@ use Animeh\Rest\CatalogController;
 use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
 use Animeh\Rest\ShortsController;
+use Animeh\Storage\B2Client;
+use Animeh\Storage\StorageSettings;
 use Animeh\Storage\CatalogSchema;
 use Animeh\Storage\LeaderboardRepository;
 use Animeh\Storage\ShortsSchema;
@@ -1377,6 +1379,79 @@ step(
 		if ( ! str_contains( $asked, '<>' ) ) {
 			throw new RuntimeException( 'kendi eylemleri dışarıda bırakılmıyor' );
 		}
+	}
+);
+
+echo "\nDepolamaya ulaşamamak\n";
+
+step(
+	'çözülemeyen adres yeniden deneniyor',
+	static function (): void {
+		// The live failure: `cURL error 28: Resolving timed out after 10002
+		// milliseconds` on POST /shorts/uploads. The name of the bucket could
+		// not be resolved, so the request never reached anybody — and an
+		// upload four taps in died on a resolver having a bad ten seconds.
+		animeh_http_reset();
+		animeh_http_fail( 'backblazeb2.com', 'cURL error 28: Resolving timed out after 10002 milliseconds' );
+
+		$GLOBALS['__options']['animeh_storage'] = array(
+			'region'   => 'us-west-004',
+			'bucket'   => 'animeh-media',
+			'endpoint' => 's3.us-west-004.backblazeb2.com',
+			'key_id'   => 'k',
+			'secret'   => 's',
+		);
+
+		$settings = StorageSettings::load();
+		$result   = ( new B2Client( $settings ) )->create_multipart_upload( 'animehtok/a/b.mp4', 1024, 'video/mp4' );
+
+		if ( ! is_wp_error( $result ) ) {
+			throw new RuntimeException( 'hata bekleniyordu' );
+		}
+
+		$tries = count( $GLOBALS['__http_log'] );
+		if ( $tries < 2 ) {
+			throw new RuntimeException( 'yeniden denenmedi: ' . $tries . ' istek' );
+		}
+
+		// And the message says whose problem it is, because "storage
+		// unreachable" reads as a bad key and this is not one.
+		if ( ! str_contains( (string) $result->get_error_message(), 'DNS' ) ) {
+			throw new RuntimeException( 'sebep söylenmiyor: ' . $result->get_error_message() );
+		}
+
+		animeh_http_reset();
+		unset( $GLOBALS['__options']['animeh_storage'] );
+	}
+);
+
+step(
+	'cevap verdikten sonra düşen istek yeniden denenmiyor',
+	static function (): void {
+		// The distinction the retry rests on. A request that never left cannot
+		// have created anything, so sending it again is free; one that timed
+		// out *waiting for a reply* may well have arrived, and asking twice
+		// would start two multipart uploads for one video.
+		animeh_http_reset();
+		animeh_http_fail( 'backblazeb2.com', 'cURL error 28: Operation timed out after 30001 milliseconds with 0 bytes received' );
+
+		$GLOBALS['__options']['animeh_storage'] = array(
+			'region'   => 'us-west-004',
+			'bucket'   => 'animeh-media',
+			'endpoint' => 's3.us-west-004.backblazeb2.com',
+			'key_id'   => 'k',
+			'secret'   => 's',
+		);
+
+		( new B2Client( StorageSettings::load() ) )->create_multipart_upload( 'animehtok/a/b.mp4', 1024, 'video/mp4' );
+
+		$tries = count( $GLOBALS['__http_log'] );
+		if ( 1 !== $tries ) {
+			throw new RuntimeException( 'bir kereden fazla denendi: ' . $tries );
+		}
+
+		animeh_http_reset();
+		unset( $GLOBALS['__options']['animeh_storage'] );
 	}
 );
 

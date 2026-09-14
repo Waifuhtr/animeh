@@ -489,6 +489,15 @@
     <string name="tok_for_you">Senin İçin</string>
     <string name="tok_following">Takip</string>
     <string name="tok_empty">Henüz video yok.</string>
+    <string name="tok_notifications">Bildirimler</string>
+    <string name="tok_notifications_empty">Henüz bildirim yok.</string>
+    <string name="tok_note_follow">%1$s seni takip etmeye başladı.</string>
+    <string name="tok_note_like">%1$s videonu beğendi.</string>
+    <string name="tok_note_comment">%1$s videona yorum yaptı.</string>
+    <string name="tok_profile_edit">Profili düzenle</string>
+    <string name="tok_profile_bio">Biyografi</string>
+    <string name="tok_profile_link">Bağlantı</string>
+    <string name="tok_profile_link_hint">İsteğe bağlı. Yalnızca http ve https adresleri kabul edilir.</string>
     <string name="tok_grid_failed">Videolar yüklenemedi.</string>
     <string name="tok_grid_missing">Burada %d video sayılıyor ama listesi gelmedi.</string>
     <string name="tok_empty_following">Takip ettiğin kimse henüz video atmamış.</string>

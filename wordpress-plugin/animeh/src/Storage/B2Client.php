@@ -184,7 +184,7 @@ final class B2Client {
 	 * @param string $content_type MIME type.
 	 * @return array<string, mixed>|WP_Error
 	 */
-	public function create_multipart_upload( string $key, int $size, string $content_type ) {
+	public function create_multipart_upload( string $key, int $size, string $content_type, int $wanted_part_size = 0 ) {
 		$response = $this->request(
 			'POST',
 			'/' . $this->settings->bucket . '/' . ltrim( $key, '/' ),
@@ -206,7 +206,7 @@ final class B2Client {
 			);
 		}
 
-		$part_size = self::PART_BYTES;
+		$part_size = self::part_size( $size, $wanted_part_size );
 		$parts     = (int) max( 1, (int) ceil( $size / $part_size ) );
 		$urls      = array();
 		for ( $number = 1; $number <= $parts; $number++ ) {
@@ -228,6 +228,37 @@ final class B2Client {
 			'part_size' => $part_size,
 			'parts'     => $urls,
 		);
+	}
+
+	/**
+	 * How big one part should be.
+	 *
+	 * The default is sized for a two-gigabyte episode: large parts keep a long
+	 * upload under the ten-thousand-part ceiling. It is the wrong number for a
+	 * short video, where it made the whole file a single part — one PUT, on one
+	 * connection, with a progress bar that sat at zero and then jumped to done.
+	 * A phone's uplink is not one connection's worth of bandwidth, and nothing
+	 * about a single part can be sent in parallel.
+	 *
+	 * So the caller may ask for something smaller. Clamped at both ends: S3
+	 * refuses a part under five megabytes except for the last one, and the part
+	 * count is held under the protocol's ceiling whatever was asked for.
+	 *
+	 * @param int $size      Whole file, in bytes.
+	 * @param int $wanted    What the caller asked for, or 0 for the default.
+	 */
+	public static function part_size( int $size, int $wanted = 0 ): int {
+		if ( $wanted <= 0 ) {
+			return self::PART_BYTES;
+		}
+
+		$part_size = max( self::MIN_PART_BYTES, $wanted );
+
+		// Ten thousand parts is the protocol's limit; leave room rather than
+		// land on it, since the last part is whatever is left over.
+		$smallest = (int) ceil( $size / 9000 );
+
+		return (int) max( $part_size, $smallest );
 	}
 
 	/**

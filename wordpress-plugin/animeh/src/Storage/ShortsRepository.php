@@ -38,6 +38,30 @@ final class ShortsRepository {
 	public const FIT_FILL = 'fill';
 
 	/**
+	 * How long a video counts as new, in seconds.
+	 *
+	 * Three days. Inside it a video sits in front of everything older
+	 * regardless of its numbers, which is the only way a first upload is ever
+	 * seen at all: a feed sorted purely by popularity is a feed where nothing
+	 * new can become popular, because nothing new is ever shown.
+	 */
+	private const FRESH_SECONDS = 3 * 86400;
+
+	/**
+	 * What makes one video rank above another.
+	 *
+	 * Views first, because that is the question the feed is answering: the
+	 * more a video is watched the more it is offered. The rest are weighted
+	 * above a view because they cost more to give — a view is a thumb that did
+	 * not move, a like is a decision, a comment is a sentence — so one of them
+	 * is worth several views rather than one.
+	 *
+	 * Linear and written out rather than a logarithm: every database this runs
+	 * on can add, and a formula anybody can read is one anybody can argue with.
+	 */
+	private const SCORE = 's.view_count + s.like_count * 4 + s.save_count * 6 + s.comment_count * 8';
+
+	/**
 	 * Largest page any listing returns.
 	 */
 	public const MAX_PER_PAGE = 30;
@@ -261,13 +285,20 @@ final class ShortsRepository {
 		$limit  = $this->page_size( $limit );
 		$offset = max( 0, $offset );
 
+		$fresh = gmdate( 'Y-m-d H:i:s', time() - self::FRESH_SECONDS );
+		$score = self::SCORE;
+
 		if ( $user_id <= 0 ) {
 			$rows = $wpdb->get_results(
 				$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
-					"SELECT * FROM {$shorts}
-					 WHERE published = 1
-					 ORDER BY created_at DESC, id DESC
+					"SELECT * FROM {$shorts} s
+					 WHERE s.published = 1
+					 ORDER BY ( CASE WHEN s.created_at >= %s THEN 1 ELSE 0 END ) DESC,
+					          ( {$score} ) DESC,
+					          s.created_at DESC,
+					          s.id DESC
 					 LIMIT %d OFFSET %d",
+					$fresh,
 					$limit,
 					$offset
 				),
@@ -283,9 +314,14 @@ final class ShortsRepository {
 				 FROM {$shorts} s
 				 LEFT JOIN {$views} v ON v.short_id = s.id AND v.user_id = %d
 				 WHERE s.published = 1
-				 ORDER BY seen ASC, s.created_at DESC, s.like_count DESC, s.id DESC
+				 ORDER BY seen ASC,
+				          ( CASE WHEN s.created_at >= %s THEN 1 ELSE 0 END ) DESC,
+				          ( {$score} ) DESC,
+				          s.created_at DESC,
+				          s.id DESC
 				 LIMIT %d OFFSET %d",
 				$user_id,
+				$fresh,
 				$limit,
 				$offset
 			),
@@ -1368,6 +1404,109 @@ final class ShortsRepository {
 		}
 
 		return $out;
+	}
+
+	/* ── What happened while you were away ───────────────────────────── */
+
+	/**
+	 * Everything somebody else did to you, newest first.
+	 *
+	 * Derived rather than stored. A notifications table would need a write on
+	 * every follow, like and comment, a second write to undo each one, and
+	 * would still drift the first time a path forgot to keep it — and the rows
+	 * that answer the question are already here, each with the moment it
+	 * happened on it. Three reads and a sort is cheaper than a table nobody
+	 * can prove is correct.
+	 *
+	 * Your own actions are left out: nobody needs telling they liked something.
+	 *
+	 * @param int $user_id Whose bell this is.
+	 * @param int $limit   How many.
+	 * @return array<int, array<string, mixed>>
+	 */
+	public function notifications( int $user_id, int $limit = 40 ): array {
+		global $wpdb;
+
+		if ( $user_id <= 0 ) {
+			return array();
+		}
+
+		$limit    = $this->page_size( $limit );
+		$shorts   = ShortsSchema::shorts();
+		$likes    = ShortsSchema::likes();
+		$comments = ShortsSchema::comments();
+		$follows  = ShortsSchema::follows();
+
+		$rows = array();
+
+		$followers = $wpdb->get_results(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT follower_id AS actor_id, created_at, 0 AS short_id, '' AS body
+				 FROM {$follows}
+				 WHERE target_id = %d AND follower_id <> %d
+				 ORDER BY created_at DESC, id DESC
+				 LIMIT %d",
+				$user_id,
+				$user_id,
+				$limit
+			),
+			ARRAY_A
+		);
+
+		foreach ( is_array( $followers ) ? $followers : array() as $row ) {
+			$row['kind'] = 'follow';
+			$rows[]      = $row;
+		}
+
+		$liked = $wpdb->get_results(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT l.user_id AS actor_id, l.created_at, l.short_id, '' AS body
+				 FROM {$likes} l
+				 INNER JOIN {$shorts} s ON s.id = l.short_id
+				 WHERE s.user_id = %d AND l.user_id <> %d
+				 ORDER BY l.created_at DESC, l.id DESC
+				 LIMIT %d",
+				$user_id,
+				$user_id,
+				$limit
+			),
+			ARRAY_A
+		);
+
+		foreach ( is_array( $liked ) ? $liked : array() as $row ) {
+			$row['kind'] = 'like';
+			$rows[]      = $row;
+		}
+
+		$said = $wpdb->get_results(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT c.user_id AS actor_id, c.created_at, c.short_id, c.body
+				 FROM {$comments} c
+				 INNER JOIN {$shorts} s ON s.id = c.short_id
+				 WHERE s.user_id = %d AND c.user_id <> %d
+				 ORDER BY c.created_at DESC, c.id DESC
+				 LIMIT %d",
+				$user_id,
+				$user_id,
+				$limit
+			),
+			ARRAY_A
+		);
+
+		foreach ( is_array( $said ) ? $said : array() as $row ) {
+			$row['kind'] = 'comment';
+			$rows[]      = $row;
+		}
+
+		// Merged here rather than in a UNION: three small indexed reads beat
+		// one query the planner has to sort across three tables, and this is
+		// at most a hundred and twenty rows in memory.
+		usort(
+			$rows,
+			static fn( array $a, array $b ): int => strcmp( (string) $b['created_at'], (string) $a['created_at'] )
+		);
+
+		return array_slice( $rows, 0, $limit );
 	}
 
 	/* ── Statistics ──────────────────────────────────────────────────── */

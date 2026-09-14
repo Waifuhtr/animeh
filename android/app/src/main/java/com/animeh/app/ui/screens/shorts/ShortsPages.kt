@@ -28,6 +28,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -36,6 +37,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.animeh.app.R
 import com.animeh.app.data.remote.dto.ShortDto
+import com.animeh.app.data.remote.dto.ShortNotificationDto
 import com.animeh.app.data.remote.dto.ShortStatsDto
 import com.animeh.app.data.repository.ShortsRepository
 import com.animeh.app.ui.components.EmptyState
@@ -103,6 +105,7 @@ fun ShortSoundScreen(
 fun ShortCreatorScreen(
     onBack: () -> Unit,
     onOpenShort: (Long) -> Unit,
+    onEditProfile: () -> Unit,
     viewModel: ShortCreatorViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -115,7 +118,7 @@ fun ShortCreatorScreen(
         onRetry = viewModel::load,
         onLoadMore = viewModel::loadMore,
     ) {
-        CreatorHeader(state = state, onFollow = viewModel::toggleFollow)
+        CreatorHeader(state = state, onFollow = viewModel::toggleFollow, onEdit = onEditProfile)
     }
 }
 
@@ -282,7 +285,9 @@ private fun PageHeader(
 }
 
 @Composable
-private fun CreatorHeader(state: ShortGridState, onFollow: () -> Unit) {
+private fun CreatorHeader(state: ShortGridState, onFollow: () -> Unit, onEdit: () -> Unit) {
+    val uriHandler = LocalUriHandler.current
+
     Column(
         Modifier.fillMaxWidth().padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -299,22 +304,58 @@ private fun CreatorHeader(state: ShortGridState, onFollow: () -> Unit) {
         Text(state.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
         Text(state.subtitle, style = MaterialTheme.typography.bodySmall, color = TextSecondary)
 
+        state.creator?.bio?.takeIf { it.isNotBlank() }?.let { bio ->
+            Spacer(Modifier.height(10.dp))
+            Text(
+                bio,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(horizontal = 8.dp),
+            )
+        }
+
+        state.creator?.link?.takeIf { it.isNotBlank() }?.let { link ->
+            Spacer(Modifier.height(6.dp))
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Link, null, tint = AccentPrimary, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(
+                    // Without the scheme, which nobody reads and which is the
+                    // half most likely to push a real address off the line.
+                    link.substringAfter("://"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = AccentPrimary,
+                    maxLines = 1,
+                    // The server keeps only http and https, so this can never
+                    // open something that is not a page.
+                    modifier = Modifier.clickable { runCatching { uriHandler.openUri(link) } },
+                )
+            }
+        }
+
         Spacer(Modifier.height(14.dp))
 
         state.stats?.let { StatRow(it) }
 
         Spacer(Modifier.height(14.dp))
 
-        // Nobody follows themselves, so the button is simply not there.
-        if (!state.isSelf) {
-            if (state.following) {
-                OutlinedButton(onClick = onFollow) {
-                    Text(stringResource(R.string.tok_unfollow))
-                }
-            } else {
-                Button(onClick = onFollow) {
-                    Text(stringResource(R.string.tok_follow))
-                }
+        // Nobody follows themselves, so on your own page the button is the one
+        // thing you can do here that somebody else cannot.
+        if (state.isSelf) {
+            OutlinedButton(onClick = onEdit) {
+                Icon(Icons.Filled.Edit, null, Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.tok_profile_edit))
+            }
+        } else if (state.following) {
+            OutlinedButton(onClick = onFollow) {
+                Text(stringResource(R.string.tok_unfollow))
+            }
+        } else {
+            Button(onClick = onFollow) {
+                Text(stringResource(R.string.tok_follow))
             }
         }
     }
@@ -859,6 +900,193 @@ private fun clock(ms: Long): String {
     return "${total / 60}:${(total % 60).toString().padStart(2, '0')}"
 }
 
+/* ── The bell ────────────────────────────────────────────────────────── */
+
+/**
+ * Who followed you, who liked something, who said something.
+ *
+ * Opening it is what marks it read, so there is nothing to tap to clear the
+ * badge: looking at the list is the whole of the gesture.
+ */
+@Composable
+fun ShortNotificationsScreen(
+    onBack: () -> Unit,
+    onOpenCreator: (Long) -> Unit,
+    viewModel: ShortNotificationsViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.loading) {
+        if (!state.loading) viewModel.markSeen()
+    }
+
+    LaunchedEffect(state.message) {
+        state.message?.let {
+            snackbar.showSnackbar(it)
+            viewModel.messageShown()
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.tok_notifications)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        Box(Modifier.padding(padding).fillMaxSize()) {
+            when {
+                state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+
+                state.items.isEmpty() -> EmptyState(
+                    message = stringResource(R.string.tok_notifications_empty),
+                    modifier = Modifier.fillMaxSize(),
+                )
+
+                else -> LazyColumn(Modifier.fillMaxSize()) {
+                    items(state.items, key = { "${it.kind}-${it.actor.id}-${it.shortId}-${it.createdAt}" }) { note ->
+                        NotificationRow(note = note, onClick = { onOpenCreator(note.actor.id) })
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationRow(note: ShortNotificationDto, onClick: () -> Unit) {
+    val who = note.actor.displayName.ifBlank { note.actor.username }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            // Unread is a wash rather than a dot: the whole row reads as new,
+            // and there is nothing extra to find with a thumb.
+            .background(if (note.unread) SurfaceOverlay else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        AsyncImage(
+            model = note.actor.avatar,
+            contentDescription = who,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(42.dp).clip(CircleShape).background(SurfaceOverlay),
+        )
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(
+                    when (note.kind) {
+                        ShortsRepository.NOTE_FOLLOW -> R.string.tok_note_follow
+                        ShortsRepository.NOTE_LIKE -> R.string.tok_note_like
+                        else -> R.string.tok_note_comment
+                    },
+                    who,
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+
+            if (note.body.isNotBlank()) {
+                Text(
+                    note.body,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary,
+                    maxLines = 2,
+                )
+            }
+        }
+
+        if (note.unread) {
+            Box(Modifier.size(8.dp).clip(CircleShape).background(AccentPrimary))
+        }
+    }
+}
+
+/* ── Editing your own AnimehTok profile ──────────────────────────────── */
+
+@Composable
+fun ShortProfileScreen(
+    onBack: () -> Unit,
+    viewModel: ShortProfileViewModel = hiltViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycle()
+    val snackbar = remember { SnackbarHostState() }
+
+    LaunchedEffect(state.saved) { if (state.saved) onBack() }
+
+    LaunchedEffect(state.message) {
+        state.message?.let {
+            snackbar.showSnackbar(it)
+            viewModel.messageShown()
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbar) },
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.tok_profile_edit)) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
+                    }
+                },
+            )
+        },
+    ) { padding ->
+        if (state.loading) {
+            Box(Modifier.padding(padding).fillMaxSize(), Alignment.Center) {
+                CircularProgressIndicator()
+            }
+
+            return@Scaffold
+        }
+
+        Column(
+            Modifier.padding(padding).fillMaxSize().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            OutlinedTextField(
+                value = state.bio,
+                onValueChange = viewModel::setBio,
+                label = { Text(stringResource(R.string.tok_profile_bio)) },
+                supportingText = { Text("${state.bio.length} / 300") },
+                minLines = 4,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            OutlinedTextField(
+                value = state.link,
+                onValueChange = viewModel::setLink,
+                label = { Text(stringResource(R.string.tok_profile_link)) },
+                supportingText = { Text(stringResource(R.string.tok_profile_link_hint)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Button(
+                onClick = viewModel::save,
+                enabled = !state.saving,
+                modifier = Modifier.fillMaxWidth().height(50.dp),
+            ) {
+                Text(stringResource(R.string.save))
+            }
+        }
+    }
+}
+
 /* ── The profile block ───────────────────────────────────────────────── */
 
 /**
@@ -872,6 +1100,7 @@ private fun clock(ms: Long): String {
 fun ShortsProfileCard(
     onOpenFeed: () -> Unit,
     onOpenMine: () -> Unit,
+    onEditProfile: () -> Unit,
     viewModel: ShortMineViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -890,6 +1119,17 @@ fun ShortsProfileCard(
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
+                // The AnimehTok profile is edited from the AnimehTok card, not
+                // from the account's own settings: what somebody writes for a
+                // short-video audience is a separate thing from their account.
+                IconButton(onClick = onEditProfile, modifier = Modifier.size(34.dp)) {
+                    Icon(
+                        Icons.Filled.Edit,
+                        stringResource(R.string.tok_profile_edit),
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+
                 TextButton(onClick = onOpenFeed) { Text(stringResource(R.string.tok_for_you)) }
             }
 

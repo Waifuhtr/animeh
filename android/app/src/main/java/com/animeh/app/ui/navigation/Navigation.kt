@@ -62,6 +62,8 @@ object Routes {
     const val SHORTS = "shorts"
     const val SHORTS_UPLOAD = "shorts/upload"
     const val SHORTS_SEARCH = "shorts/search"
+    const val SHORTS_NOTIFICATIONS = "shorts/notifications"
+    const val SHORTS_PROFILE = "shorts/profile"
 
     private const val SHORTS_TAG_BASE = "shorts/tag"
     const val SHORTS_TAG = "$SHORTS_TAG_BASE/{tag}"

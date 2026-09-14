@@ -429,6 +429,80 @@ Artık sebep ekranda, **HTTP kodu dahil**, ve yanında tekrar deneme var.
 
 ---
 
+## 6.11 Paylaşmanın yavaşlığı
+
+Yükleme parça boyutu 32 MB. İki gigabaytlık bir bölüm için doğru sayı — uzun
+bir yüklemeyi on bin parça tavanının altında tutuyor. Bir kısa video için
+**bütün dosyayı tek parça** yapıyordu: tek bir PUT, tek bağlantı, ve sıfırda
+duran sonra bir anda dolan bir çubuk. Bir telefonun yükleme hattı tek
+bağlantının taşıyabileceği kadar değil, ve tek bir parçanın paralelleştirilecek
+hiçbir yanı yok.
+
+Üç yerden düzeltildi:
+
+* **Sunucu** — `B2Client::part_size()` çağıranın istediği boyutu kabul ediyor,
+  iki uçtan da sınırlayarak: S3 son parça dışında beş megabaytın altını
+  reddeder, ve parça sayısı istenen ne olursa olsun protokol tavanının altında
+  tutulur. AnimehTok beş megabayt istiyor.
+* **Uygulama** — parçalar artık **dörder dörder** gidiyor. Okuma tek iş
+  parçacığında ve sırayla kalıyor (bir içerik sağlayıcısının konumlanabilir
+  olması gerekmiyor, ve disk zaten yavaş taraf değil); her parça boşta olan
+  yükleyiciye veriliyor. Bellek, havada olan parça kadar: üretici okumadan
+  önce yer bekliyor.
+* **Sıkıştırma atlanabiliyor** — yeniden kodlamanın amacı piksel değil,
+  saniye başına bayt. Zaten hafif bir dosyayı yeniden kodlamak yükleyenin bir
+  dakikasına ve bir nesil kaliteye mal olur, karşılığında hiçbir şey vermez.
+  Ölçülen bit hızı üç megabitin altındaysa dosya olduğu gibi gidiyor.
+
+Bir yan fayda: altı parça, çubuğu altı kez ilerletiyor — öncekinden beş fazla.
+
+---
+
+## 6.12 Keşfet ne öneriyor
+
+İstenen kural tekti: **bir video ne kadar çok izleniyorsa o kadar çok
+önerilsin.** Sıralama artık üç kademe:
+
+1. **Görülmemişler önce.** Kaydırıp geçtiğin bir video yarın yeniden karşına
+   çıkmıyor.
+2. **Son üç günün videoları önce.** Yalnızca popülerliğe göre sıralanmış bir
+   akış, hiçbir yeni şeyin popüler olamayacağı bir akıştır — çünkü hiçbir yeni
+   şey gösterilmez. İlk yükleme ancak bu pencere sayesinde görülüyor.
+3. **Sonra puan:** `izlenme + beğeni × 4 + kaydetme × 6 + yorum × 8`.
+
+İzlenme ilk sırada çünkü sorulan soru o. Diğerleri bir izlenmeden ağır, çünkü
+vermesi daha pahalı: bir izlenme kıpırdamayan bir parmak, bir beğeni bir karar,
+bir yorum bir cümle.
+
+Doğrusal ve açık yazılmış, logaritma değil: bu kodun çalıştığı her veritabanı
+toplama yapabiliyor, ve okunabilen bir formül itiraz edilebilen bir formüldür.
+
+---
+
+## 6.13 Çan ve profil
+
+**Çan türetilmiş, saklanmıyor.** Bir bildirim tablosu her takip, beğeni ve
+yorumda bir yazma, her geri almada bir yazma daha isterdi — ve bir yol onu
+güncellemeyi ilk unuttuğunda sessizce yanlışa düşerdi. Cevabı veren satırlar
+zaten burada, her biri ne zaman olduğunu üstünde taşıyarak. Üç okuma ve bir
+sıralama, doğruluğu kanıtlanamayan bir tablodan ucuz.
+
+Okundu durumu tek bir zaman damgası: çanın en son ne zaman açıldığı,
+kullanıcı meta'sında. Satır başına tutulacak bir şey yok, ve liste açıkken
+gelen bir bildirim işaretten yeni olduğu için okunmamış kalıyor.
+
+**Profil kendi profili.** Birinin kısa video izleyicisi için yazdığı şey anime
+tarafı için yazdığı şey değil, ve ikisi birbirinin üstüne yazmamalı — bu yüzden
+bio ve bağlantı AnimehTok'a ait iki ayrı meta alanında.
+
+Bağlantı tek dikkat isteyen yer: yabancılara gösteriliyor ve bir kısmı ona
+dokunuyor. Yalnızca `http` ve `https` hayatta kalıyor — bir profil alanındaki
+`javascript:` bir profil alanının saldırıya dönüşme şekli — ve URL olmayan bir
+şey metin olarak saklanmak yerine hiç saklanmıyor. Çıplak bir alan adı
+tamamlanıyor, çünkü insanların yazdığı şey o.
+
+---
+
 ## 7. REST yüzeyi
 
 Namespace `animeh/v1`. **Her rotada gerçek bir `permission_callback`.**
@@ -537,6 +611,14 @@ Kendi videonu beğenmen bildirim üretmiyor.
   gösteremezdi.
 - **`ShortsController` rota kaydı** — kırk küsur rota artık duman koşusunda
   gerçekten kaydediliyor; listede hiç yokmuş.
+- **Öneri sıralaması** — 2 SQL kontrolü gerçek satırlarla: aynı yaştaki iki
+  videodan izleneni öne geçiyor, ve bugün yüklenen bir video eski bir hitin
+  arkasında kalmıyor. Skoru ve tazelik penceresini ayrı ayrı kaldırarak
+  düşürüldü.
+- **Profil bağlantısı** — `javascript:`, `intent:`, `data:` ve `ftp:` şemaları
+  boşa düşüyor; çıplak alan adı tamamlanıyor.
+- **Çan** — üç tabloyu da sorduğu ve kendi eylemlerini dışarıda bıraktığı
+  kontrol ediliyor.
 - **Ekrana yerleşme tercihi** — iki duman adımı: `fit_mode` akışa geçiyor, ve
   tanımadığı bir değer (`''`, `zoom`, `crop`, `FILL`) kırpmayan moda düşüyor.
   İkisi de hatayı geri koyarak düşürüldü.

@@ -81,10 +81,12 @@ class ShortsCompressor @Inject constructor(
         source: Uri,
         widthPx: Int,
         heightPx: Int,
+        sizeBytes: Long = 0,
+        durationMs: Long = 0,
         trim: ShortTrim? = null,
         onProgress: (Float) -> Unit = {},
     ): File? {
-        val height = targetHeight(widthPx, heightPx)
+        val height = if (thin(sizeBytes, durationMs)) null else targetHeight(widthPx, heightPx)
 
         // Nothing to scale and nothing to cut: the picked file is already the
         // one to send, and a re-encode would cost battery and quality for it.
@@ -106,6 +108,25 @@ class ShortsCompressor @Inject constructor(
         }
 
         return target
+    }
+
+    /**
+     * Whether the file is already light enough to leave alone.
+     *
+     * The point of the re-encode is bytes per second of video, not pixels: a
+     * 1080p clip somebody has already compressed is a smaller download than a
+     * 720p one straight off a camera. When a file is already under the bitrate
+     * the re-encode would aim for, running it costs a minute of the uploader's
+     * time and a generation of quality and gives back nothing — and waiting is
+     * the thing they actually complained about.
+     *
+     * Unknown numbers mean no: a file that would not say how big or how long
+     * it is gets re-encoded rather than trusted.
+     */
+    private fun thin(sizeBytes: Long, durationMs: Long): Boolean {
+        if (sizeBytes <= 0 || durationMs <= 0) return false
+
+        return sizeBytes * 8_000 / durationMs <= LIGHT_ENOUGH_BPS
     }
 
     /**
@@ -280,6 +301,15 @@ class ShortsCompressor @Inject constructor(
          * larger than the video it stands in for.
          */
         const val MAX_SHORT_EDGE = 720
+
+        /**
+         * Bitrate at or under which a file is already fine, in bits/second.
+         *
+         * Three megabits. A 720p short re-encodes to roughly two, so a file
+         * already this light has nothing left to give — and the seconds spent
+         * proving that are seconds the uploader spends staring at a bar.
+         */
+        private const val LIGHT_ENOUGH_BPS = 3_000_000L
 
         internal const val WORKSPACE = "animehtok-upload"
 

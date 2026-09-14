@@ -1324,6 +1324,62 @@ step(
 	}
 );
 
+step(
+	'profil bağlantısı yalnızca http ve https kabul ediyor',
+	static function (): void {
+		// A profile link is shown to strangers and tapped by some of them, so
+		// a scheme that runs something instead of opening a page is the whole
+		// risk this field carries.
+		foreach ( array( 'javascript:alert(1)', 'JavaScript:alert(1)', 'intent://x', 'data:text/html,x', 'ftp://a.b' ) as $bad ) {
+			if ( '' !== ShortsController::safe_link( $bad ) ) {
+				throw new RuntimeException( 'geçmemeliydi: ' . $bad );
+			}
+		}
+
+		// And what people actually type: a bare domain is a URL they meant.
+		$want = array(
+			'animeh.app'           => 'https://animeh.app',
+			'https://animeh.app/x' => 'https://animeh.app/x',
+			'   '                  => '',
+		);
+
+		foreach ( $want as $typed => $stored ) {
+			$got = ShortsController::safe_link( (string) $typed );
+
+			if ( $stored !== $got ) {
+				throw new RuntimeException( "'" . $typed . "' → '" . $got . "'" );
+			}
+		}
+	}
+);
+
+step(
+	'çan yalnızca başkalarının yaptıklarını gösteriyor',
+	static function () use ( $wpdb ): void {
+		// Derived from the follow, like and comment tables rather than stored,
+		// so the one thing to prove is that your own actions stay out of it:
+		// nobody needs telling they liked their own video.
+		$wpdb->queries      = array();
+		$GLOBALS['__viewer'] = 7;
+
+		( new ShortsController() )->notifications();
+
+		$GLOBALS['__viewer'] = 0;
+
+		$asked = implode( "\n", array_map( 'strval', $wpdb->queries ) );
+
+		foreach ( array( 'animeh_short_follows', 'animeh_short_likes', 'animeh_short_comments' ) as $table ) {
+			if ( ! str_contains( $asked, $table ) ) {
+				throw new RuntimeException( 'sorulmayan tablo: ' . $table );
+			}
+		}
+
+		if ( ! str_contains( $asked, '<>' ) ) {
+			throw new RuntimeException( 'kendi eylemleri dışarıda bırakılmıyor' );
+		}
+	}
+);
+
 echo "\n" . $passed . '/' . ( $passed + $failures ) . " kontrol geçti\n";
 
 exit( $failures > 0 ? 1 : 0 );

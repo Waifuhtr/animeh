@@ -9,6 +9,7 @@ import com.animeh.app.core.AppResult
 import com.animeh.app.core.explain
 import com.animeh.app.data.remote.dto.ShortCreatorDto
 import com.animeh.app.data.remote.dto.ShortDto
+import com.animeh.app.data.remote.dto.ShortNotificationDto
 import com.animeh.app.data.remote.dto.ShortSearchDto
 import com.animeh.app.data.remote.dto.ShortStatsDto
 import com.animeh.app.data.remote.dto.ShortTagDto
@@ -552,6 +553,150 @@ class ShortUploadViewModel @Inject constructor(
     }
 
     fun messageShown() = _state.update { it.copy(message = null) }
+}
+
+/* ── The bell ────────────────────────────────────────────────────────── */
+
+@Immutable
+data class ShortNotificationsState(
+    val items: List<ShortNotificationDto> = emptyList(),
+    val unread: Int = 0,
+    val loading: Boolean = true,
+    val message: String? = null,
+)
+
+/**
+ * Who followed you, who liked something, who said something.
+ *
+ * The count is asked for on its own so the bell can carry a badge without the
+ * list being open; opening the list is what marks it read.
+ */
+@HiltViewModel
+class ShortNotificationsViewModel @Inject constructor(
+    private val repository: ShortsRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(ShortNotificationsState())
+    val state: StateFlow<ShortNotificationsState> = _state.asStateFlow()
+
+    init {
+        load()
+    }
+
+    fun load() {
+        _state.update { it.copy(loading = true) }
+
+        viewModelScope.launch {
+            when (val result = repository.notifications()) {
+                is AppResult.Success -> _state.update {
+                    it.copy(items = result.data.items, unread = result.data.unread, loading = false)
+                }
+
+                is AppResult.Failure -> _state.update {
+                    it.copy(loading = false, message = result.error.explain())
+                }
+            }
+        }
+    }
+
+    /**
+     * Mark everything read.
+     *
+     * The badge is cleared here rather than waiting for the server to agree:
+     * the list is on screen, so it has been read whatever the network says,
+     * and a badge that lingers after you looked is worse than one that clears
+     * a moment early.
+     */
+    fun markSeen() {
+        if (_state.value.unread == 0) return
+
+        _state.update { it.copy(unread = 0) }
+
+        viewModelScope.launch { repository.notificationsSeen() }
+    }
+
+    fun messageShown() = _state.update { it.copy(message = null) }
+}
+
+/* ── This account's AnimehTok profile ────────────────────────────────── */
+
+@Immutable
+data class ShortProfileState(
+    val bio: String = "",
+    val link: String = "",
+    val loading: Boolean = true,
+    val saving: Boolean = false,
+    val saved: Boolean = false,
+    val message: String? = null,
+)
+
+/**
+ * The bio and the link under it.
+ *
+ * Its own profile, kept apart from the account's: what somebody writes for a
+ * short-video audience is not what they wrote for the anime side, and neither
+ * should overwrite the other.
+ */
+@HiltViewModel
+class ShortProfileViewModel @Inject constructor(
+    private val repository: ShortsRepository,
+) : ViewModel() {
+
+    private val _state = MutableStateFlow(ShortProfileState())
+    val state: StateFlow<ShortProfileState> = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            when (val result = repository.profile()) {
+                is AppResult.Success -> _state.update {
+                    it.copy(bio = result.data.bio, link = result.data.link, loading = false)
+                }
+
+                is AppResult.Failure -> _state.update {
+                    it.copy(loading = false, message = result.error.explain())
+                }
+            }
+        }
+    }
+
+    fun setBio(value: String) = _state.update { it.copy(bio = value.take(MAX_BIO)) }
+
+    fun setLink(value: String) = _state.update { it.copy(link = value.trim().take(MAX_LINK)) }
+
+    fun save() {
+        val current = _state.value
+        if (current.saving) return
+
+        _state.update { it.copy(saving = true) }
+
+        viewModelScope.launch {
+            when (val result = repository.saveProfile(current.bio, current.link)) {
+                // Read back from what the server kept, not from what was
+                // typed: a link it refused has to disappear from the field
+                // rather than sit there looking saved.
+                is AppResult.Success -> _state.update {
+                    it.copy(
+                        bio = result.data.bio,
+                        link = result.data.link,
+                        saving = false,
+                        saved = true,
+                    )
+                }
+
+                is AppResult.Failure -> _state.update {
+                    it.copy(saving = false, message = result.error.explain())
+                }
+            }
+        }
+    }
+
+    fun messageShown() = _state.update { it.copy(message = null) }
+
+    private companion object {
+        /** The same ceilings the server keeps, so nothing is typed to be cut. */
+        const val MAX_BIO = 300
+        const val MAX_LINK = 300
+    }
 }
 
 /* ── The profile's AnimehTok block ───────────────────────────────────── */

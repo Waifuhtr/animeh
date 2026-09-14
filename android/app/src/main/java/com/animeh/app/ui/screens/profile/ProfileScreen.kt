@@ -45,6 +45,7 @@ fun ProfileScreen(
     onFrameShop: () -> Unit = {},
     onLeaderboard: () -> Unit = {},
     onShorts: () -> Unit = {},
+    onEditTokProfile: () -> Unit = {},
     viewModel: ProfileViewModel = hiltViewModel(),
 ) {
     val user = authState.user
@@ -169,7 +170,7 @@ fun ProfileScreen(
             // in the one above: a short is not an episode, scrolling is not
             // watch time, and none of it is worth a point — so putting these
             // beside "izlenen bölüm" would be saying the opposite.
-            ShortsProfileCard(onOpenFeed = onShorts, onOpenMine = onShorts)
+            ShortsProfileCard(onOpenFeed = onShorts, onOpenMine = onShorts, onEditProfile = onEditTokProfile)
         }
 
         stats?.let { current ->

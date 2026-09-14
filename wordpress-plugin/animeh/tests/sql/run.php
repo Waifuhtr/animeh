@@ -304,6 +304,110 @@ step(
 	}
 );
 
+step(
+	'çok izlenen video keşfette öne geçiyor',
+	static function () use ( $repo, $sql ): void {
+		// What was asked for, in one check: between two videos of the same age,
+		// the one people watched is the one offered next.
+		$quiet = $repo->create(
+			array(
+				'user_id'     => 11,
+				'slug'        => 'sessiz',
+				'description' => 'kimse izlemedi',
+				'storage_key' => 'animehtok/k11/sessiz.mp4',
+				'sound_id'    => 0,
+				'published'   => true,
+			)
+		);
+
+		$loud = $repo->create(
+			array(
+				'user_id'     => 11,
+				'slug'        => 'izlenen',
+				'description' => 'herkes izledi',
+				'storage_key' => 'animehtok/k11/izlenen.mp4',
+				'sound_id'    => 0,
+				'published'   => true,
+			)
+		);
+
+		// Both written this second, so age cannot be what decides it. The
+		// quiet one is the *newer* row, which is what the old ordering would
+		// have put first.
+		$sql->query( 'UPDATE ' . ShortsSchema::shorts() . ' SET view_count = 400 WHERE id = ' . (int) $loud );
+
+		$order = array_map(
+			static fn( array $row ): int => (int) $row['id'],
+			$repo->for_you( 0, 30, 0 )
+		);
+
+		$louder = array_search( (int) $loud, $order, true );
+		$quieter = array_search( (int) $quiet, $order, true );
+
+		if ( false === $louder || false === $quieter || $louder > $quieter ) {
+			throw new RuntimeException( 'izlenen video öne geçmedi: ' . implode( ',', $order ) );
+		}
+
+		$repo->delete( (int) $loud );
+		$repo->delete( (int) $quiet );
+	}
+);
+
+step(
+	'yeni video eski bir hitin arkasında kalmıyor',
+	static function () use ( $repo, $sql ): void {
+		// The other half of the bargain. A feed sorted only by how watched
+		// something is, is a feed where nothing new can ever become watched,
+		// because nothing new is ever shown.
+		$hit = $repo->create(
+			array(
+				'user_id'     => 12,
+				'slug'        => 'eski-hit',
+				'description' => 'eski ama çok izlenmiş',
+				'storage_key' => 'animehtok/k12/eski-hit.mp4',
+				'sound_id'    => 0,
+				'published'   => true,
+			)
+		);
+
+		$sql->query(
+			'UPDATE ' . ShortsSchema::shorts() .
+			" SET view_count = 100000, created_at = '2020-01-01 00:00:00' WHERE id = " . (int) $hit
+		);
+
+		$today = $repo->create(
+			array(
+				'user_id'     => 12,
+				'slug'        => 'bugun',
+				'description' => 'bugün yüklendi',
+				'storage_key' => 'animehtok/k12/bugun.mp4',
+				'sound_id'    => 0,
+				'published'   => true,
+			)
+		);
+
+		// An hour ago rather than this second: written now, `created_at >= now`
+		// is true even with no window at all, and the check would pass on the
+		// clock rather than on the rule.
+		$sql->query(
+			'UPDATE ' . ShortsSchema::shorts() .
+			" SET created_at = '" . gmdate( 'Y-m-d H:i:s', time() - 3600 ) . "' WHERE id = " . (int) $today
+		);
+
+		$order = array_map(
+			static fn( array $row ): int => (int) $row['id'],
+			$repo->for_you( 0, 30, 0 )
+		);
+
+		if ( array_search( (int) $today, $order, true ) > array_search( (int) $hit, $order, true ) ) {
+			throw new RuntimeException( 'yeni video eski hitin arkasında kaldı' );
+		}
+
+		$repo->delete( (int) $hit );
+		$repo->delete( (int) $today );
+	}
+);
+
 echo "\n" . $passed . '/' . ( $passed + $failures ) . " kontrol geçti\n";
 
 exit( $failures > 0 ? 1 : 0 );

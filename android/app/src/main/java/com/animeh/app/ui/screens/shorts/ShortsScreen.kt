@@ -71,7 +71,9 @@ fun ShortsScreen(
     onOpenCreator: (Long) -> Unit,
     onUpload: () -> Unit,
     onSearch: () -> Unit,
+    onNotifications: () -> Unit,
     viewModel: ShortsViewModel = hiltViewModel(),
+    bell: ShortNotificationsViewModel = hiltViewModel(),
 ) {
     // The app's own client, so media reuses the pool and the TLS session the
     // feed request itself just opened rather than starting from nothing.
@@ -214,6 +216,8 @@ fun ShortsScreen(
                 onBack = onBack,
                 onSearch = onSearch,
                 onUpload = onUpload,
+                onNotifications = onNotifications,
+                unread = bell.state.collectAsStateWithLifecycle().value.unread,
                 modifier = Modifier.align(Alignment.TopCenter).padding(top = padding.calculateTopPadding()),
             )
         }
@@ -241,6 +245,8 @@ private fun TopBar(
     onBack: () -> Unit,
     onSearch: () -> Unit,
     onUpload: () -> Unit,
+    onNotifications: () -> Unit,
+    unread: Int,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -274,6 +280,32 @@ private fun TopBar(
         }
         IconButton(onClick = onUpload) {
             Icon(Icons.Filled.AddCircleOutline, stringResource(R.string.tok_upload), tint = Color.White)
+        }
+
+        // The bell, with what is waiting behind it. The count is asked for
+        // whether or not the list has ever been opened, which is the only way
+        // a badge is a reason to open it.
+        Box(contentAlignment = Alignment.TopEnd) {
+            IconButton(onClick = onNotifications) {
+                Icon(
+                    Icons.Filled.NotificationsNone,
+                    stringResource(R.string.tok_notifications),
+                    tint = Color.White,
+                )
+            }
+
+            if (unread > 0) {
+                Text(
+                    if (unread > 99) "99+" else unread.toString(),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .padding(top = 4.dp, end = 2.dp)
+                        .background(StatusError, CircleShape)
+                        .padding(horizontal = 5.dp, vertical = 1.dp),
+                )
+            }
         }
     }
 }

@@ -60,6 +60,21 @@ final class ShortsController {
 	 */
 	private const MAX_DESCRIPTION = 2200;
 
+	/** Longest AnimehTok biography, in characters. */
+	private const MAX_BIO = 300;
+
+	/** Longest link, in characters. */
+	private const MAX_LINK = 300;
+
+	/** User meta holding the AnimehTok biography. */
+	private const BIO_META = 'animeh_tok_bio';
+
+	/** User meta holding the link under it. */
+	private const LINK_META = 'animeh_tok_link';
+
+	/** User meta holding when the bell was last opened. */
+	private const SEEN_META = 'animeh_tok_seen_at';
+
 	/**
 	 * Longest comment, in characters.
 	 */
@@ -420,6 +435,47 @@ final class ShortsController {
 			)
 		);
 
+		register_rest_route(
+			$namespace,
+			'/me/shorts/notifications',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'notifications' ),
+				'permission_callback' => $guard,
+			)
+		);
+
+		register_rest_route(
+			$namespace,
+			'/me/shorts/notifications/seen',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'mark_seen' ),
+				'permission_callback' => $guard,
+			)
+		);
+
+		register_rest_route(
+			$namespace,
+			'/me/shorts/profile',
+			array(
+				array(
+					'methods'             => WP_REST_Server::READABLE,
+					'callback'            => array( $this, 'my_profile' ),
+					'permission_callback' => $guard,
+				),
+				array(
+					'methods'             => WP_REST_Server::CREATABLE,
+					'callback'            => array( $this, 'save_profile' ),
+					'permission_callback' => $guard,
+					'args'                => array(
+						'bio'  => array( 'type' => 'string', 'default' => '' ),
+						'link' => array( 'type' => 'string', 'default' => '' ),
+					),
+				),
+			)
+		);
+
 		// Moderation: a moderator can take any video down, and the row and the
 		// stored objects go together.
 		register_rest_route(
@@ -596,10 +652,16 @@ final class ShortsController {
 			(string) pathinfo( (string) $request->get_param( 'filename' ), PATHINFO_EXTENSION )
 		);
 
+		// Small parts on purpose. The default is sized for a two-gigabyte
+		// episode and made a whole short video one part — one PUT on one
+		// connection, which is not a phone's uplink's worth of bandwidth and
+		// cannot be sent in parallel at all. At the S3 minimum a short becomes
+		// several parts, the app sends four at a time, and the bar moves.
 		$result = ( new B2Client( $settings ) )->create_multipart_upload(
 			$key,
 			$size,
-			(string) $request->get_param( 'content_type' )
+			(string) $request->get_param( 'content_type' ),
+			B2Client::MIN_PART_BYTES
 		);
 
 		if ( is_wp_error( $result ) ) {
@@ -1237,6 +1299,116 @@ final class ShortsController {
 		);
 	}
 
+	/**
+	 * The bell: everything somebody else did to you.
+	 *
+	 * `unread` is counted against the moment the bell was last opened, kept in
+	 * user meta. That one timestamp is the whole of the read state: there is
+	 * nothing per-row to keep in step, and a notification that arrives while
+	 * the list is open is simply newer than the mark.
+	 */
+	public function notifications(): WP_REST_Response {
+		$user_id = get_current_user_id();
+		$repo    = new ShortsRepository();
+
+		$rows = $repo->notifications( $user_id );
+		$seen = (string) get_user_meta( $user_id, self::SEEN_META, true );
+
+		$people = array();
+		$unread = 0;
+		$items  = array();
+
+		foreach ( $rows as $row ) {
+			$actor = (int) $row['actor_id'];
+
+			if ( ! isset( $people[ $actor ] ) ) {
+				$people[ $actor ] = $this->creator_payload( $actor );
+			}
+
+			$at   = (string) $row['created_at'];
+			$fresh = '' === $seen || strcmp( $at, $seen ) > 0;
+
+			if ( $fresh ) {
+				++$unread;
+			}
+
+			$items[] = array(
+				'kind'       => (string) $row['kind'],
+				'actor'      => $people[ $actor ],
+				'short_id'   => (int) $row['short_id'],
+				'body'       => $this->clamp( (string) $row['body'], 140 ),
+				'created_at' => $at,
+				'unread'     => $fresh,
+			);
+		}
+
+		return new WP_REST_Response( array( 'items' => $items, 'unread' => $unread ) );
+	}
+
+	/** Opening the bell is what marks it read. */
+	public function mark_seen(): WP_REST_Response {
+		update_user_meta( get_current_user_id(), self::SEEN_META, current_time( 'mysql', true ) );
+
+		return new WP_REST_Response( array( 'unread' => 0 ) );
+	}
+
+	/** What this account's AnimehTok profile says. */
+	public function my_profile(): WP_REST_Response {
+		return new WP_REST_Response( $this->creator_payload( get_current_user_id() ) );
+	}
+
+	/**
+	 * Change the bio and the link under it.
+	 *
+	 * The link is the part worth being careful about: it is shown to everyone
+	 * who opens the profile and tapped by some of them. Only http and https
+	 * survive — `javascript:` and `intent:` in a profile field are how a
+	 * profile field becomes an attack — and anything that is not a URL at all
+	 * is stored as nothing rather than as text pretending to be one.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 */
+	public function save_profile( WP_REST_Request $request ): WP_REST_Response {
+		$user_id = get_current_user_id();
+
+		$bio = $this->clamp( wp_strip_all_tags( (string) $request->get_param( 'bio' ) ), self::MAX_BIO );
+
+		update_user_meta( $user_id, self::BIO_META, $bio );
+		update_user_meta( $user_id, self::LINK_META, self::safe_link( (string) $request->get_param( 'link' ) ) );
+
+		return new WP_REST_Response( $this->creator_payload( $user_id ) );
+	}
+
+	/**
+	 * A link that can be shown to strangers, or nothing.
+	 *
+	 * @param string $value As typed.
+	 */
+	public static function safe_link( string $value ): string {
+		$value = trim( $value );
+
+		if ( '' === $value ) {
+			return '';
+		}
+
+		// A bare domain is what people type; it is a URL they meant, so it is
+		// completed rather than refused.
+		if ( 1 !== preg_match( '#^[a-z][a-z0-9+.-]*:#i', $value ) ) {
+			$value = 'https://' . ltrim( $value, '/' );
+		}
+
+		$parts = wp_parse_url( $value );
+		$scheme = strtolower( (string) ( $parts['host'] ?? '' ) === '' ? '' : ( $parts['scheme'] ?? '' ) );
+
+		if ( 'http' !== $scheme && 'https' !== $scheme ) {
+			return '';
+		}
+
+		$clean = esc_url_raw( $value, array( 'http', 'https' ) );
+
+		return mb_substr( (string) $clean, 0, self::MAX_LINK, 'UTF-8' );
+	}
+
 	/* ── Moderation ──────────────────────────────────────────────────── */
 
 	/**
@@ -1511,6 +1683,8 @@ final class ShortsController {
 				'username'     => '',
 				'display_name' => __( 'Silinmiş hesap', 'animeh' ),
 				'avatar'       => '',
+				'bio'          => '',
+				'link'         => '',
 			);
 		}
 
@@ -1519,6 +1693,8 @@ final class ShortsController {
 			'username'     => $user->user_login,
 			'display_name' => $user->display_name,
 			'avatar'       => AuthController::avatar_url( $user_id ),
+			'bio'          => (string) get_user_meta( $user_id, self::BIO_META, true ),
+			'link'         => (string) get_user_meta( $user_id, self::LINK_META, true ),
 		);
 	}
 

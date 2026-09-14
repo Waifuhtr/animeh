@@ -407,6 +407,18 @@ interface UserApi {
 
     @GET("me/shorts/stats")
     suspend fun myShortStats(): Response<ShortStatsEnvelopeDto>
+
+    @GET("me/shorts/notifications")
+    suspend fun myShortNotifications(): Response<ShortNotificationListDto>
+
+    @POST("me/shorts/notifications/seen")
+    suspend fun markShortNotificationsSeen(): Response<ShortNotificationListDto>
+
+    @GET("me/shorts/profile")
+    suspend fun myShortProfile(): Response<ShortCreatorDto>
+
+    @POST("me/shorts/profile")
+    suspend fun saveShortProfile(@Body body: ShortProfileRequest): Response<ShortCreatorDto>
 }
 
 interface AdminApi {

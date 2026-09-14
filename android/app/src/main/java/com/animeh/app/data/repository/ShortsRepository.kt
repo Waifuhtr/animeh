@@ -11,13 +11,19 @@ import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.UserApi
 import com.animeh.app.data.remote.dto.*
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.InputStream
 import javax.inject.Inject
 import javax.inject.Named
@@ -89,6 +95,23 @@ class ShortsRepository @Inject constructor(
 
     suspend fun stats(): AppResult<ShortStatsEnvelopeDto> =
         ApiErrorMapper.call { userApi.myShortStats() }
+
+    /* ── The bell ────────────────────────────────────────────────────── */
+
+    suspend fun notifications(): AppResult<ShortNotificationListDto> =
+        ApiErrorMapper.call { userApi.myShortNotifications() }
+
+    /** Opening the bell is what marks it read. */
+    suspend fun notificationsSeen(): AppResult<ShortNotificationListDto> =
+        ApiErrorMapper.call { userApi.markShortNotificationsSeen() }
+
+    /* ── This account's AnimehTok profile ────────────────────────────── */
+
+    suspend fun profile(): AppResult<ShortCreatorDto> =
+        ApiErrorMapper.call { userApi.myShortProfile() }
+
+    suspend fun saveProfile(bio: String, link: String): AppResult<ShortCreatorDto> =
+        ApiErrorMapper.call { userApi.saveShortProfile(ShortProfileRequest(bio, link)) }
 
     /* ── Reacting ────────────────────────────────────────────────────── */
 
@@ -191,7 +214,14 @@ class ShortsRepository @Inject constructor(
         // twenty-five megabits and nothing downstream can make that stream
         // instantly — the bytes are simply there. Best-effort: when it cannot
         // be done, the original goes up exactly as it did before.
-        val shrunk = compressor.shrink(uri, facts.width, facts.height, trim) { fraction ->
+        val shrunk = compressor.shrink(
+            source = uri,
+            widthPx = facts.width,
+            heightPx = facts.height,
+            sizeBytes = facts.sizeBytes,
+            durationMs = facts.durationMs,
+            trim = trim,
+        ) { fraction ->
             onProgress(COMPRESS_SHARE * fraction)
         }
 
@@ -264,43 +294,8 @@ class ShortsRepository @Inject constructor(
             )
         }
 
-        val etags = mutableListOf<UploadedPartDto>()
-
-        try {
-            contentResolver.openInputStream(uri).use { stream ->
-                if (stream == null) {
-                    return@withContext AppResult.Failure(AppError.Storage("dosya açılamadı"))
-                }
-
-                plan.parts.forEachIndexed { index, part ->
-                    val chunk = stream.readChunk(plan.partSize.toInt())
-                    if (chunk.isEmpty()) return@forEachIndexed
-
-                    val response = uploadClient.newCall(
-                        Request.Builder()
-                            .url(part.url)
-                            .put(chunk.toRequestBody(VIDEO_MEDIA_TYPE))
-                            .build()
-                    ).execute()
-
-                    response.use {
-                        if (!it.isSuccessful) {
-                            throw UploadFailed("parça ${part.partNumber}: HTTP ${it.code}")
-                        }
-
-                        val etag = it.header("ETag")
-                            ?: throw UploadFailed("parça ${part.partNumber}: ETag yok")
-
-                        etags += UploadedPartDto(part.partNumber, etag.trim('"'))
-                    }
-
-                    // Compression took the first share of the bar and the
-                    // completion call and cover take the last, so this fills
-                    // what is between rather than running 0 to 1 twice.
-                    val sent = (index + 1).toFloat() / plan.parts.size
-                    onProgress(COMPRESS_SHARE + (UPLOAD_SHARE * sent))
-                }
-            }
+        val etags = try {
+            sendParts(uri, plan, onProgress)
         } catch (error: Exception) {
             return@withContext AppResult.Failure(
                 AppError.Storage(error.message ?: "yükleme başarısız")
@@ -341,6 +336,112 @@ class ShortsRepository @Inject constructor(
         onProgress(1f)
 
         AppResult.Success(if (withCover is AppResult.Success) withCover.data else short)
+    }
+
+    /**
+     * Put every part in the bucket, several at a time.
+     *
+     * One at a time was the whole problem. A phone's uplink is not one
+     * connection's worth of bandwidth: a single PUT settles at a fraction of
+     * what the link can carry, and with the server handing out one 32 MB part
+     * for a whole short video there was not even a second part to overlap it
+     * with. Four in flight is where a mobile link stops gaining and starts
+     * competing with itself.
+     *
+     * Reading stays sequential and single-threaded. The bytes come off one
+     * stream in order — a content provider need not support seeking, and the
+     * disk is never the slow part — and each part is handed to whichever
+     * uploader is free. Memory is bounded by what is in flight, which is why
+     * the producer waits for a slot rather than reading the file into a list.
+     */
+    private suspend fun sendParts(
+        uri: Uri,
+        plan: ShortUploadPlanDto,
+        onProgress: (Float) -> Unit,
+    ): List<UploadedPartDto> = coroutineScope {
+        val done = java.util.concurrent.atomic.AtomicInteger(0)
+        val slots = Semaphore(UPLOAD_LANES)
+        val sent = mutableListOf<Deferred<UploadedPartDto>>()
+
+        // Opened and closed by hand rather than with `use`: the loop suspends
+        // on the semaphore, and a suspending call inside an inline lambda is
+        // the kind of thing that is legal but not obviously legal. A `finally`
+        // says the same thing with nothing to work out.
+        val stream = contentResolver.openInputStream(uri) ?: throw UploadFailed("dosya açılamadı")
+
+        try {
+            for (part in plan.parts) {
+                // Held before the read, so at most this many parts are ever in
+                // memory at once whatever the file's size.
+                slots.acquire()
+
+                val chunk = try {
+                    stream.readChunk(plan.partSize.toInt())
+                } catch (unreadable: Exception) {
+                    slots.release()
+                    throw unreadable
+                }
+
+                if (chunk.isEmpty()) {
+                    slots.release()
+                    break
+                }
+
+                sent += async(Dispatchers.IO) {
+                    try {
+                        val tag = putPart(part, chunk)
+
+                        // Whole parts rather than bytes: an upload of six parts
+                        // moves the bar six times, which is five more than it
+                        // moved before.
+                        val finished = done.incrementAndGet().toFloat() / plan.parts.size
+                        onProgress(COMPRESS_SHARE + (UPLOAD_SHARE * finished))
+
+                        tag
+                    } finally {
+                        slots.release()
+                    }
+                }
+            }
+        } finally {
+            stream.close()
+        }
+
+        // awaitAll rather than a loop of await: the first failure cancels the
+        // rest instead of leaving three uploads running for an upload that is
+        // already lost.
+        sent.awaitAll()
+    }
+
+    /** One part, retried once, because a dropped connection is not a failure. */
+    private fun putPart(part: UploadPartDto, chunk: ByteArray): UploadedPartDto {
+        var last: Exception? = null
+
+        repeat(PART_ATTEMPTS) {
+            try {
+                uploadClient.newCall(
+                    Request.Builder()
+                        .url(part.url)
+                        .put(chunk.toRequestBody(VIDEO_MEDIA_TYPE))
+                        .build()
+                ).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        throw UploadFailed("parça ${part.partNumber}: HTTP ${response.code}")
+                    }
+
+                    val etag = response.header("ETag")
+                        ?: throw UploadFailed("parça ${part.partNumber}: ETag yok")
+
+                    return UploadedPartDto(part.partNumber, etag.trim('"'))
+                }
+            } catch (dropped: IOException) {
+                // Only the transport is retried. A refused part is refused
+                // again, and trying twice only makes the failure slower.
+                last = dropped
+            }
+        }
+
+        throw last ?: UploadFailed("parça ${part.partNumber}: gönderilemedi")
     }
 
     /**
@@ -497,6 +598,11 @@ class ShortsRepository @Inject constructor(
         const val FIT_ORIGINAL = "original"
         const val FIT_FILL = "fill"
 
+        /** What a notification is. The server decides; these read it. */
+        const val NOTE_FOLLOW = "follow"
+        const val NOTE_LIKE = "like"
+        const val NOTE_COMMENT = "comment"
+
         /** How many videos one feed request brings back. */
         const val FEED_PAGE = 10
 
@@ -518,6 +624,18 @@ class ShortsRepository @Inject constructor(
 
         /** Largest file the server will take. */
         const val MAX_SIZE_BYTES = 300L * 1024 * 1024
+
+        /**
+         * How many parts are in the air at once.
+         *
+         * Four. A phone's uplink saturates somewhere around here; past it the
+         * connections mostly compete with each other, and each one in flight
+         * is another part's worth of bytes held in memory.
+         */
+        private const val UPLOAD_LANES = 4
+
+        /** Tries per part. The second one is for a dropped connection. */
+        private const val PART_ATTEMPTS = 2
 
         private const val COVER_FRAME_US = 1_000_000L
         private const val COVER_QUALITY = 82

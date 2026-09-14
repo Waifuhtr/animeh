@@ -53,6 +53,40 @@ data class ShortCreatorDto(
     val username: String = "",
     @SerialName("display_name") val displayName: String = "",
     val avatar: String = "",
+    /** What they wrote about themselves, on AnimehTok only. */
+    val bio: String = "",
+    /** One link under it. Empty unless the server kept it: http and https only. */
+    val link: String = "",
+)
+
+/**
+ * One thing somebody else did to you.
+ *
+ * Derived on the server from the follow, like and comment tables rather than
+ * stored, so [kind] is the only thing that says which it was.
+ */
+@Serializable
+data class ShortNotificationDto(
+    /** `follow`, `like` or `comment`. See `ShortsRepository.NOTE_*`. */
+    val kind: String = "",
+    val actor: ShortCreatorDto = ShortCreatorDto(),
+    @SerialName("short_id") val shortId: Long = 0,
+    /** The comment itself, when it was one. */
+    val body: String = "",
+    @SerialName("created_at") val createdAt: String = "",
+    @Serializable(with = LenientBoolean::class) val unread: Boolean = false,
+)
+
+@Serializable
+data class ShortNotificationListDto(
+    val items: List<ShortNotificationDto> = emptyList(),
+    val unread: Int = 0,
+)
+
+@Serializable
+data class ShortProfileRequest(
+    val bio: String = "",
+    val link: String = "",
 )
 
 /**

@@ -45,6 +45,8 @@ import com.animeh.app.ui.screens.profile.ProfileScreen
 import com.animeh.app.ui.screens.settings.SettingsScreen
 import com.animeh.app.ui.screens.admin.AdminShortsScreen
 import com.animeh.app.ui.screens.shorts.ShortCreatorScreen
+import com.animeh.app.ui.screens.shorts.ShortNotificationsScreen
+import com.animeh.app.ui.screens.shorts.ShortProfileScreen
 import com.animeh.app.ui.screens.shorts.ShortSearchScreen
 import com.animeh.app.ui.screens.shorts.ShortSoundScreen
 import com.animeh.app.ui.screens.shorts.ShortTagScreen
@@ -242,6 +244,7 @@ fun AnimehApp(
                     onFrameShop = { navController.navigate(Routes.FRAME_SHOP) },
                     onLeaderboard = { navController.navigate(Routes.LEADERBOARD) },
                     onShorts = { navController.navigate(Routes.SHORTS) },
+                    onEditTokProfile = { navController.navigate(Routes.SHORTS_PROFILE) },
                 )
             }
 
@@ -297,7 +300,19 @@ fun AnimehApp(
                     onOpenCreator = { navController.navigate(Routes.shortsCreator(it)) },
                     onUpload = { navController.navigate(Routes.SHORTS_UPLOAD) },
                     onSearch = { navController.navigate(Routes.SHORTS_SEARCH) },
+                    onNotifications = { navController.navigate(Routes.SHORTS_NOTIFICATIONS) },
                 )
+            }
+
+            composable(Routes.SHORTS_NOTIFICATIONS) {
+                ShortNotificationsScreen(
+                    onBack = { navController.popBackStack() },
+                    onOpenCreator = { navController.navigate(Routes.shortsCreator(it)) },
+                )
+            }
+
+            composable(Routes.SHORTS_PROFILE) {
+                ShortProfileScreen(onBack = { navController.popBackStack() })
             }
 
             composable(Routes.SHORTS_UPLOAD) {
@@ -344,6 +359,7 @@ fun AnimehApp(
                 ShortCreatorScreen(
                     onBack = { navController.popBackStack() },
                     onOpenShort = openShort,
+                    onEditProfile = { navController.navigate(Routes.SHORTS_PROFILE) },
                 )
             }
 

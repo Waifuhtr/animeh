@@ -261,10 +261,8 @@ Kısa kenar, yükseklik değil. Telefon videosu dikey, yani yüksekliği uzun
 kenarı: "720 yüksek" istemek 1080×1920'yi **405×720** yapardı — herkesin 720p
 dediği şeyin dörtte bir genişliği, ve gözle görülür bulanık.
 
-Kodlayıcı ayarlarına kasıtlı olarak dokunulmuyor. Media3 bit hızını çıktı
-çözünürlüğünden türetiyor; belirli bir bit hızı istemek, başarısızlığı
-cihaza özel bir dışa aktarma hatası olan ikinci bir API demek. İşi çözünürlük
-yapıyor.
+Bit hızı da artık burada hesaplanıyor. İlk sürüm onu Media3'e bırakıyordu —
+bu yanlıştı ve dosyayı büyüttü; nedeni ve düzeltmesi **§6.17**'de.
 
 Her şey **en iyi çaba**: kodlayıcısı reddeden bir cihaz, beklenmedik bir
 codec, muxer'ın kabul etmediği bir dosya — hepsi orijinali yüklemeye geri
@@ -578,6 +576,85 @@ temizleniyor — yeni liste yeni bir liste.
 
 ---
 
+## 6.17 Sıkıştırmanın dosyayı büyütmesi
+
+50 MB'lık bir video kovaya **116 MB** olarak düştü. Sıkıştırma adımı, tam da
+önlemek için var olduğu şeyi yapmıştı.
+
+### Neden
+
+Media3'ün `DefaultEncoderFactory` sınıfı, bit hızı istenmediğinde onu kendisi
+seçiyor. Tek satır:
+
+```java
+return (int) (width * height * frameRate * 0.07 * 2);
+```
+
+Kush Gauge, hareket katsayısı **2**'ye sabitlenmiş. Aldığı üç şey var: genişlik,
+yükseklik, kare hızı. **Girdi dosyasının bit hızına hiç bakmıyor.** Yani bu bir
+sıkıştırma hedefi değil, bir kalite hedefi: "bu boyutta, bu kare hızında iyi bir
+video şu kadar bit ister". Zaten sıkıştırılmış bir dosya verilirse, ondan
+*daha fazlasını* istemekte hiçbir sakınca görmüyor.
+
+Sayılar tam oturuyor. 1080×1920, **60 fps**, ~2 dakika, 50 MB (≈3.5 Mbps) bir
+kayıt:
+
+| | |
+| --- | --- |
+| Kısa kenar 720'ye kapandı | 720×1280 |
+| Kare hızı olduğu gibi kaldı | 60 fps |
+| Media3'ün istediği | 720 × 1280 × 60 × 0.07 × 2 = **7.74 Mbps** |
+| 120 saniye × 7.74 Mbps | **≈ 116 MB** |
+
+Çözünürlük yarıya indi ama piksel başına bit iki katına çıktı, ve kare hızı
+hiç dokunulmadan 60'ta kaldı. Yarım piksel × iki kat bit × aynı kare sayısı =
+daha büyük dosya.
+
+Belgede duran "işi çözünürlük yapıyor" cümlesi bu yüzden yanlıştı: çözünürlük
+işin yalnızca bir çarpanı, ve kendi başına hiçbir şeyi garanti etmiyor.
+
+### Düzeltme — dört parça
+
+**1. Bit hızını biz hesaplıyoruz.** Aynı formül, hareket katsayısı **2 yerine
+1**. Amacı daha az bayt olan bir yeniden kodlama için dürüst olan sayı bu.
+720×1280 / 30 fps → **1.94 Mbps**. Bu, dokunulmadan bırakma eşiğinin
+(`LIGHT_ENOUGH_BPS` = 3 Mbps) altında; kural şu: *bu adım, dokunmayı
+reddedeceği bir dosyayı üretemez.*
+
+**2. Ayrıca kaynağın kendi bit hızını aşamıyor.** Kesme (trim) yolunda kareler
+yeniden ölçeklenmiyor, yani hesaplanan sayı tam boy için çıkıyor ve zaten
+sıkıştırılmış bir kaynağın *üstüne* oturabiliyordu. Artık istenen değer
+`min(hesaplanan, kaynağın bit hızı)`. Kaynak `MIN_BITRATE`'in de altındaysa
+oraya çekilmiyor — o ağırlıkta izlenebiliyorduysa, yükseltmek bu sınıfın
+engellemek için var olduğu şeyi yapmak olurdu.
+
+**3. Kare hızı 30'a tutuluyor.** `FrameDropEffect` ile; formüldeki kare hızı
+çarpanı doğrusal, yani 60 fps'lik bir kayıt tam iki katını istiyordu. Hedefin
+altındaki bir klibe dokunulmuyor.
+
+**4. Çıktı girdiyle tartılıyor.** Dışa aktarma bitince sonuç orijinalin
+**%90**'ından büyükse atılıyor ve orijinal yükleniyor. Kodlayıcı istenen ayarı
+uygulamak zorunda değil ve her cihazınki farklı — bu yüzden güvenilmiyor,
+ölçülüyor. Kesme istendiğinde uygulanmıyor: orada yeniden kodlama zaten amacın
+kendisi, kesiğin baytlarda olması gerekiyor.
+
+Aynı kayıt, düzeltmeden sonra: 30 fps, 1.94 Mbps, 120 saniye → **≈ 28 MB**.
+50 MB'lık kaynağın yarısından az.
+
+### Geri düşüş
+
+`DefaultEncoderFactory`'nin `setEnableFallback` ayarı varsayılan olarak
+**açık**: istenen ayarları kabul etmeyen bir cihaz hata vermek yerine
+yapabildiğiyle kodluyor. Tümden başarısız olan bir cihaz da zaten orijinali
+yüklemeye düşüyor — yani bu adım var olmadan önceki davranışa.
+
+### Not
+
+Düzeltme yalnızca **bundan sonra** yüklenen videolar için geçerli. Kovadaki
+116 MB'lık dosya kendiliğinden küçülmez; silip yeniden yüklemek gerekiyor.
+
+---
+
 ## 7. REST yüzeyi
 
 Namespace `animeh/v1`. **Her rotada gerçek bir `permission_callback`.**
@@ -719,6 +796,17 @@ Kendi videonu beğenmen bildirim üretmiyor.
   burada denenemez. Küçültme başarısız olursa orijinal yükleniyor — en kötü
   durum bu adımın olmadığı hali. Kesme başarısız olursa yükleme hata veriyor,
   çünkü sessizce kesilmemiş videoyu göndermek daha kötü.
+- **İstenen bit hızının ve 30 fps sınırının gerçekten uygulanması** (§6.17).
+  Dört API'nin imzası media3 **1.5.1** etiketinin kaynağından okundu —
+  `VideoEncoderSettings.Builder.setBitrate(int)`,
+  `FrameDropEffect.createDefaultFrameDropEffect(float)`,
+  `DefaultEncoderFactory.Builder.setRequestedVideoEncoderSettings(...)`,
+  `Transformer.Builder.setEncoderFactory(...)` — ve Media3'ün varsayılan
+  formülü aynı kaynaktan birebir alıntılandı. Ama bir kodlayıcının istenen bit
+  hızını ne kadar tutturduğu cihaza göre değişir ve burada ölçülemez. Bu yüzden
+  sonuç ölçülüyor: çıktı orijinalin %90'ından büyükse atılıyor. Yani en kötü
+  durumda gene bu adımın olmadığı hâle düşülüyor — hata bu kez sessizce
+  büyütmek yerine sessizce dokunmamak oluyor.
 - Kesme çubuğunun ve `fit_mode` çiplerinin ekrandaki görünümü. Compose
   burada derlenemiyor; iki kontrol de projede zaten kullanılan bileşenlerden
   (`RangeSlider` imzası resmi API referansına karşı doğrulandı).

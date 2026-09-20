@@ -92,10 +92,36 @@ Reklam bölümü açıkça **plan** olarak işaretli: bu satırların yazıldı�
 bağlantıdaki yapıda reklam kodu yok. Henüz yapılmamış bir şeyi yapılmış gibi
 yazmak, doğrulama ekibinin ilk kontrolünde düşen türden bir yalandır.
 
-### Kapalı doğuyor
+### Kapalı doğuyor — ve bunu ilk sürüm yanlış yapıyordu
 
 Ayar açılana kadar adres 404 veriyor. Hazır olmayan bir sayfanın
 bulunabilmesindense bulunamaması yeğ.
+
+0.4.7 bunu söylüyordu ama yapmıyordu. Rewrite kuralı, ayar kapalıyken de
+kuruluyordu; `/app` eşleşiyor, işleyici "yayında değil" deyip dönüyor, ve
+WordPress elinde **hiçbir yazıyı adlandırmayan bir sorgu** kalıyordu. WordPress
+o sorgu için ana sayfayı çiziyor. Yani 404 yerine **200 ve sitenin ana
+sayfası** — ki bu, sayfanın yok olduğunu değil bozuk olduğunu düşündürüyor.
+
+0.4.8'de üç yerde düzeltildi:
+
+1. **Kural yalnızca sayfa yayındayken kuruluyor.** Eşleşip sonra çizmeyi
+   reddeden bir kural, hiç olmayan bir kuraldan kötüdür.
+2. **Reddetmek artık gerçek bir 404.** Bir kural ayarın ardından sağ kalırsa
+   (önbellek, ya da yapılmamış bir yenileme) `set_404()` çağrılıp tema kendi
+   404'ünü çiziyor.
+3. **Kaydetmek anında etki ediyor.** Kural kümesi `init` sırasında, kaydetmeden
+   **önceki** ayara göre kuruluyor; kuralı eklemeden yenilemek onu taşımayan
+   bir küme yazardı ve sayfa bir sonraki yüklemeye kadar 404 vermeye devam
+   ederdi.
+
+### Yönetim ekranı artık canlı durumu söylüyor
+
+Ayarın açık olması ile adresin çalışması aynı şey değil: düz bağlantı kullanan
+bir sitede rewrite kuralı hiç çalışmaz, ve bir kural yedekten dönüşte ya da bir
+önbellek eklentisinden sonra kaybolabilir. Ekran ikisini ayrı ayrı gösteriyor
+ve uyuşmadıklarında ne yapılacağını yazıyor — yönlendirmesiz de çalışan
+`?animeh_app_page=1` adresi dahil.
 
 ### Ayarlar — Animeh → Entegrasyonlar
 
@@ -142,7 +168,15 @@ sayılmıyor ve yönetim ekranında söyleniyor.
 - **İletişim adresi** — `javascript:a@b.com`, `bozuk`, `@yok.com`, `a@b`,
   `a b@c.com` kaydedilmiyor; geçerli adres tutuluyor. Eşitlik kontrolünü
   kaldırarak düşürülerek doğrulandı.
-- **Kapalı doğuyor** — ayar yokken `enabled` false.
+- **Kapalı doğuyor** — ayar yokken `enabled` false, ve **kapalıyken hiçbir
+  rewrite kuralı kurulmuyor**. İkincisi 0.4.7'nin gerçek hatasıydı: kuralı
+  koşulsuz kurmaya geri dönerek düşürülerek doğrulandı.
+- **Kaydetmek anında etki ediyor** — kaydettikten sonra saklanan kural kümesi
+  kuralı taşıyor. `add_rule()` çağrısını yenilemeden önce kaldırarak
+  düşürülerek doğrulandı.
+- Duman koşucusunun taklidi artık `add_rewrite_rule` ve `flush_rewrite_rules`
+  sağlıyor; ikincisi gerçeğinin yaptığı gibi **o an kayıtlı olanı** yazıyor,
+  ki yukarıdaki sıralama hatası ancak böyle görülebiliyor.
 - Duman koşucusunun WordPress taklidi artık `is_email` ve `sanitize_email`
   sağlıyor; ikisi de gerçeğinin davranışını taşıyor — `sanitize_email`'in
   reddetmek yerine düzenlemesi dahil, ki yukarıdaki bulgu buradan çıktı.

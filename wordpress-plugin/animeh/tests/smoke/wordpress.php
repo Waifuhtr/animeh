@@ -52,6 +52,25 @@ function sanitize_text_field( $v ) {
 	while ( preg_match( '/%[a-f0-9]{2}/i', $text, $m ) ) { $text = str_replace( $m[0], '', $text ); }
 	return $text;
 }
+function add_rewrite_rule( $pattern, $target, $after = 'bottom' ) {
+	// Recorded rather than applied. What the checks care about is whether a
+	// rule was registered at all, because a rule registered while the page is
+	// switched off is what put the site's home page at its address.
+	$GLOBALS['__rewrites'][ $pattern ] = $target;
+}
+function flush_rewrite_rules( $hard = true ) {
+	$GLOBALS['__flushes'] = ( $GLOBALS['__flushes'] ?? 0 ) + 1;
+
+	// The real one writes out what is currently registered, so the stub does
+	// the same: a flush that happens before the rule is added stores a rule
+	// set without it, which is the bug the save path had.
+	$GLOBALS['__options']['rewrite_rules'] = $GLOBALS['__rewrites'] ?? array();
+}
+function animeh_rewrites_reset() {
+	$GLOBALS['__rewrites'] = array();
+	$GLOBALS['__flushes']  = 0;
+	unset( $GLOBALS['__options']['rewrite_rules'] );
+}
 function sanitize_email( $v ) {
 	// WordPress strips what cannot appear in an address rather than rejecting
 	// outright, and leaves the judgement to is_email().

@@ -1519,6 +1519,58 @@ step(
 	}
 );
 
+step(
+	'kapalı sayfa hiçbir yönlendirme kuralı kurmuyor',
+	static function (): void {
+		// The one that got away. A rule that matches and then declines to
+		// draw leaves WordPress with a query naming no post, and WordPress
+		// draws the front page for that — so the address answered 200 with
+		// the site's home page on it, which reads as broken rather than
+		// absent.
+		animeh_rewrites_reset();
+		unset( $GLOBALS['__options'][ AppPage::OPTION ] );
+
+		AppPage::add_rewrite();
+
+		if ( array() !== $GLOBALS['__rewrites'] ) {
+			throw new RuntimeException( 'kapalıyken kural kuruldu: ' . implode( ', ', array_keys( $GLOBALS['__rewrites'] ) ) );
+		}
+	}
+);
+
+step(
+	'açık sayfa kuralı kuruyor ve bir kez yeniliyor',
+	static function (): void {
+		animeh_rewrites_reset();
+		AppPage::save( array( 'enabled' => true ) );
+
+		if ( array() === $GLOBALS['__rewrites'] ) {
+			throw new RuntimeException( 'kaydetmek kuralı kurmadı' );
+		}
+
+		// Saving has to leave the stored rule set carrying the rule. The rule
+		// set is built during `init` from the setting as it was *before* the
+		// save, so flushing without adding it first would store a set without
+		// it — and the page would keep 404ing until the next page load.
+		$stored = $GLOBALS['__options']['rewrite_rules'] ?? array();
+
+		if ( array() === $stored ) {
+			throw new RuntimeException( 'kaydetmek kuralları yenilemedi' );
+		}
+
+		if ( array_keys( $stored ) !== array_keys( $GLOBALS['__rewrites'] ) ) {
+			throw new RuntimeException( 'yenilenen küme kuralı taşımıyor' );
+		}
+
+		if ( ! AppPage::rule_live() ) {
+			throw new RuntimeException( 'kural canlı görünmüyor' );
+		}
+
+		animeh_rewrites_reset();
+		unset( $GLOBALS['__options'][ AppPage::OPTION ] );
+	}
+);
+
 echo "\n" . $passed . '/' . ( $passed + $failures ) . " kontrol geçti\n";
 
 exit( $failures > 0 ? 1 : 0 );

@@ -293,6 +293,28 @@ final class IntegrationsPage {
 							<p class="description">
 								<?php esc_html_e( 'Kapalıyken adres 404 veriyor. Hazır olmayan bir sayfanın bulunabilmesindense bulunamaması yeğ.', 'animeh' ); ?>
 							</p>
+							<?php if ( $app_page['enabled'] && ! AppPage::rule_live() ) : ?>
+								<p class="description" style="color:#b32d2e">
+									<?php
+									printf(
+										/* translators: 1: the settings page name, 2: the address that works without rewrite rules. */
+										esc_html__( 'Sayfa açık ama WordPress bu adresi yönlendirmiyor. Neredeyse her zaman kalıcı bağlantıların yenilenmesi gerekiyor demek: Ayarlar → %1$s ekranını açıp hiçbir şey değiştirmeden Kaydet\'e bas. Düz bağlantı kullanıyorsan yönlendirme hiç çalışmaz; o durumda sayfa yalnızca şu adreste açılır: %2$s', 'animeh' ),
+										esc_html__( 'Kalıcı Bağlantılar', 'animeh' ),
+										'<code>' . esc_html( AppPage::fallback_url() ) . '</code>'
+									);
+									?>
+								</p>
+							<?php elseif ( $app_page['enabled'] ) : ?>
+								<p class="description" style="color:#00713a">
+									<?php
+									printf(
+										/* translators: %s: the page address. */
+										esc_html__( 'Yayında ve yönlendirme çalışıyor: %s', 'animeh' ),
+										'<code>' . esc_html( AppPage::page_url() ) . '</code>'
+									);
+									?>
+								</p>
+							<?php endif; ?>
 						</td>
 					</tr>
 					<tr>

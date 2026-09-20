@@ -92,20 +92,45 @@ final class AppPage {
 	 * Map /app onto the query variable.
 	 */
 	public static function add_rewrite(): void {
-		$pattern = '^' . self::PATH . '/?$';
+		$rules   = get_option( 'rewrite_rules' );
+		$rules   = is_array( $rules ) ? $rules : array();
+		$present = isset( $rules[ self::pattern() ] );
+		$wanted  = self::settings()['enabled'];
 
+		// The rule exists only while the page is published, and that is not
+		// tidiness. A rule that matches and then declines to draw anything
+		// leaves WordPress holding a query that names no post — which is the
+		// front page. So an unpublished page answered 200 with the site's
+		// home page on it, which is what it did.
+		if ( $wanted ) {
+			self::add_rule();
+		}
+
+		// Flushing rebuilds every rule on the site, so it happens only when
+		// what is registered and what should be registered disagree: the load
+		// after the plugin is updated, and the load after the setting is
+		// changed by something that did not flush for itself.
+		if ( $wanted !== $present ) {
+			flush_rewrite_rules( false );
+		}
+	}
+
+	/**
+	 * The rewrite pattern, in one place so the rule and the check agree.
+	 */
+	private static function pattern(): string {
+		return '^' . self::PATH . '/?$';
+	}
+
+	/**
+	 * Register the rule itself.
+	 */
+	private static function add_rule(): void {
 		add_rewrite_rule(
-			$pattern,
+			self::pattern(),
 			'index.php?' . self::QUERY_VAR . '=1',
 			'top'
 		);
-
-		// Flushing is expensive, so it happens only when the rule is missing —
-		// the first load after the plugin is updated, and never again.
-		$rules = get_option( 'rewrite_rules' );
-		if ( is_array( $rules ) && ! isset( $rules[ $pattern ] ) ) {
-			flush_rewrite_rules( false );
-		}
 	}
 
 	/**
@@ -156,6 +181,17 @@ final class AppPage {
 		);
 
 		update_option( self::OPTION, $clean );
+
+		// The rule set in memory was built during `init`, from the setting as
+		// it was before this save. Regenerating it now would write out
+		// whatever `init` registered — so a page just turned on would be
+		// flushed *without* its rule and keep 404ing until the next load.
+		// Adding it first is what makes the change take on this request.
+		if ( $clean['enabled'] ) {
+			self::add_rule();
+		}
+
+		flush_rewrite_rules( false );
 
 		return $clean;
 	}
@@ -223,6 +259,32 @@ final class AppPage {
 	}
 
 	/**
+	 * Whether WordPress is actually routing the address right now.
+	 *
+	 * Distinct from the setting. A site on plain permalinks has no rewrite
+	 * rules at all, and a rule can be missing after a restore or a caching
+	 * plugin's own idea of what to keep. When these two disagree the address
+	 * does not work, and the admin screen is the only place that can say so
+	 * before somebody hands the link to a stranger.
+	 */
+	public static function rule_live(): bool {
+		$rules = get_option( 'rewrite_rules' );
+
+		return is_array( $rules ) && isset( $rules[ self::pattern() ] );
+	}
+
+	/**
+	 * The address that works with no rewrite rules at all.
+	 *
+	 * The query variable is registered either way, so this is what to try
+	 * when the pretty address does not answer: it separates "the page is off"
+	 * from "the routing is not there".
+	 */
+	public static function fallback_url(): string {
+		return home_url( '/?' . self::QUERY_VAR . '=1' );
+	}
+
+	/**
 	 * Render the page, if this request is one.
 	 */
 	public static function maybe_render(): void {
@@ -232,10 +294,24 @@ final class AppPage {
 
 		$settings = self::settings();
 
-		// Not published: fall through to whatever WordPress would have done,
-		// which is a 404. An unfinished page answering 200 is a page a
-		// reviewer can find before it is ready.
+		// Not published. Reached only when a rule outlived the setting — a
+		// cache, or a flush that did not happen — because `add_rewrite` stops
+		// registering the rule as soon as the page is turned off.
+		//
+		// Said as a 404 rather than returning. Returning hands the request
+		// back to WordPress with a query that names no post, and WordPress
+		// draws the front page for that: the symptom is the home page at this
+		// address, which reads as the page being broken rather than absent.
 		if ( ! $settings['enabled'] ) {
+			global $wp_query;
+
+			if ( $wp_query instanceof \WP_Query ) {
+				$wp_query->set_404();
+			}
+
+			status_header( 404 );
+			nocache_headers();
+
 			return;
 		}
 

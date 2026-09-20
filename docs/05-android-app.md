@@ -327,3 +327,65 @@ ANIMEH_API_BASE=https://siten.com/wp-json/animeh/v1/
 Release imzalama için `ANIMEH_KEYSTORE`, `ANIMEH_KEYSTORE_PASSWORD`,
 `ANIMEH_KEY_ALIAS`, `ANIMEH_KEY_PASSWORD` — keystore yoksa release yapılandırması
 hiç oluşturulmuyor, böylece temiz bir kopyada debug derlemesi keystore sormuyor.
+
+---
+
+## 9. Benzer yapımlar, önbellekten açılan ana sayfa, tema rengi
+
+### Aynı türden ilgini çekebilir
+
+Anime sayfasının en altında, yorumların altında — oraya kadar okumuş biri
+başka bir sayfaya geçmeye hazır olan kişidir.
+
+Sıralama **paylaşılan tür sayısına** göre. Bu, `?genre=` sorgusunun
+yapabildiği şeyden farklı: o sorgu üç türü de paylaşan bir yapımla yalnızca
+birini paylaşanı ayırt edemez, ikisini de aynı listede döndürür.
+
+Türler ayrı bir tabloda değil, sütunun içinde bir JSON dizisi olarak duruyor;
+yani `COUNT(*) … GROUP BY` yok. Bu yüzden iş ikiye bölündü:
+
+| Kim | Ne soruyor |
+| --- | --- |
+| SQL | *Hangi satırlar ilgili olabilir* — indeksle ve `LIKE` ile, ucuz |
+| `Support\Similarity` | *Hangisi daha iyi öneri* — iki tür listesi yan yana, aritmetik |
+
+İkincisi kendi evinde, veritabanı olmadan test edilebiliyor. Altı kontrol,
+hepsi gözle görülmeyen bir yanlışın karşılığı: çok tür paylaşanın öne geçmesi,
+eşitlikte geliş sırasının (yani puan sırasının) korunması, hiç tür
+paylaşmayanın listeye girmemesi, aynı türü tekrarlayan bozuk bir listenin üç
+tür paylaşıyormuş gibi görünmemesi, sınır, ve bozuk JSON'un sayfayı kırmaması.
+Sıralamayı kaldırarak düşürülerek doğrulandı.
+
+Boş liste gerçek bir cevap: türü olmayan bir yapımın komşusu yoktur, sinyali
+olmayan bir telefonun da. İkisinde de bölüm hiç çizilmiyor — öneri vaat eden
+bir başlığın altındaki boş raf, başlığın hiç olmamasından kötü.
+
+### Ana sayfa artık beklemiyor
+
+Önbellek zaten vardı ama yanlış sıradaydı: **önce ağ, hata olursa önbellek.**
+Yani her açılış bir gidiş-dönüş bekliyordu — görülen bekleme oydu.
+
+Artık saklanan kopya önce çiziliyor, istek arkadan gidiyor ve geldiğinde
+yerine geçiyor. İyi bağlantıda değişim ilk sıra okunmadan oluyor.
+
+Yalnızca ekranda hiçbir şey yokken: aşağı çekip yenilemek canlı rafları atıp
+bir saniyeliğine dünküleri geri koymamalı.
+
+### Uygulama rengi
+
+Değişen **yalnızca vurgu** — düğmeleri, seçimleri ve vurguları taşıyan renk.
+Yüzeyler yerinde kalıyor. İki sebep: ürün varsayılan olarak değil, tasarım
+gereği koyu; ve okunamaz bir ekran üretebilen bir renk seçici seçenek değil,
+tuzaktır.
+
+Palet, profillerin zaten kullandığı on iki renk. Yanına ikinci bir liste
+yazmak, bir tasarımın kazara gibi görünmeye başlamasının yoludur. Varsayılan
+`amethyst`, ki bugünkü mor rengin ta kendisi — kimsenin uygulaması kendiliğinden
+değişmiyor.
+
+Seçim `DataStore`'da bir *slug* olarak duruyor, hex olarak değil: tasarım
+"Okyanus"un ne demek olduğunu sonra ayarlayabilsin ve her telefon eski bir
+değeri saklamasın.
+
+Oynatıcı kendi etkinliği ve kendi kompozisyonu olduğu için rengi ayrıca
+okuyor; arkasındakinden miras almıyor.

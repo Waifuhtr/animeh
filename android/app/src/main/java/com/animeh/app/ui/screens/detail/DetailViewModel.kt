@@ -38,6 +38,13 @@ data class DetailUiState(
     val rating: Double = 0.0,
     val ratingCount: Int = 0,
     /**
+     * Neighbours, for the row at the bottom.
+     *
+     * Empty is a real answer and the screen draws nothing: a title nobody
+     * tagged has no neighbours, and so does a phone with no signal.
+     */
+    val similar: List<Work> = emptyList(),
+    /**
      * A one-shot line for the snackbar.
      *
      * Two fields rather than one because the two cases differ in where the
@@ -247,9 +254,25 @@ class DetailViewModel @Inject constructor(
                     }
                     maybeWarn(work)
                     loadEpisodes(work.seasons.firstOrNull()?.number ?: 0)
+                    loadSimilar()
                 }
                 is AppResult.Failure -> _state.update { it.copy(work = UiState.Error(result.error)) }
             }
+        }
+    }
+
+    /**
+     * Fetch the neighbours.
+     *
+     * Its own coroutine rather than part of [load]: this row is at the bottom
+     * of a long page and nothing above it should wait on a request for
+     * something the viewer has not scrolled to.
+     */
+    private fun loadSimilar() {
+        viewModelScope.launch {
+            val found = catalogRepository.similar(workId.toString())
+
+            _state.update { it.copy(similar = found) }
         }
     }
 

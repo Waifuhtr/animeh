@@ -14,6 +14,7 @@ use Animeh\Support\FontFile;
 use Animeh\Support\PlaylistRewriter;
 use Animeh\Support\S3Signer;
 use Animeh\Support\SecretBox;
+use Animeh\Support\Similarity;
 use Animeh\Support\StorageKey;
 use Animeh\Support\Throttle;
 use Animeh\Support\TestVerdict;
@@ -2493,4 +2494,118 @@ describe( 'StorageKey — AnimehTok', static function (): void {
 	it( 'adsız hesaba da bir klasör verir', static function (): void {
 		same( 'animehtok/kullanici-4', \Animeh\Support\StorageKey::tok_prefix( 4, '' ) );
 	} );
+} );
+
+describe( 'Similarity — benzer yapımlar', static function (): void {
+
+    // Rows as they come out of the query: already in score order, genres as
+    // the JSON the column holds.
+    $row = static fn( string $id, array $genres ): array => array(
+        'id'     => $id,
+        'genres' => json_encode( $genres ),
+    );
+
+    $ids = static fn( array $rows ): array => array_map(
+        static fn( array $r ): string => (string) $r['id'],
+        $rows
+    );
+
+    it( 'çok tür paylaşan öne geçiyor', static function () use ( $row, $ids ): void {
+        // The whole point. A `genre=` query cannot tell these apart — all
+        // three match "Aksiyon" — and would return them in score order,
+        // putting the least similar one first.
+        $ranked = Similarity::rank(
+            array( 'Aksiyon', 'Dram', 'Fantastik' ),
+            array(
+                $row( 'bir-tür', array( 'Aksiyon', 'Spor' ) ),
+                $row( 'iki-tür', array( 'Aksiyon', 'Dram' ) ),
+                $row( 'üç-tür', array( 'Aksiyon', 'Dram', 'Fantastik' ) ),
+            ),
+            10
+        );
+
+        same( array( 'üç-tür', 'iki-tür', 'bir-tür' ), $ids( $ranked ) );
+    } );
+
+    it( 'eşit benzerlikte geliş sırası korunuyor', static function () use ( $row, $ids ): void {
+        // The caller sorted them by score. Two titles that share the same
+        // number of genres have nothing else to separate them, and reordering
+        // them would throw away the only other signal there is.
+        $ranked = Similarity::rank(
+            array( 'Aksiyon', 'Dram' ),
+            array(
+                $row( 'yüksek-puan', array( 'Aksiyon' ) ),
+                $row( 'orta-puan', array( 'Dram' ) ),
+                $row( 'düşük-puan', array( 'Aksiyon' ) ),
+            ),
+            10
+        );
+
+        same( array( 'yüksek-puan', 'orta-puan', 'düşük-puan' ), $ids( $ranked ) );
+    } );
+
+    it( 'hiç tür paylaşmayan listeye girmiyor', static function () use ( $row, $ids ): void {
+        // Only in the pool because the query matched something this decoder
+        // could not read. A suggestion with no reason behind it is worse than
+        // a shorter row.
+        $ranked = Similarity::rank(
+            array( 'Aksiyon' ),
+            array(
+                $row( 'alakasız', array( 'Romantik', 'Okul' ) ),
+                $row( 'ilgili', array( 'Aksiyon' ) ),
+            ),
+            10
+        );
+
+        same( array( 'ilgili' ), $ids( $ranked ) );
+    } );
+
+    it( 'aynı türü tekrarlayan öne geçemiyor', static function () use ( $row, $ids ): void {
+        // A badly imported list that repeats "Aksiyon" three times shares one
+        // genre, not three.
+        $ranked = Similarity::rank(
+            array( 'Aksiyon', 'Dram' ),
+            array(
+                $row( 'tekrarlı', array( 'Aksiyon', 'Aksiyon', 'Aksiyon' ) ),
+                $row( 'gerçekten-iki', array( 'Aksiyon', 'Dram' ) ),
+            ),
+            10
+        );
+
+        same( array( 'gerçekten-iki', 'tekrarlı' ), $ids( $ranked ) );
+    } );
+
+    it( 'sınırı aşmıyor', static function () use ( $row, $ids ): void {
+        $ranked = Similarity::rank(
+            array( 'Aksiyon' ),
+            array(
+                $row( 'a', array( 'Aksiyon' ) ),
+                $row( 'b', array( 'Aksiyon' ) ),
+                $row( 'c', array( 'Aksiyon' ) ),
+            ),
+            2
+        );
+
+        same( array( 'a', 'b' ), $ids( $ranked ) );
+    } );
+
+    it( 'bozuk veri sayfayı kırmıyor', static function () use ( $row, $ids ): void {
+        // A single badly imported title should cost itself a place, not throw.
+        $ranked = Similarity::rank(
+            array( 'Aksiyon' ),
+            array(
+                array( 'id' => 'çöp', 'genres' => 'bu JSON değil' ),
+                array( 'id' => 'eksik' ),
+                $row( 'sağlam', array( 'Aksiyon' ) ),
+            ),
+            10
+        );
+
+        same( array( 'sağlam' ), $ids( $ranked ) );
+    } );
+
+    it( 'türsüz bir yapımın komşusu yok', static function (): void {
+        same( array(), Similarity::rank( array(), array( array( 'id' => 'x', 'genres' => '["Aksiyon"]' ) ), 10 ) );
+        same( array(), Similarity::rank( array( 'Aksiyon' ), array( array( 'id' => 'x', 'genres' => '["Aksiyon"]' ) ), 0 ) );
+    } );
 } );

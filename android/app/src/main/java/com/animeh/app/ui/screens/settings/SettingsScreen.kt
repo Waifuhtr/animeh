@@ -1,6 +1,14 @@
 package com.animeh.app.ui.screens.settings
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,8 +24,10 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.animeh.app.BuildConfig
 import com.animeh.app.R
+import com.animeh.app.ui.theme.ProfileThemes
 import com.animeh.app.ui.theme.TextMuted
 import com.animeh.app.ui.theme.TextSecondary
+import com.animeh.app.ui.theme.profileTheme
 
 @Composable
 fun SettingsScreen(
@@ -56,6 +66,14 @@ fun SettingsScreen(
                 .padding(padding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            SectionLabel(stringResource(R.string.settings_appearance))
+
+            AccentRow(
+                selected = settings.accent,
+                onSelect = viewModel::setAccent,
+            )
+
+            HorizontalDivider()
             SectionLabel(stringResource(R.string.settings_playback))
 
             ChoiceRow(
@@ -338,3 +356,71 @@ private val LANGUAGES = listOf(
     "en" to "English",
     "ja" to "日本語",
 )
+
+/**
+ * The twelve colours the app can be dressed in.
+ *
+ * Only the accent changes. The surfaces stay where they are, because a colour
+ * picker that could produce an unreadable screen is not a choice, it is a
+ * trap — and because the product is a dark one by design, not by default.
+ *
+ * The palette is the one profiles already use rather than a second list beside
+ * it: two sets of almost-the-same greens is how a design starts to look like
+ * an accident.
+ */
+@Composable
+private fun AccentRow(selected: String, onSelect: (String) -> Unit) {
+    val current = profileTheme(selected)
+
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Text(
+            text = stringResource(R.string.settings_accent),
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        Text(
+            text = current.label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 2.dp),
+        )
+
+        LazyRow(
+            modifier = Modifier.padding(top = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(ProfileThemes, key = { it.slug }) { theme ->
+                val chosen = theme.slug == current.slug
+
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .clip(CircleShape)
+                        .background(theme.accent)
+                        // The ring is drawn in the app's text colour rather
+                        // than in the swatch's own: a selected swatch has to
+                        // be obviously selected against twelve backgrounds,
+                        // and a ring the same colour as what it surrounds is
+                        // not a ring.
+                        .then(
+                            if (chosen) {
+                                Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .clickable { onSelect(theme.slug) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (chosen) {
+                        Icon(
+                            imageVector = Icons.Filled.Check,
+                            contentDescription = theme.label,
+                            tint = Color.Black.copy(alpha = 0.75f),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}

@@ -47,6 +47,8 @@ fun DetailScreen(
     onRecommend: (Long) -> Unit = {},
     /** A genre badge: browse everything else wearing it, on the same shelf. */
     onGenreClick: (genre: String, kind: String) -> Unit = { _, _ -> },
+    /** A neighbour from the row at the bottom: its own page. */
+    onOpenWork: (Long) -> Unit = {},
     viewModel: DetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -241,6 +243,27 @@ fun DetailScreen(
                             onReport = viewModel::report,
                             onSignIn = onSignIn,
                         )
+                    }
+
+                    // Below the reviews, which is where somebody who has read
+                    // to the end of this page is ready to be handed another
+                    // one. Drawn only when there is something to draw: an
+                    // untagged title has no neighbours, and so does a phone
+                    // with no signal — an empty shelf under a heading that
+                    // promises suggestions is worse than no heading.
+                    if (state.similar.isNotEmpty()) {
+                        item { Spacer(Modifier.height(24.dp)) }
+
+                        item { SectionHeader(stringResource(R.string.detail_similar)) }
+
+                        item { Spacer(Modifier.height(12.dp)) }
+
+                        item {
+                            WorkRail(
+                                works = state.similar,
+                                onClick = { onOpenWork(it.id) },
+                            )
+                        }
                     }
 
                     item { Spacer(Modifier.height(32.dp)) }

@@ -13,6 +13,7 @@ declare( strict_types = 1 );
 
 namespace Animeh\Storage;
 
+use Animeh\Support\Similarity;
 use Animeh\Support\StorageKey;
 use WP_Error;
 
@@ -190,6 +191,22 @@ final class CatalogRepository {
 	 * @param array<string, mixed> $args search, kind, genre, format, year, season, status, sort, page, per_page, include_unpublished.
 	 * @return array{items: array<int, array<string, mixed>>, total: int}
 	 */
+	/**
+	 * How many of a title's genres are used to find neighbours.
+	 *
+	 * Eight. Past that the OR matches most of the catalogue and every result
+	 * shares exactly one genre, which is the same as no ranking at all.
+	 */
+	private const SIMILAR_GENRES = 8;
+
+	/**
+	 * How many candidates are ranked, before the best are returned.
+	 *
+	 * Eighty, best-scored first. Large enough that a title sharing four
+	 * genres is in the pool, small enough that the ranking is free.
+	 */
+	private const SIMILAR_POOL = 80;
+
 	public function works( array $args = array() ): array {
 		global $wpdb;
 
@@ -279,6 +296,79 @@ final class CatalogRepository {
 			'items' => is_array( $rows ) ? $rows : array(),
 			'total' => $total,
 		);
+	}
+
+	/**
+	 * Other titles somebody who liked this one might want.
+	 *
+	 * Ranked by how many genres they share, which is the whole idea: a title
+	 * with three genres in common is a better suggestion than one with a
+	 * single genre in common, and "same first genre" — which is what a plain
+	 * `genre=` query gives — cannot tell those apart at all.
+	 *
+	 * The counting happens in PHP rather than in SQL because `genres` is a
+	 * JSON array in a column rather than a join table. So the query's job is
+	 * to produce a *candidate pool* cheaply — anything sharing at least one
+	 * genre, best-scored first — and the ranking happens over that pool. One
+	 * query either way, and the pool is bounded.
+	 *
+	 * Same shelf only: an anime page suggests anime. Crossing to manga would
+	 * be a different feature and a surprise in a row that looks like the ones
+	 * above it.
+	 *
+	 * @param array<string, mixed> $work  The row to find neighbours for.
+	 * @param int                  $limit How many to return.
+	 * @return array<int, array<string, mixed>> Work rows.
+	 */
+	public function similar( array $work, int $limit = 12 ): array {
+		global $wpdb;
+
+		$id     = (int) ( $work['id'] ?? 0 );
+		$genres = json_decode( (string) ( $work['genres'] ?? '[]' ), true );
+		$genres = is_array( $genres ) ? array_values( array_filter( array_map( 'strval', $genres ) ) ) : array();
+
+		if ( $id <= 0 || array() === $genres ) {
+			// Nothing to be similar *to*. An empty row is the honest answer
+			// and the app draws no section at all rather than a shelf of
+			// whatever happened to be popular.
+			return array();
+		}
+
+		// Capped: a title tagged with fifteen genres would otherwise build a
+		// fifteen-branch OR that matches most of the catalogue, which is both
+		// slow and useless — everything would share one genre with it.
+		$matched = array_slice( $genres, 0, self::SIMILAR_GENRES );
+
+		$likes  = array();
+		$params = array( (string) ( $work['kind'] ?? CatalogSchema::KIND_ANIME ), $id );
+
+		foreach ( $matched as $genre ) {
+			$likes[]  = 'genres LIKE %s';
+			// Quoted, so "Action" does not also match "Action Adventure".
+			$params[] = '%"' . $wpdb->esc_like( $genre ) . '"%';
+		}
+
+		$table = CatalogSchema::works();
+		$order = $this->work_order( 'score' );
+
+		$rows = $wpdb->get_results(
+			$wpdb->prepare( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
+				"SELECT * FROM {$table}
+				 WHERE kind = %s AND published = 1 AND id <> %d AND (" . implode( ' OR ', $likes ) . ")
+				 ORDER BY {$order} LIMIT %d",
+				array_merge( $params, array( self::SIMILAR_POOL ) )
+			),
+			ARRAY_A
+		);
+
+		if ( ! is_array( $rows ) ) {
+			return array();
+		}
+
+		// The rows arrive in score order; the ranking is a separate question
+		// and lives in its own class, where it can be tested without a
+		// database. See {@see Similarity}.
+		return Similarity::rank( $genres, $rows, max( 1, $limit ) );
 	}
 
 	/**

@@ -32,6 +32,20 @@ class CatalogRepository @Inject constructor(
     /** A value plus whether it came from the network or the cache. */
     data class Cached<T>(val value: T, val fromCache: Boolean)
 
+    /**
+     * The stored home screen, with nothing asked of the network.
+     *
+     * Exists so the screen can be *drawn* before the request goes out. The
+     * rails, the covers and the continue-watching row were all correct a
+     * moment ago and are almost certainly still correct; waiting for a round
+     * trip to confirm it is how a screen that is already available takes two
+     * seconds to appear.
+     *
+     * Empty on a first run, which is the one launch that genuinely has
+     * nothing to show and the one where a spinner is honest.
+     */
+    suspend fun cachedHome(): HomeFeed = readCachedHome()
+
     suspend fun home(): AppResult<Cached<HomeFeed>> {
         val result = ApiErrorMapper.call({ it.toDomain() }) { publicApi.home() }
 
@@ -80,6 +94,30 @@ class CatalogRepository @Inject constructor(
         // not claim a place on the home screen.
         if (result is AppResult.Success) {
             workDao.upsert(result.data.map { it.toEntity() })
+        }
+    }
+
+    /**
+     * Titles to suggest at the bottom of a work's page.
+     *
+     * No cache and no fallback, unlike everything else here. A suggestion row
+     * is the one thing on that page nobody came for: offline it should simply
+     * not be there, rather than showing last week's neighbours under a
+     * heading that implies they were chosen now. An empty list is what the
+     * screen wants for both "no network" and "nothing similar".
+     */
+    suspend fun similar(id: String, limit: Int = 12): List<Work> {
+        val result = ApiErrorMapper.call({ dto -> dto.items.map { it.toDomain() } }) {
+            publicApi.similar(id, limit)
+        }
+
+        // Matched rather than cast. `as? AppResult.Success` throws the type
+        // argument away, so `data` comes back erased and `.orEmpty()` binds to
+        // the one on `String?` — which compiles as a String and is not a list
+        // at all. The `when` keeps the argument and smart-casts properly.
+        return when (result) {
+            is AppResult.Success -> result.data
+            is AppResult.Failure -> emptyList()
         }
     }
 

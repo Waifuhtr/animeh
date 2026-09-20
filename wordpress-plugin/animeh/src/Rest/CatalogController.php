@@ -86,6 +86,20 @@ final class CatalogController {
 
 		register_rest_route(
 			$namespace,
+			'/catalog/works/(?P<id>[\w-]+)/similar',
+			array(
+				'methods'             => WP_REST_Server::READABLE,
+				'callback'            => array( $this, 'similar' ),
+				'permission_callback' => '__return_true',
+				'args'                => array(
+					'id'    => array( 'required' => true, 'type' => 'string', 'sanitize_callback' => 'sanitize_text_field' ),
+					'limit' => array( 'type' => 'integer', 'default' => 12, 'sanitize_callback' => 'absint' ),
+				),
+			)
+		);
+
+		register_rest_route(
+			$namespace,
 			'/catalog/works/(?P<id>\d+)/episodes',
 			array(
 				'methods'             => WP_REST_Server::READABLE,
@@ -156,6 +170,14 @@ final class CatalogController {
 	 *
 	 * @param WP_REST_Request $request Request.
 	 */
+	/**
+	 * The most neighbours one page can ask for.
+	 *
+	 * Twenty-four. The row is scrolled sideways with a thumb; past two dozen
+	 * nobody reaches the end and the payload is carried for nothing.
+	 */
+	private const SIMILAR_MAX = 24;
+
 	public function works( WP_REST_Request $request ): WP_REST_Response {
 		$repo   = new CatalogRepository();
 		$result = $repo->works(
@@ -194,6 +216,39 @@ final class CatalogController {
 	 * @param WP_REST_Request $request Request.
 	 * @return WP_REST_Response|WP_Error
 	 */
+	/**
+	 * Titles near this one, for the row at the bottom of its page.
+	 *
+	 * Accepts an id or a slug for the same reason [work] does: the page that
+	 * draws this row was opened by whichever of the two the caller had.
+	 *
+	 * An empty list is a perfectly good answer — an untagged title has no
+	 * neighbours — and the app draws no section rather than an empty shelf.
+	 *
+	 * @param WP_REST_Request $request Request.
+	 * @return WP_REST_Response|WP_Error
+	 */
+	public function similar( WP_REST_Request $request ) {
+		$repo  = new CatalogRepository();
+		$ident = (string) $request->get_param( 'id' );
+
+		$work = ctype_digit( $ident ) ? $repo->work( (int) $ident ) : $repo->work_by_slug( $ident );
+
+		if ( null === $work || ( empty( $work['published'] ) && ! Permissions::current_user_can_manage() ) ) {
+			return $this->not_found();
+		}
+
+		$limit = (int) $request->get_param( 'limit' );
+		$rows  = $repo->similar( $work, $limit > 0 ? min( $limit, self::SIMILAR_MAX ) : 12 );
+
+		return new WP_REST_Response(
+			array(
+				'items' => array_map( array( self::class, 'work_payload' ), $rows ),
+				'total' => count( $rows ),
+			)
+		);
+	}
+
 	public function work( WP_REST_Request $request ) {
 		$repo  = new CatalogRepository();
 		$ident = (string) $request->get_param( 'id' );

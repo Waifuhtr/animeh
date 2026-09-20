@@ -379,6 +379,10 @@ fun AnimehApp(
                         discoverKind = kind
                         switchTab(Routes.DISCOVER)
                     },
+                    // Pushed rather than replacing: back should return to the
+                    // page the suggestion was made from, which is the one
+                    // thing a viewer following a chain of them relies on.
+                    onOpenWork = { navController.navigate(Routes.detail(it)) },
                     signedIn = authState is AuthState.SignedIn,
                 )
             }

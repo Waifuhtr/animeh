@@ -41,6 +41,27 @@ class HomeViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
+            // The stored copy first, drawn before anything is asked of the
+            // network. What follows below replaces it; until then the screen
+            // is the one the viewer saw last time rather than a spinner, and
+            // on a good connection the swap happens before they finish
+            // reading the first row.
+            //
+            // Only when there is nothing on screen yet: a pull-to-refresh
+            // must not throw away live rails and put yesterday's back for a
+            // second.
+            if (_state.value !is UiState.Success) {
+                val stored = repository.cachedHome()
+
+                if (!stored.isEmpty) {
+                    _state.value = UiState.Success(stored, fromCache = true)
+
+                    // The launch screen has no reason to wait either. There
+                    // is a page underneath now.
+                    launchGate.markReady()
+                }
+            }
+
             when (val result = repository.home()) {
                 is AppResult.Success -> {
                     val feed = result.data.value

@@ -59,6 +59,18 @@ interface PublicApi {
     @GET("catalog/works/{id}")
     suspend fun work(@Path("id") id: String): Response<WorkDto>
 
+    /**
+     * Titles near this one, ranked by shared genres.
+     *
+     * Id or slug, like [work]: the page that draws this row was opened by
+     * whichever of the two the caller had.
+     */
+    @GET("catalog/works/{id}/similar")
+    suspend fun similar(
+        @Path("id") id: String,
+        @Query("limit") limit: Int = 12,
+    ): Response<WorkListDto>
+
     @GET("catalog/works/{id}/episodes")
     suspend fun episodes(
         @Path("id") workId: Long,

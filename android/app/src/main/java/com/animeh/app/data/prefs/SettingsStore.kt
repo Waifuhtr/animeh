@@ -7,6 +7,7 @@ import com.animeh.app.BuildConfig
 import com.animeh.app.data.remote.dto.AppSettingsDto
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -47,8 +48,20 @@ class SettingsStore @Inject constructor(
             spatialStrength = prefs[KEY_SPATIAL_STRENGTH] ?: 0.6f,
             rotaryAudio = prefs[KEY_ROTARY_ON] ?: false,
             rotarySpeed = prefs[KEY_ROTARY_SPEED] ?: 0.16f,
+            accent = prefs[KEY_ACCENT] ?: "",
         )
     }
+
+    /**
+     * The accent on its own, for the theme.
+     *
+     * Separate from [settings] so the composition that draws every screen is
+     * not recomposed by a subtitle slider. The whole app hangs off this one,
+     * and it should change when the colour changes and at no other time.
+     */
+    val accent: Flow<String> = context.dataStore.data
+        .map { prefs -> prefs[KEY_ACCENT] ?: "" }
+        .distinctUntilChanged()
 
     val apiBase: Flow<String> = context.dataStore.data.map { prefs ->
         normaliseBase(prefs[KEY_API_BASE] ?: BuildConfig.DEFAULT_API_BASE)
@@ -135,6 +148,9 @@ class SettingsStore @Inject constructor(
     suspend fun setNotifications(value: Boolean) = edit { it[KEY_NOTIFICATIONS] = value }
     suspend fun setPlaybackSpeed(value: Float) = edit { it[KEY_SPEED] = value }
     suspend fun setSubtitleScale(value: Float) = edit { it[KEY_SUBTITLE_SCALE] = value }
+
+    /** The palette slug; anything unrecognised falls back to the default. */
+    suspend fun setAccent(slug: String) = edit { it[KEY_ACCENT] = slug }
 
     suspend fun setSpatialAudio(value: Boolean) = edit { it[KEY_SPATIAL_ON] = value }
     suspend fun setSpatialStrength(value: Float) = edit { it[KEY_SPATIAL_STRENGTH] = value }
@@ -225,6 +241,7 @@ class SettingsStore @Inject constructor(
         val KEY_SPATIAL_STRENGTH = floatPreferencesKey("spatial_strength")
         val KEY_ROTARY_ON = booleanPreferencesKey("rotary_audio")
         val KEY_ROTARY_SPEED = floatPreferencesKey("rotary_speed")
+        val KEY_ACCENT = stringPreferencesKey("app_accent")
     }
 }
 
@@ -247,4 +264,12 @@ data class LocalSettings(
     val rotaryAudio: Boolean = false,
     /** Sweeps per second for the circling pan. */
     val rotarySpeed: Float = 0.16f,
+    /**
+     * The palette slug the app is dressed in.
+     *
+     * Empty means the default, which is the purple the product was drawn in.
+     * Stored as a slug rather than a colour so the design can adjust what
+     * "Okyanus" means without every phone keeping an old hex value.
+     */
+    val accent: String = "",
 )

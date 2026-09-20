@@ -46,6 +46,8 @@ class SettingsViewModel @Inject constructor(
     private val _message = MutableStateFlow<String?>(null)
     val message: StateFlow<String?> = _message.asStateFlow()
 
+    fun setAccent(slug: String) = update { settingsStore.setAccent(slug) }
+
     fun setQuality(value: String) = update { settingsStore.setQuality(value) }
     fun setSubtitleLanguage(value: String) = update { settingsStore.setSubtitleLanguage(value) }
     fun setSubtitlesEnabled(value: Boolean) = update { settingsStore.setSubtitlesEnabled(value) }

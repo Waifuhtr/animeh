@@ -34,6 +34,7 @@ import com.animeh.app.ui.navigation.AnimehApp
 import com.animeh.app.ui.screens.SplashOverlay
 import com.animeh.app.ui.screens.auth.BannedScreen
 import com.animeh.app.ui.theme.AnimehTheme
+import com.animeh.app.ui.theme.profileTheme
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -46,6 +47,8 @@ class MainActivity : ComponentActivity() {
     @Inject lateinit var authRepository: AuthRepository
 
     @Inject lateinit var launchGate: LaunchGate
+
+    @Inject lateinit var settingsStore: com.animeh.app.data.prefs.SettingsStore
 
     /** The code this activity was opened with, if it was. */
     private var pendingRoomCode: String? = null
@@ -66,7 +69,11 @@ class MainActivity : ComponentActivity() {
         pendingWorkId = workIdFrom(intent)
 
         setContent {
-            AnimehTheme {
+            // Collected above the theme so the whole app redraws in the new
+            // colour the moment it is picked, without leaving Settings.
+            val accentSlug by settingsStore.accent.collectAsStateWithLifecycle(initialValue = "")
+
+            AnimehTheme(accent = profileTheme(accentSlug)) {
                 // Read from the store rather than a ViewModel so that a token
                 // refresh or a sign-out anywhere in the app immediately changes
                 // which tabs are drawn.

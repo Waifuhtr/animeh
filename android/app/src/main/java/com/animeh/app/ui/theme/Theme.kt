@@ -9,6 +9,8 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -27,13 +29,23 @@ import androidx.core.view.WindowCompat
  *
  * Dynamic colour is off for the same reason: an anime poster wall against
  * whatever purple the wallpaper produced is not the design either.
+ *
+ * What the viewer *can* change is the accent — the purple that carries
+ * buttons, selections and highlights. Only the accent, and only from a
+ * palette that was drawn: the surfaces stay where they are, so a chosen
+ * colour changes the app's character without any screen becoming unreadable.
+ * The palette is the one profiles already use, so the two never drift into
+ * two sets of greens that are almost the same.
  */
-private val AnimehColorScheme = darkColorScheme(
-    primary = AccentPrimary,
+private fun schemeFor(accent: ProfileTheme) = darkColorScheme(
+    primary = accent.accent,
     onPrimary = TextPrimary,
-    primaryContainer = AccentContainer,
-    onPrimaryContainer = AccentBright,
-    secondary = AccentBright,
+    // Derived rather than listed per palette: the container is the accent
+    // laid over the app's own surface, which is what keeps a selected chip
+    // looking like this product in every colour rather than like twelve.
+    primaryContainer = accent.deep.copy(alpha = 0.55f).compositeOver(SurfaceCard),
+    onPrimaryContainer = accent.accent,
+    secondary = accent.accent,
     onSecondary = SurfaceBase,
     secondaryContainer = SurfaceOverlay,
     onSecondaryContainer = TextPrimary,
@@ -74,8 +86,18 @@ fun AnimehTheme(
     // Accepted and ignored on purpose: the parameter documents that the choice
     // was considered rather than overlooked.
     @Suppress("UNUSED_PARAMETER") darkTheme: Boolean = isSystemInDarkTheme(),
+    /**
+     * The palette the viewer picked.
+     *
+     * Defaulted so that a preview, a dialog drawn outside the app's own
+     * composition, or a screen added later without knowing about this still
+     * gets the product's own colour rather than nothing.
+     */
+    accent: ProfileTheme = ProfileThemes.first(),
     content: @Composable () -> Unit,
 ) {
+    val scheme = remember(accent.slug) { schemeFor(accent) }
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -89,7 +111,7 @@ fun AnimehTheme(
     }
 
     MaterialTheme(
-        colorScheme = AnimehColorScheme,
+        colorScheme = scheme,
         typography = AnimehTypography,
         shapes = AnimehShapes,
     ) {

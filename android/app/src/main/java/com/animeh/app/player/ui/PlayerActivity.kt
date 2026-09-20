@@ -42,6 +42,7 @@ import com.animeh.app.core.UiState
 import com.animeh.app.ui.components.AdultWarningDialog
 import com.animeh.app.player.ass.SubtitleLayer
 import com.animeh.app.ui.theme.AnimehTheme
+import com.animeh.app.ui.theme.profileTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 /**
@@ -60,6 +61,9 @@ import dagger.hilt.android.AndroidEntryPoint
  */
 @AndroidEntryPoint
 class PlayerActivity : ComponentActivity() {
+
+    /** Read for the accent only: this activity draws its own composition. */
+    @javax.inject.Inject lateinit var settingsStore: com.animeh.app.data.prefs.SettingsStore
 
     /** The episode this screen has been asked to play, most recent last. */
     private val request = mutableStateOf(PlayRequest())
@@ -105,7 +109,11 @@ class PlayerActivity : ComponentActivity() {
         request.value = requestFrom(intent)
 
         setContent {
-            AnimehTheme {
+            // The player is its own activity and so its own composition: it
+            // does not inherit the colour from the one behind it.
+            val accentSlug by settingsStore.accent.collectAsStateWithLifecycle(initialValue = "")
+
+            AnimehTheme(accent = profileTheme(accentSlug)) {
                 PlayerScreen(
                     request = request.value,
                     fullscreen = fullscreen.value,

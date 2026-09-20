@@ -29,6 +29,8 @@ declare( strict_types = 1 );
 
 namespace Animeh\Rest;
 
+use Animeh\Support\PublicUrl;
+
 /**
  * Serves /app.
  */
@@ -160,8 +162,8 @@ final class AppPage {
 			'enabled'   => ! empty( $stored['enabled'] ),
 			'publisher' => isset( $stored['publisher'] ) ? (string) $stored['publisher'] : '',
 			'contact'   => isset( $stored['contact'] ) ? (string) $stored['contact'] : '',
-			'download'  => self::url_or( $stored['download'] ?? '', self::DOWNLOAD_URL ),
-			'repo'      => self::url_or( $stored['repo'] ?? '', self::REPO_URL ),
+			'download'  => PublicUrl::http( $stored['download'] ?? '', self::DOWNLOAD_URL ),
+			'repo'      => PublicUrl::http( $stored['repo'] ?? '', self::REPO_URL ),
 		);
 	}
 
@@ -176,8 +178,8 @@ final class AppPage {
 			'enabled'   => ! empty( $input['enabled'] ),
 			'publisher' => isset( $input['publisher'] ) ? sanitize_text_field( (string) $input['publisher'] ) : '',
 			'contact'   => self::email_or_nothing( $input['contact'] ?? '' ),
-			'download'  => self::url_or( $input['download'] ?? '', self::DOWNLOAD_URL ),
-			'repo'      => self::url_or( $input['repo'] ?? '', self::REPO_URL ),
+			'download'  => PublicUrl::http( $input['download'] ?? '', self::DOWNLOAD_URL ),
+			'repo'      => PublicUrl::http( $input['repo'] ?? '', self::REPO_URL ),
 		);
 
 		update_option( self::OPTION, $clean );
@@ -226,29 +228,6 @@ final class AppPage {
 		}
 
 		return $clean;
-	}
-
-	/**
-	 * A submitted address, or the built-in one when it is unusable.
-	 *
-	 * Only http and https: this address becomes a link somebody else is asked
-	 * to click, and `javascript:` in an operator-editable field that renders
-	 * on a public page is a stored XSS waiting for a careless paste.
-	 *
-	 * @param mixed  $raw      What was submitted.
-	 * @param string $fallback The built-in address.
-	 * @return string
-	 */
-	private static function url_or( $raw, string $fallback ): string {
-		$url = esc_url_raw( trim( (string) $raw ) );
-
-		if ( '' === $url ) {
-			return $fallback;
-		}
-
-		$scheme = wp_parse_url( $url, PHP_URL_SCHEME );
-
-		return in_array( $scheme, array( 'http', 'https' ), true ) ? $url : $fallback;
 	}
 
 	/**

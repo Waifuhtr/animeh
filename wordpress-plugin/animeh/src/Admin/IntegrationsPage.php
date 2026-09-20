@@ -18,6 +18,7 @@ namespace Animeh\Admin;
 
 use Animeh\Rest\AppLinks;
 use Animeh\Rest\AppPage;
+use Animeh\Storage\AdSettings;
 use Animeh\Rest\AuthController;
 use Animeh\Rest\Permissions;
 use Animeh\Storage\FirebaseClient;
@@ -362,6 +363,92 @@ final class IntegrationsPage {
 					</tr>
 				</table>
 
+				<h2><?php esc_html_e( 'Reklamlar', 'animeh' ); ?></h2>
+				<p class="description">
+					<?php esc_html_e( 'Bölüm oynatıcısının içinde, belirli aralıklarla gösterilen video reklamlar (VAST). Yalnızca bölüm oynatıcısında — manga okuyucusunda ve AnimehTok akışında reklam yok.', 'animeh' ); ?>
+				</p>
+				<p class="description">
+					<?php esc_html_e( 'Ayar burada duruyor çünkü uygulamanın içindeki bir anahtar yalnızca tek bir telefonu etkilerdi. Buradaki değişiklik, uygulamalar açılışta ayarları sorduğu için herkese ulaşıyor — kapatmak da dahil.', 'animeh' ); ?>
+				</p>
+				<?php $ads = AdSettings::load(); ?>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Reklamlar', 'animeh' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="ads_enabled" value="1" <?php checked( $ads['enabled'] ); ?>>
+								<?php esc_html_e( 'Açık', 'animeh' ); ?>
+							</label>
+							<p class="description">
+								<?php esc_html_e( 'Kapalıyken uygulamaya reklam adresi hiç gönderilmiyor, yani hiçbir istek de yapılmıyor.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-ads-tag"><?php esc_html_e( 'VAST adresi', 'animeh' ); ?></label></th>
+						<td>
+							<input type="url" id="animeh-ads-tag" name="ads_tag" class="large-text code"
+								value="<?php echo esc_attr( $ads['tag'] ); ?>"
+								placeholder="https://s.magsrv.com/v1/vast.php?idz=...">
+							<p class="description">
+								<?php esc_html_e( 'Reklam ağının zone ekranından aldığın In-Stream Video (VAST) adresi. Zone numarası bu adresin içinde, ayrıca girilmiyor.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-ads-interval"><?php esc_html_e( 'Aralık', 'animeh' ); ?></label></th>
+						<td>
+							<input type="number" id="animeh-ads-interval" name="ads_interval" class="small-text"
+								min="<?php echo esc_attr( (string) AdSettings::MIN_INTERVAL ); ?>"
+								max="<?php echo esc_attr( (string) AdSettings::MAX_INTERVAL ); ?>"
+								value="<?php echo esc_attr( (string) $ads['interval'] ); ?>">
+							<?php esc_html_e( 'saniye', 'animeh' ); ?>
+							<p class="description">
+								<?php
+								printf(
+									/* translators: 1: the interval in minutes, 2: the smallest allowed interval in seconds. */
+									esc_html__( 'İzlenen süreye göre — duraklatılan süre sayılmıyor. Şu an %1$s dakikada bir. En az %2$s saniye: daha sıkı bir aralık bölümü izlenemez yapar, ve kimsenin kalmadığı bir bölüm daha az kazandırır.', 'animeh' ),
+									esc_html( number_format_i18n( $ads['interval'] / 60, 1 ) ),
+									esc_html( (string) AdSettings::MIN_INTERVAL )
+								);
+								?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Başta da göster', 'animeh' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="ads_preroll" value="1" <?php checked( $ads['preroll'] ); ?>>
+								<?php esc_html_e( 'Bölüm başlar başlamaz bir reklam (pre-roll)', 'animeh' ); ?>
+							</label>
+							<p class="description">
+								<?php esc_html_e( 'Kapalıyken ilk reklam yukarıdaki aralığın sonunda çıkıyor. Açmak geliri artırır ama her bölüm başında bekleme demek.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Atlama', 'animeh' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="ads_skippable" value="1" <?php checked( $ads['skippable'] ); ?>>
+								<?php esc_html_e( 'Reklam atlanabilsin', 'animeh' ); ?>
+							</label>
+							<p>
+								<label for="animeh-ads-skip">
+									<?php esc_html_e( 'Atlama düğmesi şu kadar saniye sonra çıksın:', 'animeh' ); ?>
+								</label>
+								<input type="number" id="animeh-ads-skip" name="ads_skip_after" class="small-text"
+									min="0" max="<?php echo esc_attr( (string) AdSettings::MAX_SKIP_AFTER ); ?>"
+									value="<?php echo esc_attr( (string) $ads['skip_after'] ); ?>">
+							</p>
+							<p class="description">
+								<?php esc_html_e( 'Reklamın kendisi bir atlama süresi bildiriyorsa o geçerli; buradaki değer yalnızca bildirmeyenler için. Atlanamayan reklam, uygulamanın silinmesine giden şekildir — silinen uygulama hiç reklam göstermez.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+				</table>
+
 				<?php submit_button( __( 'Kaydet', 'animeh' ) ); ?>
 			</form>
 		</div>
@@ -455,6 +542,28 @@ final class IntegrationsPage {
 			$notices[] = array(
 				'type' => 'error',
 				'text' => __( 'İletişim e-postası geçerli görünmedi ve kaydedilmedi. Sayfada iletişim bölümü çizilmeyecek.', 'animeh' ),
+			);
+		}
+
+		$ads = AdSettings::save(
+			array(
+				'enabled'    => isset( $_POST['ads_enabled'] ),
+				'tag'        => isset( $_POST['ads_tag'] ) ? (string) wp_unslash( $_POST['ads_tag'] ) : '',
+				'interval'   => isset( $_POST['ads_interval'] ) ? (string) wp_unslash( $_POST['ads_interval'] ) : '',
+				'skippable'  => isset( $_POST['ads_skippable'] ),
+				'skip_after' => isset( $_POST['ads_skip_after'] ) ? (string) wp_unslash( $_POST['ads_skip_after'] ) : '',
+				'preroll'    => isset( $_POST['ads_preroll'] ),
+			)
+		);
+
+		// Turning advertising on without an address turns nothing on: the
+		// config stays empty and no app ever asks for an ad. Said out loud,
+		// because a ticked box that did nothing looks exactly like a bug in
+		// the app rather than a field left blank here.
+		if ( $ads['enabled'] && '' === $ads['tag'] ) {
+			$notices[] = array(
+				'type' => 'error',
+				'text' => __( 'Reklamlar açık ama VAST adresi boş ya da okunamadı — yalnızca http ve https kabul ediliyor. Adres girilene kadar hiçbir reklam gösterilmeyecek.', 'animeh' ),
 			);
 		}
 

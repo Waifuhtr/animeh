@@ -586,6 +586,14 @@ final class AuthController {
 				// the operator has not set Firebase up, which is how the app
 				// knows not to offer watch parties.
 				'firebase'          => \Animeh\Storage\FirebaseClient::client_config(),
+				// Same judgement, and for the same reason. A tag address is
+				// published by an ad network so that clients can request it,
+				// and serving it here is what lets the frequency, the
+				// placement and the off switch change without a new APK — a
+				// switch inside the app would be a switch on one phone.
+				// Empty until an operator turns advertising on, and an app
+				// told nothing never asks anybody for an ad.
+				'ads'               => \Animeh\Storage\AdSettings::client_config(),
 			)
 		);
 	}

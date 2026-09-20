@@ -100,6 +100,12 @@ jobs:
       - name: Gradle kur
         uses: gradle/actions/setup-gradle@v4
 
+      # Android'e ihtiyaç duymayan katman — ayrıştırma, politika, durum. Burada
+      # ayrıca koşuluyor çünkü hata verirse APK'nın derlenmesini beklemeden
+      # görülsün: derleme altı dakika, bu bir saniye.
+      - name: Framework'süz birim testleri
+        run: bash tools/checks/kotlin-unit-tests.sh
+
       # `release` bu depoda olmayan bir keystore istiyor, o yüzden telefona
       # kurulan yapı `debug`. İsmine rağmen debuggable değil: build.gradle.kts
       # içinde kapatılmış, yani ART metotları derleyebiliyor ve Compose'un

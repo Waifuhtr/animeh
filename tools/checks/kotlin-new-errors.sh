@@ -30,6 +30,11 @@ BASE="${1:-HEAD}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
+# JUnit is on the compile path because the tree being compiled includes
+# `src/test`. Without it every test file reports unresolved `org.junit` and
+# unresolved assertions, those land in both runs, cancel out, and the test
+# sources end up effectively unchecked — a new test file's real mistakes
+# arrive as indistinguishable noise. With it they compile like anything else.
 L=/opt/gradle-8.14.3/lib
 CP="$L/kotlin-compiler-embeddable-2.0.21.jar:$L/kotlin-stdlib-2.0.21.jar:$L/kotlin-reflect-2.0.21.jar:$L/trove4j-1.0.20200330.jar:$L/annotations-24.0.1.jar:$L/kotlinx-coroutines-core-jvm-1.6.4.jar"
 
@@ -40,7 +45,7 @@ compile_tree() {
   out="$(mktemp -d)"
   java -cp "$CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
     -no-stdlib -no-reflect \
-    -classpath "$L/kotlin-stdlib-2.0.21.jar:$L/kotlinx-coroutines-core-jvm-1.6.4.jar:$L/annotations-24.0.1.jar" \
+    -classpath "$L/kotlin-stdlib-2.0.21.jar:$L/kotlinx-coroutines-core-jvm-1.6.4.jar:$L/annotations-24.0.1.jar:$L/junit-4.13.2.jar:$L/hamcrest-core-1.3.jar" \
     -d "$out" -nowarn $(find "$tree" -name '*.kt') 2>&1 > /dev/null \
     | grep -E "error: " \
     | sed -E "s#^.*/app/src/#app/src/#; s#:[0-9]+:[0-9]+: error: #  #" \

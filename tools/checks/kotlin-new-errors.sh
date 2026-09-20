@@ -25,7 +25,10 @@
 #   Usage: kotlin-new-errors.sh [<baseline-ref>]   (default: HEAD)
 set -uo pipefail
 
-ROOT="$(git -C "${PROJECT:-/home/user/animeh}" rev-parse --show-toplevel)"
+# From this file rather than from a guessed path. The unit-test runner beside
+# this one carried a hardcoded container path, passed every run here, and
+# failed on its first CI run for a reason that had nothing to do with the code.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BASE="${1:-HEAD}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -35,8 +38,16 @@ trap 'rm -rf "$WORK"' EXIT
 # unresolved assertions, those land in both runs, cancel out, and the test
 # sources end up effectively unchecked — a new test file's real mistakes
 # arrive as indistinguishable noise. With it they compile like anything else.
-L=/opt/gradle-8.14.3/lib
-CP="$L/kotlin-compiler-embeddable-2.0.21.jar:$L/kotlin-stdlib-2.0.21.jar:$L/kotlin-reflect-2.0.21.jar:$L/trove4j-1.0.20200330.jar:$L/annotations-24.0.1.jar:$L/kotlinx-coroutines-core-jvm-1.6.4.jar"
+# Globbed, so a Gradle upgrade does not silently stop this from running.
+L="$(dirname "$(ls /opt/gradle-*/lib/kotlin-compiler-embeddable-*.jar \
+  "${GRADLE_USER_HOME:-$HOME/.gradle}"/wrapper/dists/*/*/gradle-*/lib/kotlin-compiler-embeddable-*.jar \
+  2>/dev/null | head -1)")"
+
+if [ -z "$L" ]; then
+  echo "Kotlin derleyicisi bulunamadı." >&2
+  exit 1
+fi
+CP="$(ls "$L"/kotlin-compiler-embeddable-*.jar | head -1):$(ls "$L"/kotlin-stdlib-*.jar | head -1):$(ls "$L"/kotlin-reflect-*.jar | head -1):$(ls "$L"/trove4j-*.jar 2>/dev/null | head -1):$(ls "$L"/annotations-*.jar | head -1):$(ls "$L"/kotlinx-coroutines-core-jvm-*.jar | head -1)"
 
 # Errors as "<file>:<line-independent message>", so moving code does not read
 # as a new failure.
@@ -45,7 +56,7 @@ compile_tree() {
   out="$(mktemp -d)"
   java -cp "$CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
     -no-stdlib -no-reflect \
-    -classpath "$L/kotlin-stdlib-2.0.21.jar:$L/kotlinx-coroutines-core-jvm-1.6.4.jar:$L/annotations-24.0.1.jar:$L/junit-4.13.2.jar:$L/hamcrest-core-1.3.jar" \
+    -classpath "$(ls "$L"/kotlin-stdlib-*.jar | head -1):$(ls "$L"/kotlinx-coroutines-core-jvm-*.jar | head -1):$(ls "$L"/annotations-*.jar | head -1):$(ls "$L"/junit-4*.jar | head -1):$(ls "$L"/hamcrest-core-*.jar | head -1)" \
     -d "$out" -nowarn $(find "$tree" -name '*.kt') 2>&1 > /dev/null \
     | grep -E "error: " \
     | sed -E "s#^.*/app/src/#app/src/#; s#:[0-9]+:[0-9]+: error: #  #" \

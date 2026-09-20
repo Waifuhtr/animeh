@@ -23,13 +23,32 @@ trap 'rm -rf "$WORK"' EXIT
 
 # --- Find the jars -------------------------------------------------------
 #
-# Gradle ships the Kotlin compiler and JUnit inside its own lib directory, and
-# every machine keeps that somewhere different: a distribution under /opt, a
-# package under /usr/share, or whatever the wrapper downloaded into the Gradle
-# home. Globbed rather than listed, so a version bump does not break this.
+# Gradle ships the Kotlin compiler, JUnit and their dependencies inside its own
+# lib directory, and every machine keeps that somewhere different: a
+# distribution under /opt, a package under /usr/share, or whatever the wrapper
+# downloaded into the Gradle home. Globbed rather than listed, so a version
+# bump does not break this.
+#
+# A candidate is accepted only when it has *every* jar. That is not
+# belt-and-braces: a CI runner had Gradle 9 under /usr/share carrying the
+# compiler but no JUnit, an earlier version of this script accepted it for the
+# compiler alone, and the tests then failed to compile with every assertion
+# unresolved — which reads exactly like a broken test rather than a missing
+# jar.
 
-find_jar() {
-  local pattern="$1" candidate
+NEEDED=(
+  'kotlin-compiler-embeddable-*.jar'
+  'kotlin-stdlib-*.jar'
+  'kotlin-reflect-*.jar'
+  'annotations-*.jar'
+  'kotlinx-coroutines-core-jvm-*.jar'
+  'trove4j-*.jar'
+  'junit-4*.jar'
+  'hamcrest-core-*.jar'
+)
+
+pick_lib() {
+  local candidate pattern complete
   for candidate in \
     "${GRADLE_HOME:-}/lib" \
     /opt/gradle-*/lib \
@@ -37,13 +56,15 @@ find_jar() {
     "${GRADLE_USER_HOME:-$HOME/.gradle}"/wrapper/dists/*/*/gradle-*/lib \
     "$ROOT"/android/gradle/wrapper/dists/*/*/gradle-*/lib
   do
-    # `ls` rather than a glob test: the candidate itself may contain a glob
-    # that matched nothing, and then the path does not exist at all.
-    local found
-    found="$(ls "$candidate"/$pattern 2>/dev/null | head -1)"
+    [ -d "$candidate" ] || continue
 
-    if [ -n "$found" ]; then
-      echo "$found"
+    complete=1
+    for pattern in "${NEEDED[@]}"; do
+      ls "$candidate"/$pattern > /dev/null 2>&1 || { complete=0; break; }
+    done
+
+    if [ "$complete" = 1 ]; then
+      echo "$candidate"
       return 0
     fi
   done
@@ -54,40 +75,24 @@ find_jar() {
 # The wrapper's distribution is only on disk once it has been run. Doing that
 # here costs seconds on a machine that already has it and is the difference
 # between working and not on one that does not.
-if ! find_jar 'kotlin-compiler-embeddable-*.jar' > /dev/null; then
-  echo "==> Gradle dağıtımı indiriliyor (derleyici için)"
+if ! LIB="$(pick_lib)"; then
+  echo "==> Gradle dağıtımı hazırlanıyor"
   ( cd "$ROOT/android" && ./gradlew --version > /dev/null 2>&1 ) || true
-fi
 
-COMPILER_JAR="$(find_jar 'kotlin-compiler-embeddable-*.jar')" || {
-  echo "Kotlin derleyicisi bulunamadı. Gradle dağıtımı nerede?" >&2
-  exit 1
-}
-
-LIB="$(dirname "$COMPILER_JAR")"
-
-need() {
-  local found
-  found="$(ls "$LIB"/$1 2>/dev/null | head -1)"
-
-  if [ -z "$found" ]; then
-    echo "eksik jar: $1 ($LIB içinde)" >&2
+  if ! LIB="$(pick_lib)"; then
+    echo "Gereken jar'ların hepsini taşıyan bir Gradle dizini bulunamadı." >&2
+    echo "Aranan: ${NEEDED[*]}" >&2
     exit 1
   fi
+fi
 
-  echo "$found"
-}
+# Assigned in the parent shell, so a miss is fatal here rather than an empty
+# string that travels silently into a classpath. The set was already proved
+# complete above; this only picks the exact filenames.
+jar() { ls "$LIB"/$1 | head -1; }
 
-STDLIB="$(need 'kotlin-stdlib-*.jar')"
-REFLECT="$(need 'kotlin-reflect-*.jar')"
-ANNOTATIONS="$(need 'annotations-*.jar')"
-COROUTINES="$(need 'kotlinx-coroutines-core-jvm-*.jar')"
-JUNIT="$(need 'junit-4*.jar')"
-HAMCREST="$(need 'hamcrest-core-*.jar')"
-TROVE="$(ls "$LIB"/trove4j-*.jar 2>/dev/null | head -1)"
-
-COMPILER="$COMPILER_JAR:$STDLIB:$REFLECT:$ANNOTATIONS:$COROUTINES${TROVE:+:$TROVE}"
-DEPS="$STDLIB:$ANNOTATIONS:$JUNIT:$HAMCREST"
+COMPILER="$(jar 'kotlin-compiler-embeddable-*.jar'):$(jar 'kotlin-stdlib-*.jar'):$(jar 'kotlin-reflect-*.jar'):$(jar 'annotations-*.jar'):$(jar 'kotlinx-coroutines-core-jvm-*.jar'):$(jar 'trove4j-*.jar')"
+DEPS="$(jar 'kotlin-stdlib-*.jar'):$(jar 'annotations-*.jar'):$(jar 'junit-4*.jar'):$(jar 'hamcrest-core-*.jar')"
 
 # --- What to compile -----------------------------------------------------
 #

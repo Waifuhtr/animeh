@@ -191,3 +191,149 @@ sayılmıyor ve yönetim ekranında söyleniyor.
   eşleştiği burada görülemedi. `RoomLinkPage` ve `AppLinks` aynı deseni
   kullanıyor ve ikisi de sende çalışıyor.
 - **Sayfanın görünümü.** HTML ve CSS elle yazıldı, tarayıcıda açılmadı.
+
+---
+
+## 5. Reklamlar
+
+Bölüm oynatıcısının içinde, belirli aralıklarla VAST video reklamı. Yalnızca
+orada — manga okuyucusunda ve AnimehTok akışında yok.
+
+### Ayrıştırıcı neden kendi kodumuz
+
+Google'ın IMA eklentisi yerine kendi VAST istemcimiz yazıldı, üç gerekçeyle:
+
+1. **Aralık modeli tutmuyor.** IMA, reklam sunucusunun VMAP ile bildirdiği cue
+   noktaları etrafında kurulu. Bizim elimizde tek bir VAST adresi var ve
+   "her dört dakikada bir, bölüm bitene kadar" isteniyor.
+2. **Politika.** IMA Google'ın SDK'sı ve Google'ın reklam politikalarına tabi;
+   bu uygulamada yetişkin içerik var.
+3. **Dağıtım.** Uygulama Play'de değil, yandan kuruluyor; IMA'nın Play
+   Services varsayımları zayıf.
+
+### Ve bu kararın karşılığını hemen verdiği yer
+
+Reklam ağının **gerçek yanıtı**, spesifikasyondan yazılmış bir ayrıştırıcının
+hiç bakmadığı bir yazım kullanıyor:
+
+| VAST'ın bilinen olay adları | Yanıtta var mı |
+| --- | --- |
+| `start`, `firstQuartile`, `midpoint`, `thirdQuartile`, `complete` | **hiçbiri yok** |
+| mutlak `offset` taşıyan `progress` olayları | **beş tane** |
+
+İkisi de geçerli VAST 3.0. Ama diğer yazımı arayan bir kod bu yanıtta
+**hiçbir izleme pikseli bulamaz**: reklamı oynatır, hiçbir şey raporlar,
+hiçbir şey kazandırır ve çalışıyormuş gibi görünür.
+
+Görülebilmesinin tek sebebi, ayrıştırıcının **Android'siz** yazılmış olması.
+`javax.xml.parsers` hem platformda hem masaüstü JVM'de var, yani `Vast.kt`
+emülatörsüz koşuyor ve gerçek yanıta karşı denendi.
+
+Aynı dosyadan çıkan, hepsi teste giren diğer tuzaklar:
+
+- Her URL `<![CDATA[ … ]]>` içinde **iki yanında boşlukla** geliyor. Başında
+  boşluk olan bir adres, hiç gitmeyen bir istektir.
+- Offsetler **sırasız** geliyor (10, 6, 13, 20, 28 saniye).
+- Süre milisaniyeli: `00:00:29.525`.
+- **Tek** medya dosyası, `width`/`height`/`bitrate` yok — seçim bunların
+  varlığına yaslanamıyor.
+- `skipoffset` **yok**, yani atlama süresini operatörün ayarı belirliyor.
+- Ağın kendi çağrı düğmesi (`TitleCTA`) `<Extensions>` içinde.
+
+İki yazım da aynı listeye düşüyor; oynatıcı hangisini aldığını bilmiyor.
+
+### Zamanlama
+
+`AdSchedule` — saf aritmetik, ayrı dosyada, çünkü yanlış olması en kolay ve en
+pahalı kısım orası.
+
+Kırılımlar **sabit konumlarda**, son reklamdan sayılarak değil: sayma kayar,
+yüklenmesi otuz saniye süren bir reklam sonrakini otuz saniye geciktirir ve
+beşinci kırılımda operatörün kurduğu düzen artık kimsenin üstünde olduğu düzen
+değildir.
+
+| Durum | Davranış | Neden |
+| --- | --- | --- |
+| Aynı anın içinde kalmak | Bir daha çıkmaz | İndeksle karşılaştırılıyor, zamanla değil |
+| Geri sarmak | Gösterilmiş reklam tekrar çıkmaz | Aynı sebep |
+| On dakika ileri atlamak | **Bir** reklam | İndeks tek adımda ilerliyor; dördünü arka arkaya göstermek uygulamayı sildirir |
+| Jenerik (son 30 sn) | Çıkmaz | İzleyici zaten sonraki bölüme uzanmış; gösterim kimseye harcanır |
+| Süre henüz bilinmiyor | Pre-roll dışında çıkmaz | Sıfır uzunluğa göre konan kırılım, tahmine göre konmuş demektir |
+
+### Birlikte izlemede reklam yok
+
+Kırılım bu izleyiciyi duraklatır, o duraklatma odaya yayınlanır ve
+**herkesin bölümü** görmedikleri bir reklam için durur. Eşzamanlı oynatma ile
+tek kişinin aldığı bir kesinti bağdaşmıyor; oda kazanıyor.
+
+### İki oynatıcı, tek yüzey
+
+Reklam kendi `ExoPlayer` örneğinde oynuyor. Bölümünkinde bir konum, bir altyazı
+izi, bir font kümesi ve bir kalite seçimi var; hepsinin kesintiden sağ çıkması
+gerekiyor. Ona başka bir dosya vermek, izleyicinin reklamdan bölümün başına ve
+altyazısız dönmesinin yoludur.
+
+### Her şey bölüme doğru düşüyor
+
+Cevap vermeyen ağ, ayrıştırılamayan yanıt, çözülemeyen creative — her biri
+kırılımı anında ve sessizce bitiriyor, bölüm kaldığı yerden sürüyor. İzleyici
+bölüm için geldi; bir reklam hakkında hata mesajı, reklamın hiç çıkmamasından
+kötüdür.
+
+### Ne raporlanıyor
+
+| Olay | Ne zaman |
+| --- | --- |
+| `Impression` | İlk kare göründüğünde, bir kez |
+| `progress` × 5 | Konum her offset'i geçtiğinde, sıradan drenaj |
+| `complete` | Reklam sonuna vardığında |
+| `skip` | İzleyici geçtiğinde |
+| `ClickTracking` + CTA | Dokunulduğunda, hedef açılmadan |
+| `Error` (`[ERRORCODE]` yerine konarak) | Creative çözülemediğinde |
+
+İzleme çağrıları **ateşle-ve-unut** ve **yeniden denenmiyor**: 500 dönen bir
+izleme ucu da saymıştır, ve yeniden deneme bir gösterimi başkasının
+faturasında ikiye çıkarma yoludur.
+
+### Ayarlar — Animeh → Entegrasyonlar → Reklamlar
+
+Sunucuda duruyor, uygulamada değil. Uygulamanın içindeki bir anahtar yalnızca
+tek bir telefonu etkilerdi; buradaki değişiklik, uygulamalar açılışta ayarları
+sorduğu için herkese ulaşıyor — **kapatmak da dahil.** Kapalıyken adres
+uygulamaya hiç gönderilmiyor, yani hiçbir istek yapılmıyor.
+
+### Client Hints meta etiketi neden yok
+
+Reklam ağının verdiği `<meta http-equiv="Delegate-CH" …>` etiketi bir **web
+sayfası** içindir. Oynatıcı yerel Android; ortada `<head>` yok. `/app`
+sayfasına koymak da yanlış olurdu: orada hiç reklam gösterilmiyor, etiket
+yalnızca ziyaretçinin cihaz bilgisini durduk yere reklam sunucusuna
+gönderirdi.
+
+### Burada doğrulanan / doğrulanamayan
+
+**Doğrulandı:**
+
+- **VAST ayrıştırıcısı gerçek yanıta karşı koştu.** `tools/checks/kotlin-unit-tests.sh`
+  Gradle'ın kendi derleyicisi ve JUnit'iyle framework'süz katmanı derleyip
+  çalıştırıyor. 21 test: 12 ayrıştırıcı, 9 zamanlama.
+- **Zamanlama**, yukarıdaki tablonun her satırı için ayrı kontrol.
+- Kotlin fark taramasında bu değişiklikle gelen 32 hatanın tamamı tek tek
+  incelendi ve hepsi androidx/okhttp/dagger'ın bu ortamda görünmemesine
+  bağlandı; kullanılan her API'nin projede zaten çalışan bir kullanımı
+  gösterildi (`onPlaybackStateChanged`, `onPlayerError`, `errorCodeName`,
+  `Player.STATE_ENDED`, `execute().use`, `isSuccessful`). `MediaItem.fromUri`
+  gerçek bir API ama burada kanıtlanmamıştı; projenin kullandığı
+  `MediaItem.Builder().setUri()` deyimine çevrildi.
+
+**Doğrulanamadı — ilk gerçek çalıştırma sende olacak:**
+
+- **Reklamın telefonda oynaması.** Ne emülatör var ne de `s.magsrv.com`'a
+  erişim (bu ortamın çıkış politikasında engelli). Ağ çağrısı, iki oynatıcı
+  arasındaki yüzey geçişi ve arayüz burada koşulmadı.
+- **Doluluk.** Zone yeni; ağın gerçekten reklam döndüreceği burada denenemez.
+  Boş yanıt bir hata değil, normal bir cevap olarak ele alınıyor.
+- **User-Agent.** İstek, tarayıcı taklidi yapmayan dürüst bir istemciyle
+  gidiyor. Doluluk düşük çıkarsa bakılacak ilk yer burasıdır — ama trafiği
+  yanlış tanıtmak ağla aranı bozacak türden bir çözümdür, o yüzden sessizce
+  yapılmadı.

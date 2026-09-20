@@ -81,6 +81,30 @@ object NetworkModule {
             .build()
 
     /**
+     * The client ad requests go out on.
+     *
+     * No cache at all, which is the point rather than an omission. An ad
+     * request exists to get a *different* answer every time; a stored one
+     * would show the same creative all evening and be counted once.
+     *
+     * And far less patience than the rest of the app. Everywhere else a slow
+     * answer is still worth waiting for, because it is the thing the viewer
+     * asked for. Here the viewer asked for an episode and is being held at an
+     * interruption: an ad that takes eight seconds to arrive has cost more
+     * than it earns, so the request is abandoned and the episode carries on.
+     */
+    @Provides
+    @Singleton
+    @Named("ad_client")
+    fun adClient(@Named("base_client") base: OkHttpClient): OkHttpClient =
+        base.newBuilder()
+            .cache(null)
+            .connectTimeout(5, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(8, TimeUnit.SECONDS)
+            .build()
+
+    /**
      * The client artwork is fetched with.
      *
      * Its own dispatcher and connection pool rather than the shared ones.

@@ -199,4 +199,26 @@ data class ClientConfigDto(
     @SerialName("site_name") val siteName: String = "",
     /** Empty when the operator has not set Firebase up. */
     val firebase: FirebaseConfigDto = FirebaseConfigDto(),
+    /** Empty when advertising is off, which is the default. */
+    val ads: AdConfigDto = AdConfigDto(),
 )
+
+/**
+ * What the player is told about advertising.
+ *
+ * An empty [tag] means off, and off is what an app that has never been told
+ * otherwise does: it asks nobody for anything. That is deliberately the same
+ * shape as the Firebase config above — a server with nothing configured is a
+ * feature that simply is not offered, rather than a screen full of errors.
+ */
+@Serializable
+data class AdConfigDto(
+    val tag: String = "",
+    /** Seconds of playback between breaks. */
+    val interval: Int = 0,
+    @Serializable(with = LenientBoolean::class) val skippable: Boolean = true,
+    @SerialName("skip_after") val skipAfter: Int = 5,
+    @Serializable(with = LenientBoolean::class) val preroll: Boolean = false,
+) {
+    val isUsable: Boolean get() = tag.isNotBlank() && interval > 0
+}

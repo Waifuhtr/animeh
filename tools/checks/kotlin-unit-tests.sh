@@ -27,12 +27,15 @@ DEPS="$L/kotlin-stdlib-2.0.21.jar:$L/annotations-24.0.1.jar:$L/junit-4.13.2.jar:
 # androidx.* does not belong here and will simply fail to compile.
 SOURCES=(
   "android/app/src/main/java/com/animeh/app/player/ads/Vast.kt"
+  "android/app/src/main/java/com/animeh/app/player/ads/AdSchedule.kt"
 )
 TESTS=(
   "android/app/src/test/java/com/animeh/app/player/ads/VastParserTest.kt"
+  "android/app/src/test/java/com/animeh/app/player/ads/AdScheduleTest.kt"
 )
 CLASSES=(
   "com.animeh.app.player.ads.VastParserTest"
+  "com.animeh.app.player.ads.AdScheduleTest"
 )
 
 FILES=()

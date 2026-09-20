@@ -29,6 +29,7 @@ declare( strict_types = 1 );
 
 namespace Animeh\Rest;
 
+use Animeh\Storage\AdSettings;
 use Animeh\Support\PublicUrl;
 
 /**
@@ -451,18 +452,56 @@ final class AppPage {
 		</li>
 	</ul>
 
-	<h2>Planned advertising placement</h2>
-	<p class="note">
-		Stated as a plan, not as something already running: no advertising code
-		is present in the build linked above at the time of writing.
-	</p>
+	<?php $ads = AdSettings::load(); ?>
+	<h2>Advertising placement</h2>
 	<p>
-		The intended placement is an interstitial inside the video player,
-		shown at a fixed interval during playback and repeating for the
-		duration of an episode. The placement is controlled from the
-		application's own administration panel and is off until the operator
-		enables it. No advertising is planned in the manga reader or in the
-		short-video feed.
+		One placement: a VAST in-stream video interstitial inside the episode
+		player, shown at a fixed interval of playback and repeating until the
+		episode ends. There is no advertising in the manga reader and none in
+		the short-video feed.
+	</p>
+	<?php if ( $ads['enabled'] && '' !== $ads['tag'] ) : ?>
+		<table>
+			<tr>
+				<th>Status</th>
+				<td>Enabled.</td>
+			</tr>
+			<tr>
+				<th>Interval</th>
+				<td>
+					One break every
+					<?php echo esc_html( (string) (int) round( $ads['interval'] / 60 ) ); ?>
+					minutes of playback.
+					<?php echo $ads['preroll'] ? 'A pre-roll is shown as the episode starts.' : 'There is no pre-roll; the first break is at the first interval.'; ?>
+				</td>
+			</tr>
+			<tr>
+				<th>Skipping</th>
+				<td>
+					<?php
+					if ( $ads['skippable'] ) {
+						printf(
+							'Skippable after %d seconds, unless the ad itself declares a longer offset, in which case the ad\'s own offset is honoured.',
+							(int) $ads['skip_after']
+						);
+					} else {
+						echo 'Not skippable.';
+					}
+					?>
+				</td>
+			</tr>
+		</table>
+	<?php else : ?>
+		<p class="note">
+			Currently disabled. The build linked above contains the placement
+			but requests no ad and contacts no ad server until the operator
+			turns it on.
+		</p>
+	<?php endif; ?>
+	<p>
+		The setting lives on this server rather than in the application, so
+		that turning advertising off reaches every installation at once rather
+		than waiting for anyone to update.
 	</p>
 
 	<h2>Data the application handles</h2>

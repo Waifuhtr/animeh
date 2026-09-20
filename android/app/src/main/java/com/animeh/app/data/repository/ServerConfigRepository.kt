@@ -6,6 +6,7 @@ import com.animeh.app.data.prefs.SettingsStore
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.dto.ClientConfigDto
+import com.animeh.app.player.ads.AdGate
 import com.animeh.app.social.FirebaseGate
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -33,6 +34,7 @@ class ServerConfigRepository @Inject constructor(
     private val publicApi: PublicApi,
     private val settingsStore: SettingsStore,
     private val firebase: FirebaseGate,
+    private val ads: AdGate,
 ) {
 
     /**
@@ -58,6 +60,11 @@ class ServerConfigRepository @Inject constructor(
         // Firebase first: watch parties should light up on this launch rather
         // than the one after, and the config is in the same response.
         firebase.configure(result.data.firebase)
+
+        // And advertising, from the same answer and for the same reason. This
+        // is the only path by which it can be turned off, so it runs before
+        // the address check below returns early on the common case.
+        ads.configure(result.data.ads)
 
         val announced = result.data.apiBase.trim()
         if (!isAcceptable(announced)) return false

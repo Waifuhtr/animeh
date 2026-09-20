@@ -355,6 +355,11 @@
     <!-- Adult content -->
     <string name="admin_adult">Yetişkin içerik</string>
     <string name="admin_adult_hint">İşaretlenirse izlemeden önce uyarı çıkar. Anime listelerden gizlenmez.</string>
+    <string name="ad_label">Reklam</string>
+    <string name="ad_loading">Reklam yükleniyor…</string>
+    <string name="ad_remaining">%1$d sn</string>
+    <string name="ad_skip">Reklamı geç</string>
+    <string name="ad_skip_in">%1$d sn sonra geçilebilir</string>
     <string name="adult_warning_title">Yetişkin içerik</string>
     <string name="adult_warning_body">Bu anime yetişkin içerik barındırıyor. İzlemeye devam etmek istiyor musun?</string>
     <string name="adult_warning_continue">Devam et</string>

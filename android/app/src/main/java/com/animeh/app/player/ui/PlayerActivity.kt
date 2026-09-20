@@ -35,6 +35,7 @@ import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.animeh.app.player.ads.AdBreakState
 import com.animeh.app.R
 import com.animeh.app.core.AppError
 import com.animeh.app.core.UiState
@@ -302,6 +303,7 @@ fun PlayerScreen(
     val subtitleScale by viewModel.subtitleScale.collectAsStateWithLifecycle()
     val episodes by viewModel.episodes.collectAsStateWithLifecycle()
     val inWatchlist by viewModel.inWatchlist.collectAsStateWithLifecycle()
+    val adState by viewModel.adState.collectAsStateWithLifecycle()
 
     var settingsOpen by remember { mutableStateOf(false) }
     var moreOpen by remember { mutableStateOf(false) }
@@ -367,7 +369,14 @@ fun PlayerScreen(
     // picture instead of tearing it down and starting again.
     val surface: @Composable (Modifier) -> Unit = { boxModifier ->
         Box(boxModifier.background(Color.Black)) {
-            val player = viewModel.controller.player
+            // One surface, two players. During a break the view is pointed at
+            // the ad's player and the episode's is left exactly as it was —
+            // its position, its subtitle track, its fonts and its quality
+            // selection all have to survive the interruption, and handing it a
+            // different file is how a viewer comes back to the top of the
+            // episode with the subtitles gone.
+            val advert = adState as? AdBreakState.Showing
+            val player = if (advert != null) viewModel.adBreak.player else viewModel.controller.player
 
             if (player != null) {
                 AndroidView(
@@ -389,7 +398,9 @@ fun PlayerScreen(
                 )
             }
 
-            if (playerState.subtitlesEnabled) {
+            // Not over an ad: these are the episode's lines and the episode
+            // is paused behind it.
+            if (playerState.subtitlesEnabled && adState is AdBreakState.Idle) {
                 SubtitleLayer(
                     lines = assLines,
                     script = script,
@@ -398,6 +409,27 @@ fun PlayerScreen(
                     fontScale = subtitleScale,
                 )
             }
+
+            AdOverlay(
+                state = adState,
+                onSkip = viewModel::skipAd,
+                onClick = {
+                    viewModel.adClicked()?.let { address ->
+                        // Opened by the screen rather than the view model,
+                        // and wrapped: a phone with nothing registered for a
+                        // link throws rather than shrugging, and it would
+                        // throw in the middle of an ad break.
+                        runCatching {
+                            context.startActivity(
+                                android.content.Intent(
+                                    android.content.Intent.ACTION_VIEW,
+                                    android.net.Uri.parse(address),
+                                )
+                            )
+                        }
+                    }
+                },
+            )
         }
     }
 
@@ -405,38 +437,43 @@ fun PlayerScreen(
         Box(Modifier.fillMaxSize().background(Color.Black)) {
             surface(Modifier.fillMaxSize())
 
-            PlayerControls(
-                state = playerState,
-                // Neither of these is something the phase can say: before the
-                // payload arrives there is nothing loaded, and `Idle` draws a
-                // black screen with a play button whether the fetch is still
-                // running, has failed, or was never made.
-                loading = loading,
-                loadError = loadError,
-                // Play and pause are not reported from here: the view model
-                // watches the player's own state, so a pause reaches the room
-                // whatever caused it — this button, the notification, a headset,
-                // or an incoming call. Seeks are reported here because only the
-                // caller knows the playhead moved deliberately.
-                onPlayPause = viewModel.controller::togglePlayPause,
-                onSeek = { position ->
-                    viewModel.controller.seekTo(position)
-                    viewModel.broadcast()
-                },
-                onSeekBy = { delta ->
-                    viewModel.controller.seekBy(delta)
-                    viewModel.broadcast()
-                },
-                onToggleControls = viewModel.controller::toggleControls,
-                onNext = viewModel::playNext,
-                onPrevious = viewModel::playPrevious,
-                onSkipIntro = viewModel.controller::skipIntro,
-                onLock = viewModel.controller::setLocked,
-                // Out of the theatre, not out of the episode.
-                onBack = { onRequestLandscape(false) },
-                onOpenSettings = { settingsOpen = true },
-                onRetry = viewModel::retry,
-            )
+            // No seek bar over an ad — it would be an invitation to scrub
+            // past it — and no play/pause, which would stop the picture while
+            // the ad's own timer kept running.
+            if (adState is AdBreakState.Idle) {
+                PlayerControls(
+                    state = playerState,
+                    // Neither of these is something the phase can say: before the
+                    // payload arrives there is nothing loaded, and `Idle` draws a
+                    // black screen with a play button whether the fetch is still
+                    // running, has failed, or was never made.
+                    loading = loading,
+                    loadError = loadError,
+                    // Play and pause are not reported from here: the view model
+                    // watches the player's own state, so a pause reaches the room
+                    // whatever caused it — this button, the notification, a headset,
+                    // or an incoming call. Seeks are reported here because only the
+                    // caller knows the playhead moved deliberately.
+                    onPlayPause = viewModel.controller::togglePlayPause,
+                    onSeek = { position ->
+                        viewModel.controller.seekTo(position)
+                        viewModel.broadcast()
+                    },
+                    onSeekBy = { delta ->
+                        viewModel.controller.seekBy(delta)
+                        viewModel.broadcast()
+                    },
+                    onToggleControls = viewModel.controller::toggleControls,
+                    onNext = viewModel::playNext,
+                    onPrevious = viewModel::playPrevious,
+                    onSkipIntro = viewModel.controller::skipIntro,
+                    onLock = viewModel.controller::setLocked,
+                    // Out of the theatre, not out of the episode.
+                    onBack = { onRequestLandscape(false) },
+                    onOpenSettings = { settingsOpen = true },
+                    onRetry = viewModel::retry,
+                )
+            }
         }
     } else {
         Column(
@@ -459,36 +496,38 @@ fun PlayerScreen(
             ) {
                 surface(Modifier.fillMaxSize())
 
-                InlinePlayerControls(
-                    state = playerState,
-                    loading = loading,
-                    loadError = loadError,
-                    onPlayPause = viewModel.controller::togglePlayPause,
-                    onSeek = { position ->
-                        viewModel.controller.seekTo(position)
-                        viewModel.broadcast()
-                    },
-                    onSeekBy = { delta ->
-                        viewModel.controller.seekBy(delta)
-                        viewModel.broadcast()
-                    },
-                    onToggleControls = viewModel.controller::toggleControls,
-                    onToggleSubtitles = {
-                        // Null turns them off; the first track turns them back
-                        // on, which is the only sensible thing to return to.
-                        viewModel.controller.setSubtitle(
-                            if (playerState.subtitlesEnabled) {
-                                null
-                            } else {
-                                playerState.subtitleSources.firstOrNull()?.id
-                            }
-                        )
-                    },
-                    onOpenSettings = { settingsOpen = true },
-                    onFullscreen = { onRequestLandscape(true) },
-                    onBack = onBack,
-                    onRetry = viewModel::retry,
-                )
+                if (adState is AdBreakState.Idle) {
+                    InlinePlayerControls(
+                        state = playerState,
+                        loading = loading,
+                        loadError = loadError,
+                        onPlayPause = viewModel.controller::togglePlayPause,
+                        onSeek = { position ->
+                            viewModel.controller.seekTo(position)
+                            viewModel.broadcast()
+                        },
+                        onSeekBy = { delta ->
+                            viewModel.controller.seekBy(delta)
+                            viewModel.broadcast()
+                        },
+                        onToggleControls = viewModel.controller::toggleControls,
+                        onToggleSubtitles = {
+                            // Null turns them off; the first track turns them back
+                            // on, which is the only sensible thing to return to.
+                            viewModel.controller.setSubtitle(
+                                if (playerState.subtitlesEnabled) {
+                                    null
+                                } else {
+                                    playerState.subtitleSources.firstOrNull()?.id
+                                }
+                            )
+                        },
+                        onOpenSettings = { settingsOpen = true },
+                        onFullscreen = { onRequestLandscape(true) },
+                        onBack = onBack,
+                        onRetry = viewModel::retry,
+                    )
+                }
             }
 
             EpisodePageBody(

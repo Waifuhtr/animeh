@@ -13,6 +13,8 @@ import com.animeh.app.domain.Episode
 import com.animeh.app.domain.Playback
 import com.animeh.app.domain.Work
 import com.animeh.app.player.PlaybackController
+import com.animeh.app.player.ads.AdBreakController
+import com.animeh.app.player.ads.AdBreakState
 import com.animeh.app.player.QualitySelection
 import com.animeh.app.social.WatchPartySession
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -46,6 +48,7 @@ class PlayerViewModel @Inject constructor(
     private val libraryRepository: LibraryRepository,
     private val settingsStore: SettingsStore,
     val controller: PlaybackController,
+    val adBreak: AdBreakController,
     private val party: WatchPartySession,
 ) : ViewModel() {
 
@@ -53,6 +56,7 @@ class PlayerViewModel @Inject constructor(
     val loadState: StateFlow<UiState<Playback>> = _loadState.asStateFlow()
 
     val playerState = controller.state
+    val adState = adBreak.state
     val cues = controller.cues
     val typefaces = controller.typefaces
     val assLines = controller.assLines
@@ -159,6 +163,33 @@ class PlayerViewModel @Inject constructor(
                     rotary = settings.rotaryAudio,
                     speed = settings.rotarySpeed,
                 )
+            }
+        }
+
+        // Ad breaks are driven from here rather than from the controller,
+        // which is deliberately only a media engine and has no business
+        // knowing that advertising exists.
+        viewModelScope.launch {
+            controller.state.collect { state ->
+                if (!state.phase.isPlaying) return@collect
+
+                // Never during a watch party. The break would pause this
+                // viewer, that pause would be published to the room, and
+                // everybody else's episode would stop for an ad they cannot
+                // see. Synchronised playback and an interruption one person
+                // gets are not compatible, so the room wins.
+                if (party.room.value != null) return@collect
+
+                if (!adBreak.dueNow(state.positionMs, state.durationMs)) return@collect
+
+                controller.pause()
+
+                adBreak.begin(viewModelScope) {
+                    // Resumed whatever the outcome — an ad that played, one
+                    // that never arrived, one that would not decode. The
+                    // viewer came for the episode.
+                    controller.play()
+                }
             }
         }
 
@@ -403,7 +434,24 @@ class PlayerViewModel @Inject constructor(
         if (controller.state.value.episode == null) open(currentEpisodeId)
     }
 
+    /** The viewer skipped the ad. */
+    fun skipAd() = adBreak.skip()
+
+    /**
+     * The viewer tapped the ad.
+     *
+     * The address is handed back rather than opened here: a ViewModel that
+     * starts activities is a ViewModel that cannot be tested, and the screen
+     * already knows how to open a link.
+     */
+    fun adClicked(): String? = adBreak.clicked()
+
     fun open(episodeId: Long) {
+        // Break three of the last episode says nothing about this one, and an
+        // ad that is mid-flight belongs to a player that is about to be
+        // handed a different file.
+        adBreak.reset()
+
         currentEpisodeId = episodeId
         _loadState.value = UiState.Loading
 

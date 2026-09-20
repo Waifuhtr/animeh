@@ -17,6 +17,7 @@ declare( strict_types = 1 );
 namespace Animeh\Admin;
 
 use Animeh\Rest\AppLinks;
+use Animeh\Rest\AppPage;
 use Animeh\Rest\AuthController;
 use Animeh\Rest\Permissions;
 use Animeh\Storage\FirebaseClient;
@@ -270,6 +271,75 @@ final class IntegrationsPage {
 					</tr>
 				</table>
 
+				<h2><?php esc_html_e( 'Uygulama tanıtım sayfası', 'animeh' ); ?></h2>
+				<p class="description">
+					<?php
+					printf(
+						/* translators: %s: the page's address. */
+						esc_html__( 'Uygulamayı dışarıdan bakan birine anlatan genel sayfa: reklam ağının doğrulama ekibi, ya da kurmadan önce ne olduğuna bakan biri. Adresi %s. İngilizce yayınlanıyor — sitenin diline çevrilmiyor, çünkü tam olarak Türkçe bilmeyen bir okuyucu için var.', 'animeh' ),
+						'<code>' . esc_html( AppPage::page_url() ) . '</code>'
+					);
+					?>
+				</p>
+				<?php $app_page = AppPage::settings(); ?>
+				<table class="form-table" role="presentation">
+					<tr>
+						<th scope="row"><?php esc_html_e( 'Yayın', 'animeh' ); ?></th>
+						<td>
+							<label>
+								<input type="checkbox" name="app_page_enabled" value="1" <?php checked( $app_page['enabled'] ); ?>>
+								<?php esc_html_e( 'Sayfa yayında olsun', 'animeh' ); ?>
+							</label>
+							<p class="description">
+								<?php esc_html_e( 'Kapalıyken adres 404 veriyor. Hazır olmayan bir sayfanın bulunabilmesindense bulunamaması yeğ.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-app-publisher"><?php esc_html_e( 'Yayıncı adı', 'animeh' ); ?></label></th>
+						<td>
+							<input type="text" id="animeh-app-publisher" name="app_page_publisher" class="regular-text"
+								value="<?php echo esc_attr( $app_page['publisher'] ); ?>">
+							<p class="description">
+								<?php esc_html_e( 'Sayfanın altında ve iletişim kısmında görünür. Boş bırakılırsa hiç yazılmıyor — uydurulmuyor.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-app-contact"><?php esc_html_e( 'İletişim e-postası', 'animeh' ); ?></label></th>
+						<td>
+							<input type="email" id="animeh-app-contact" name="app_page_contact" class="regular-text"
+								value="<?php echo esc_attr( $app_page['contact'] ); ?>">
+							<p class="description">
+								<?php
+								if ( '' === $app_page['contact'] ) {
+									esc_html_e( 'Boş. Reklam ağları başvuruda genellikle çalışan bir iletişim adresi arar; boşken sayfada iletişim bölümü hiç çizilmiyor.', 'animeh' );
+								} else {
+									esc_html_e( 'Sayfada bağlantı olarak görünüyor.', 'animeh' );
+								}
+								?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-app-download"><?php esc_html_e( 'İndirme adresi', 'animeh' ); ?></label></th>
+						<td>
+							<input type="url" id="animeh-app-download" name="app_page_download" class="large-text code"
+								value="<?php echo esc_attr( $app_page['download'] ); ?>">
+							<p class="description">
+								<?php esc_html_e( 'Boş bırakılırsa GitHub Actions\'ın her derlemede üzerine yazdığı sabit adrese düşer. O adres sürümden sürüme değişmiyor, yani bir kez verilip unutulabilir.', 'animeh' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
+						<th scope="row"><label for="animeh-app-repo"><?php esc_html_e( 'Kaynak kod adresi', 'animeh' ); ?></label></th>
+						<td>
+							<input type="url" id="animeh-app-repo" name="app_page_repo" class="large-text code"
+								value="<?php echo esc_attr( $app_page['repo'] ); ?>">
+						</td>
+					</tr>
+				</table>
+
 				<?php submit_button( __( 'Kaydet', 'animeh' ) ); ?>
 			</form>
 		</div>
@@ -343,6 +413,26 @@ final class IntegrationsPage {
 			$notices[] = array(
 				'type' => 'error',
 				'text' => __( 'Parmak izi okunamadı. SHA-256 parmak izi 64 onaltılık karakterdir — SHA-1 satırını yapıştırmış olabilirsin.', 'animeh' ),
+			);
+		}
+
+		$app_page = AppPage::save(
+			array(
+				'enabled'   => isset( $_POST['app_page_enabled'] ),
+				'publisher' => isset( $_POST['app_page_publisher'] ) ? (string) wp_unslash( $_POST['app_page_publisher'] ) : '',
+				'contact'   => isset( $_POST['app_page_contact'] ) ? (string) wp_unslash( $_POST['app_page_contact'] ) : '',
+				'download'  => isset( $_POST['app_page_download'] ) ? (string) wp_unslash( $_POST['app_page_download'] ) : '',
+				'repo'      => isset( $_POST['app_page_repo'] ) ? (string) wp_unslash( $_POST['app_page_repo'] ) : '',
+			)
+		);
+
+		// An address that failed validation is dropped silently by `save`, and
+		// a contact line missing from a verification page is the kind of thing
+		// nobody notices until the reviewer asks for one.
+		if ( isset( $_POST['app_page_contact'] ) && '' !== trim( (string) wp_unslash( $_POST['app_page_contact'] ) ) && '' === $app_page['contact'] ) {
+			$notices[] = array(
+				'type' => 'error',
+				'text' => __( 'İletişim e-postası geçerli görünmedi ve kaydedilmedi. Sayfada iletişim bölümü çizilmeyecek.', 'animeh' ),
 			);
 		}
 

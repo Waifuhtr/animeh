@@ -25,6 +25,7 @@ require __DIR__ . '/rows.php';
 use Animeh\Rest\CatalogController;
 use Animeh\Rest\MangaController;
 use Animeh\Rest\RewardsController;
+use Animeh\Rest\AppPage;
 use Animeh\Rest\ShortsController;
 use Animeh\Storage\B2Client;
 use Animeh\Storage\StorageSettings;
@@ -1452,6 +1453,69 @@ step(
 
 		animeh_http_reset();
 		unset( $GLOBALS['__options']['animeh_storage'] );
+	}
+);
+
+echo "\nUygulama tanıtım sayfası\n";
+
+step(
+	'yayında olmayan sayfa hiçbir şey çizmiyor',
+	static function (): void {
+		unset( $GLOBALS['__options'][ AppPage::OPTION ] );
+
+		if ( AppPage::settings()['enabled'] ) {
+			throw new RuntimeException( 'kurulur kurulmaz yayında' );
+		}
+	}
+);
+
+step(
+	'indirme adresi yalnızca http ve https kabul ediyor',
+	static function (): void {
+		// This field is operator-editable and its value becomes an href on a
+		// public page, so a `javascript:` paste is stored XSS. Falling back to
+		// the built-in address is the safe failure: the page still has a
+		// working download button.
+		$fallback = AppPage::settings()['download'];
+
+		foreach ( array( 'javascript:alert(1)', 'ftp://example.com/a.apk', 'data:text/html,x', '   ' ) as $bad ) {
+			$saved = AppPage::save( array( 'enabled' => true, 'download' => $bad ) );
+
+			if ( $saved['download'] !== $fallback ) {
+				throw new RuntimeException( 'geçmemesi gereken adres geçti: ' . $bad );
+			}
+		}
+
+		$saved = AppPage::save( array( 'enabled' => true, 'download' => 'https://example.com/animeh.apk' ) );
+
+		if ( 'https://example.com/animeh.apk' !== $saved['download'] ) {
+			throw new RuntimeException( 'geçerli adres tutulmadı: ' . $saved['download'] );
+		}
+	}
+);
+
+step(
+	'geçersiz iletişim adresi kaydedilmiyor',
+	static function (): void {
+		// `javascript:a@b.com` is here for a reason that is not the obvious
+		// one: WordPress's sanitiser deletes the colon rather than refusing,
+		// so without the equality check it would be stored as
+		// `javascripta@b.com` — well-formed, saved, and read by nobody.
+		foreach ( array( 'javascript:a@b.com', 'bozuk', '@yok.com', 'a@b', 'a b@c.com' ) as $bad ) {
+			$saved = AppPage::save( array( 'enabled' => true, 'contact' => $bad ) );
+
+			if ( '' !== $saved['contact'] ) {
+				throw new RuntimeException( 'geçmemesi gereken adres geçti: ' . $bad . ' → ' . $saved['contact'] );
+			}
+		}
+
+		$saved = AppPage::save( array( 'enabled' => true, 'contact' => 'destek@animeh.app' ) );
+
+		if ( 'destek@animeh.app' !== $saved['contact'] ) {
+			throw new RuntimeException( 'geçerli adres tutulmadı: ' . $saved['contact'] );
+		}
+
+		unset( $GLOBALS['__options'][ AppPage::OPTION ] );
 	}
 );
 

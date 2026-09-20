@@ -52,6 +52,40 @@ function sanitize_text_field( $v ) {
 	while ( preg_match( '/%[a-f0-9]{2}/i', $text, $m ) ) { $text = str_replace( $m[0], '', $text ); }
 	return $text;
 }
+function sanitize_email( $v ) {
+	// WordPress strips what cannot appear in an address rather than rejecting
+	// outright, and leaves the judgement to is_email().
+	return preg_replace( '/[^a-zA-Z0-9!#$%&\'*+\\/=?^_`{|}~@.\[\]-]/', '', (string) $v );
+}
+function is_email( $v ) {
+	// Faithful in the ways this codebase depends on: a scheme like
+	// `javascript:` is not an address, and neither is a bare word. A stub
+	// that only looked for "@" would pass `javascript:a@b` — which is the
+	// exact shape a stored-XSS paste takes.
+	$email = (string) $v;
+
+	if ( strlen( $email ) < 6 || substr_count( $email, '@' ) !== 1 ) {
+		return false;
+	}
+
+	list( $local, $domain ) = explode( '@', $email );
+
+	if ( '' === $local || ! preg_match( '/^[a-zA-Z0-9!#$%&\'*+\\/=?^_`{|}~.-]+$/', $local ) ) {
+		return false;
+	}
+
+	if ( ! str_contains( $domain, '.' ) || preg_match( '/(^[.-]|[.-]$|\\.\\.)/', $domain ) ) {
+		return false;
+	}
+
+	foreach ( explode( '.', $domain ) as $part ) {
+		if ( '' === $part || ! preg_match( '/^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i', $part ) ) {
+			return false;
+		}
+	}
+
+	return true;
+}
 function sanitize_key( $v ) { return strtolower( (string) $v ); }
 function sanitize_title( $v ) { return strtolower( preg_replace( '/[^a-z0-9]+/i', '-', (string) $v ) ); }
 function sanitize_file_name( $v ) { return (string) $v; }

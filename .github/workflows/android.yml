@@ -1,0 +1,187 @@
+name: Animeh
+
+# Her dala basılınca koşar: hangi dalda çalışıldığını bilmeye gerek kalmasın.
+# Sürüm yayını aşağıda ayrıca kısıtlanıyor.
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+# Varsayılan okuma; yalnızca yayın işi yazma istiyor.
+permissions:
+  contents: read
+
+concurrency:
+  # Aynı dala arka arkaya basılınca önceki koşu iptal olsun — yayın işinin
+  # iki koşusunun aynı etikete aynı anda yazmasını da bu engelliyor.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kontroller:
+    name: Eklenti ve statik denetimler
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PHP kur
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+
+      - name: Sözdizimi kontrolü (php -l)
+        run: find wordpress-plugin -name "*.php" -print0 | xargs -0 -n1 php -l
+
+      # Üçü ayrı şeyler ölçüyor: run.php saf mantığı, sql/ eklentinin gerçek
+      # sorgularını SQLite üstünde, smoke/ ise REST uçlarını taklit bir
+      # WordPress'te baştan sona.
+      - name: Eklenti testleri
+        run: |
+          set -e
+          for t in wordpress-plugin/animeh/tests/run.php \
+                   wordpress-plugin/animeh/tests/sql/run.php \
+                   wordpress-plugin/animeh/tests/smoke/run.php; do
+            echo "::group::$t"
+            php "$t"
+            echo "::endgroup::"
+          done
+
+      - name: Python kur
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Derleyicinin göremediği sözleşmeler: uygulamanın çağırdığı her yolun
+      # bir rotası, her DTO anahtarının bir yazanı var mı.
+      - name: Statik denetimler
+        run: |
+          set -e
+          for c in tools/checks/android_resources.py \
+                   tools/checks/subpackage_imports.py \
+                   tools/checks/activity_collisions.py \
+                   tools/checks/php_imports.py \
+                   tools/checks/rest_routes.py \
+                   tools/checks/dto_payload_keys.py; do
+            echo "::group::$c"
+            python3 "$c"
+            echo "::endgroup::"
+          done
+
+      # Sunucuya yüklenecek hazır paket; WordPress eklenti yükleme ekranından
+      # doğrudan kurulabilir.
+      - name: Eklenti zip'i oluştur
+        run: |
+          cd wordpress-plugin
+          zip -qr ../animeh-plugin.zip animeh -x "*/tests/*"
+
+      - name: Eklenti zip'ini yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: animeh-plugin
+          path: animeh-plugin.zip
+          if-no-files-found: error
+
+  android:
+    name: Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      # ubuntu-latest imajında Android SDK zaten kurulu geliyor.
+      - name: SDK yolunu bildir
+        run: echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+
+      - name: Gradle kur
+        uses: gradle/actions/setup-gradle@v4
+
+      # `release` bu depoda olmayan bir keystore istiyor, o yüzden telefona
+      # kurulan yapı `debug`. İsmine rağmen debuggable değil: build.gradle.kts
+      # içinde kapatılmış, yani ART metotları derleyebiliyor ve Compose'un
+      # baseline profilleri okunuyor.
+      - name: Debug APK derle
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon --console=plain --stacktrace
+
+      # İndirilebilir adın `app-debug.apk` değil uygulamanın adı olması için.
+      - name: APK'yı adlandır
+        run: |
+          set -e
+          cp android/app/build/outputs/apk/debug/app-debug.apk animeh.apk
+          echo "sha256: $(sha256sum animeh.apk | cut -d' ' -f1)"
+          echo "boyut:  $(stat -c%s animeh.apk) bayt"
+
+      - name: APK'yı yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: animeh-debug-apk
+          path: animeh.apk
+          if-no-files-found: error
+
+  yayin:
+    name: Genel indirme bağlantısı
+    # İş akışı yapıtları indirmek için GitHub girişi ister. Reklam ağının
+    # doğrulama ekibi, uygulamayı deneyecek biri ya da siteden gelen bir
+    # ziyaretçi giriş yapmak zorunda kalmasın diye APK ayrıca Release olarak
+    # yayınlanıyor: Release varlıkları girişsiz indirilir.
+    needs: [kontroller, android]
+    runs-on: ubuntu-latest
+
+    # Yalnızca varsayılan dal, ya da elle tetiklendiğinde. Her dalın her
+    # itişinin genel indirmeyi değiştirmesi istenmiyor.
+    if: github.ref_name == github.event.repository.default_branch || github.event_name == 'workflow_dispatch'
+
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: APK'yı indir
+        uses: actions/download-artifact@v4
+        with:
+          name: animeh-debug-apk
+
+      # Sabit etiket, çünkü verilen adresin sürümden sürüme değişmemesi
+      # gerekiyor: doğrulama formuna yazılan bağlantı bir kez yazılıyor.
+      #
+      # Silip yeniden oluşturmak yerine varsa üstüne yazılıyor (--clobber):
+      # silme ile oluşturma arasındaki saniyelerde adres 404 verirdi.
+      - name: Release'i güncelle
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: latest
+        run: |
+          set -e
+
+          sha="$(sha256sum animeh.apk | cut -d' ' -f1)"
+          notes="$(printf '%s\n' \
+            "Animeh Android uygulamasının son derlemesi." \
+            "" \
+            "| | |" \
+            "| --- | --- |" \
+            "| Commit | \`${GITHUB_SHA}\` |" \
+            "| Dal | \`${GITHUB_REF_NAME}\` |" \
+            "| SHA-256 | \`${sha}\` |" \
+            "| Derlendi | $(date -u '+%Y-%m-%d %H:%M UTC') |" \
+            "" \
+            "Bu varlık her derlemede yerinde güncellenir, adresi değişmez:" \
+            "" \
+            "\`https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/animeh.apk\`" )"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Animeh — son derleme" --notes "$notes"
+          else
+            gh release edit "$TAG" --title "Animeh — son derleme" --notes "$notes"
+          fi
+
+          gh release upload "$TAG" animeh.apk --clobber
+
+          echo "### Genel indirme bağlantısı" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/animeh.apk" >> "$GITHUB_STEP_SUMMARY"

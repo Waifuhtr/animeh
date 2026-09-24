@@ -118,9 +118,19 @@ class LibraryViewModel @Inject constructor(
     }
 
     private fun loadHistory() {
-        _state.update { it.copy(history = UiState.Loading) }
-
         viewModelScope.launch {
+            // The stored first page paints the tab before the network is
+            // asked, and a blip that fails afterwards leaves it exactly as it
+            // was rather than swapping a real list for an error screen.
+            if (_state.value.history !is UiState.Success) {
+                repository.cachedHistory().takeIf { it.isNotEmpty() }?.let { cached ->
+                    _state.update { it.copy(history = UiState.Success(cached)) }
+                }
+            }
+            if (_state.value.history !is UiState.Success) {
+                _state.update { it.copy(history = UiState.Loading) }
+            }
+
             when (val result = repository.history()) {
                 is AppResult.Success -> _state.update {
                     it.copy(
@@ -128,7 +138,10 @@ class LibraryViewModel @Inject constructor(
                         else UiState.Success(result.data)
                     )
                 }
-                is AppResult.Failure -> _state.update { it.copy(history = UiState.Error(result.error)) }
+
+                is AppResult.Failure -> if (_state.value.history !is UiState.Success) {
+                    _state.update { it.copy(history = UiState.Error(result.error)) }
+                }
             }
         }
     }

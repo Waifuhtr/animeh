@@ -7,6 +7,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import com.animeh.app.core.AppError
 import com.animeh.app.core.AppResult
+import com.animeh.app.data.local.SnapshotCache
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.UserApi
@@ -53,6 +54,7 @@ class ShortsRepository @Inject constructor(
     @Named("base_client") private val uploadClient: OkHttpClient,
     private val contentResolver: ContentResolver,
     private val compressor: ShortsCompressor,
+    private val snapshotCache: SnapshotCache,
 ) {
 
     /**
@@ -125,12 +127,24 @@ class ShortsRepository @Inject constructor(
 
     /* ── The bell ────────────────────────────────────────────────────── */
 
+    /** The stored bell contents, so it has something to show before the badge count is confirmed. */
+    suspend fun cachedNotifications(): ShortNotificationListDto? = snapshotCache.read(NOTIFICATIONS_KEY)
+
     suspend fun notifications(): AppResult<ShortNotificationListDto> =
         ApiErrorMapper.call { userApi.myShortNotifications() }
+            .also { result ->
+                if (result is AppResult.Success) snapshotCache.write(NOTIFICATIONS_KEY, result.data)
+            }
 
     /** Opening the bell is what marks it read. */
     suspend fun notificationsSeen(): AppResult<ShortNotificationListDto> =
         ApiErrorMapper.call { userApi.markShortNotificationsSeen() }
+            .also { result ->
+                // Saved under the same key: the point of caching this screen is
+                // to open already showing what was last true, and what was last
+                // true the moment this call succeeds is "seen".
+                if (result is AppResult.Success) snapshotCache.write(NOTIFICATIONS_KEY, result.data)
+            }
 
     /* ── This account's AnimehTok profile ────────────────────────────── */
 
@@ -656,6 +670,8 @@ class ShortsRepository @Inject constructor(
     companion object {
         const val TAB_FOR_YOU = "foryou"
         const val TAB_FOLLOWING = "following"
+
+        private const val NOTIFICATIONS_KEY = "tok:notifications"
 
         /**
          * How a video should meet the edge of the screen.

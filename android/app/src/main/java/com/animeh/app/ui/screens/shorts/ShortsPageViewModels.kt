@@ -587,6 +587,17 @@ class ShortNotificationsViewModel @Inject constructor(
         _state.update { it.copy(loading = true) }
 
         viewModelScope.launch {
+            // Loading stays true through this — [markSeen] fires the moment it
+            // turns false, and marking a notification seen before the network
+            // has actually said what is unread would mark ahead of what the
+            // viewer looked at. What the cache buys here is narrower than on
+            // the other screens: not an instant list, but a real one to fall
+            // back on if the network call below fails, in place of "hiç
+            // bildirim yok" for someone who has several.
+            repository.cachedNotifications()?.let { cached ->
+                _state.update { it.copy(items = cached.items, unread = cached.unread) }
+            }
+
             when (val result = repository.notifications()) {
                 is AppResult.Success -> _state.update {
                     it.copy(items = result.data.items, unread = result.data.unread, loading = false)

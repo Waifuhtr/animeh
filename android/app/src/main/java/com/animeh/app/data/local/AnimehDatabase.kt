@@ -18,7 +18,9 @@ import com.animeh.app.data.local.entity.*
  * stored one, and the destructive fallback only runs for a version it was told
  * about — so a changed column with an unchanged version is a crash on the first
  * database access of an upgraded install, not a quiet re-create. Version 2
- * covers `progress.watchedSeconds` and `works.adult`.
+ * covers `progress.watchedSeconds` and `works.adult`. Version 3 adds
+ * [SnapshotEntity], the generic cache behind the profile, wallet and
+ * leaderboard screens opening from their last known state.
  */
 @Database(
     entities = [
@@ -27,8 +29,9 @@ import com.animeh.app.data.local.entity.*
         ProgressEntity::class,
         LibraryEntity::class,
         FontEntity::class,
+        SnapshotEntity::class,
     ],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class AnimehDatabase : RoomDatabase() {
@@ -37,6 +40,7 @@ abstract class AnimehDatabase : RoomDatabase() {
     abstract fun progressDao(): ProgressDao
     abstract fun libraryDao(): LibraryDao
     abstract fun fontDao(): FontDao
+    abstract fun snapshotDao(): SnapshotDao
 
     companion object {
         const val NAME = "animeh.db"

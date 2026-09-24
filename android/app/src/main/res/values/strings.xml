@@ -430,6 +430,7 @@
     <string name="profile_favorite_clear">Favoriden çıkar</string>
     <string name="profile_genres">İzlediği Türler</string>
     <string name="profile_recent">Son izledikleri</string>
+    <string name="profile_recent_manga">Son okudukları</string>
     <string name="profile_reviews">Eleştirileri</string>
     <string name="profile_no_reviews">Henüz eleştiri yazmamış.</string>
     <string name="profile_private">Bu profil gizli.</string>

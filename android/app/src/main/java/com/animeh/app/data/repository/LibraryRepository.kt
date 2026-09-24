@@ -1,12 +1,14 @@
 package com.animeh.app.data.repository
 
 import com.animeh.app.core.AppResult
+import com.animeh.app.data.local.SnapshotCache
 import com.animeh.app.data.local.dao.LibraryDao
 import com.animeh.app.data.local.dao.ProgressDao
 import com.animeh.app.data.local.dao.WorkDao
 import com.animeh.app.data.local.entity.ProgressEntity
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.UserApi
+import com.animeh.app.data.remote.dto.HistoryDto
 import com.animeh.app.data.remote.dto.ProgressRequest
 import com.animeh.app.domain.*
 import com.animeh.app.player.WatchProgress
@@ -34,6 +36,7 @@ class LibraryRepository @Inject constructor(
     private val libraryDao: LibraryDao,
     private val progressDao: ProgressDao,
     private val workDao: WorkDao,
+    private val snapshotCache: SnapshotCache,
 ) {
 
     fun isFavorite(workId: Long): Flow<Boolean> =
@@ -124,8 +127,34 @@ class LibraryRepository @Inject constructor(
 
     suspend fun toggleFollow(workId: Long, wanted: Boolean) = setInList(workId, LIST_FOLLOW, wanted)
 
-    suspend fun history(page: Int = 1): AppResult<List<ContinueItem>> =
-        ApiErrorMapper.call({ dto -> dto.items.map { it.toDomain() } }) { userApi.history(page) }
+    /**
+     * The stored first page of history, mapped the same way [history] maps
+     * the live one.
+     *
+     * Favourites and the watchlist read Room directly and repaint themselves
+     * the moment a row changes — [observe] — which history has no equivalent
+     * of: it is the server's log of what was watched, not a local table this
+     * app writes to, so there is nothing local to observe. This is the
+     * smaller thing that gets it the same instant-open behaviour anyway.
+     */
+    suspend fun cachedHistory(): List<ContinueItem> =
+        snapshotCache.read<List<HistoryDto>>(HISTORY_KEY)?.map { it.toDomain() } ?: emptyList()
+
+    suspend fun history(page: Int = 1): AppResult<List<ContinueItem>> {
+        val result = ApiErrorMapper.call { userApi.history(page) }
+
+        return when (result) {
+            is AppResult.Success -> {
+                // Only the first page is a snapshot of "history" as a screen
+                // opens on it; page two is scrolling, not a cold start.
+                if (page == 1) snapshotCache.write(HISTORY_KEY, result.data.items)
+
+                AppResult.Success(result.data.items.map { it.toDomain() })
+            }
+
+            is AppResult.Failure -> result
+        }
+    }
 
     suspend fun continueWatching(): AppResult<List<ContinueItem>> =
         ApiErrorMapper.call({ dto -> dto.items.map { it.toDomain() } }) { userApi.continueWatching() }
@@ -233,5 +262,7 @@ class LibraryRepository @Inject constructor(
         const val LIST_FAVORITE = "favorite"
         const val LIST_WATCHLIST = "watchlist"
         const val LIST_FOLLOW = "follow"
+
+        private const val HISTORY_KEY = "history"
     }
 }

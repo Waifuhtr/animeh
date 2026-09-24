@@ -389,3 +389,90 @@ değeri saklamasın.
 
 Oynatıcı kendi etkinliği ve kendi kompozisyonu olduğu için rengi ayrıca
 okuyor; arkasındakinden miras almıyor.
+
+## 10. Reklam güvenilirliği, profil ayrımı, genel sayfa önbelleği (20 Eylül 2026)
+
+### Reklam: tek başarısız istek kalıcı kayıptı
+
+Bulgu kullanıcıdan geldi: başlangıç reklamı bazen çıkmıyordu, 4 dakikalık
+reklam bazen "yükleniyor" yazıp hemen kayboluyordu.
+
+Kök neden `AdBreakController.dueNow()`'da: bir kırılımın gösterilmesine karar
+verilir verilmez `lastPlayed` o an güncelleniyordu — `VastClient` ağ isteğini
+daha göndermeden. `VastClient.request()` ise tek deneme yapıyordu (5 sn
+bağlantı / 8 sn toplam, kasıtlı olarak retry'sız — izleyiciyi bekletmemek
+için). Yani tek bir zaman aşımı: kırılım "gösterildi" sayılıp o oturum için
+kalıcı olarak kayboluyordu — üstelik en olası an tam da oynatmanın başladığı
+an, yani bölümün kendi ağ isteklerinin bağlantıyı en çok kullandığı an.
+
+Düzeltme `VastClient.fetchWithRetry()`: tek retry, aralarında 1.5 saniye.
+`dueNow()`'a dokunulmadı — "gösterilecek" kararı hâlâ erken veriliyor, ama
+artık tek bir kötü milisaniyenin kırılımı kaybetmesi için iki şansı var. Ölü
+bir sunucu hâlâ hızlı vazgeçiyor (izleyici yine beklemiyor), sadece geçici bir
+takılma artık kalıcı kayıp olmuyor.
+
+Test: `VastClientTest.kt`, gerçek bir `MockWebServer` ile — 500 sonra başarı
+bir kez daha denendiğini, üst üste iki başarısızlığın vazgeçtiğini, temiz bir
+ilk yanıtın retry'ı hiç harcamadığını, gerçek bir "boş yanıt"ın (no fill)
+retry'ye sebep olmadığını doğruluyor.
+
+### Herkese açık profil: izlenen/okunan ayrımı, manga istatistikleri
+
+Sunucu zaten anime/manga istatistiklerini ayrı hesaplıyordu
+(`UserDataRepository::stats()`) — sorun Android tarafındaydı: herkese açık
+profilin `ProfileStatsDto`'sunda `manga` alanı hiç yoktu (kendi profildeki
+`UserStatsDto`'da vardı), veri geliyor okunmadan atılıyordu. `watched_works()`
+de anime/manga ayrımı yapmadan tek liste dönüyordu, satırlarda `kind` bile
+yoktu.
+
+İki düzeltme:
+
+- `ProfileStatsDto`'ya `manga: MangaStatsDto` eklendi, herkese açık profile
+  "sayfa okundu / bölüm okundu / biten manga" kartları geldi (manga hiç
+  yoksa kartlar görünmüyor).
+- `watched_works()`'e `w.kind` eklendi, `recent_works` Android'de iki raya
+  bölündü: "Son izledikleri" / "Son okudukları". Sunucu tarafında da her
+  `kind` **kendi başına** en fazla 12 satır alıyor (`SocialController.php`) —
+  tek 12 sınırı paylaşılsaydı, günlük izleyen ama ara sıra okuyan biri
+  mangasını rayda hiç göremezdi.
+
+### Diğer sayfalar için genel önbellek
+
+`CatalogRepository.cachedHome()` ana sayfaya özeldi — `WorkEntity`'nin `rail`
+sütunu üstüne kurulu, rafların satır satır çizildiği bir yapı. Profil, cüzdan,
+sıralama, arkadaşlar, odalar, bildirimler gibi ekranlar tek bir yanıt
+nesnesinden kendini çiziyor; her biri için ayrı bir Room şeması kurmak beş
+şemanın aynı şeyi söylemesi olurdu.
+
+Onun yerine `SnapshotCache` (`data/local/SnapshotCache.kt`): tek tablo
+(`snapshots`, `key`/`json`/`cachedAt`), `kotlinx.serialization` ile herhangi
+bir `@Serializable` tipi bir anahtar altında saklıyor. Okuma, JSON artık
+uymuyorsa (uygulama güncellendi, alan şekli değişti) sessizce `null` dönüyor
+— `Json.coerceInputValues` çoğunu zaten emiyor, geri kalanı burada yakalanıyor.
+
+Desen her ekranda aynı: `cachedX()` ağa hiç dokunmadan son kaydı okuyor,
+`x()`'in başarı yolu aynı anahtara yazıyor. ViewModel tarafında da tek kural:
+**ekranda zaten bir şey varsa (önbellekten ya da önceki yüklemeden), yeni bir
+yükleme onu ne yükleniyor ekranıyla ne de bir hatayla değiştirmiyor** — sadece
+başarıyla değişiyor. Oda listesi ve sıralama ekranları bunu zaten "liste
+boşsa" koşuluyla yapıyordu; profil ve arkadaşlar ekranları `UiState`
+üzerinden aynı kurala getirildi.
+
+Kapsam dışı bırakılan, kasıtlı: anime/manga katalog-keşfet-arama listeleri
+(büyüyen bir arşiv sınırsız önbellek demektir) ve player/izleme partisi gibi
+zaten anlık olması gereken ekranlar. Ayarlar sayfası da dokunulmadı —
+zaten tamamen yerel (`DataStore`), önbelleklenecek bir ağ isteği yok.
+
+Bildirim çanı (`ShortNotificationsViewModel`) bir istisna: "yükleniyor"
+durumu, listenin açılması bildirimleri okundu işaretlediği an olduğu için
+(`LaunchedEffect(state.loading)`), erkenden kapatılamıyor — kapatılsaydı
+sunucu henüz neyin okunmadığını söylemeden bir şey okundu sayılırdı. Orada
+önbellek yalnızca **başarısız bir yenilemede** son bilinen listeye düşüyor,
+"hiç bildirim yok" yerine.
+
+### Oturum kapatınca temizlenen
+
+`AuthRepository.clearLocalData()`'ya `snapshotDao().clear()` eklendi.
+İzlenen bölümler ve kitaplık zaten temizleniyordu aynı sebepten — bir cüzdan
+bakiyesi ya da profil istatistiği de tam olarak o kadar kişisel, paylaşılan
+bir telefonda bir sonraki kişiye miras kalmamalı.

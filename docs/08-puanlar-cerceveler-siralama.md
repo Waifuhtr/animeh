@@ -119,7 +119,7 @@ yeniden-besteleme değil, sadece bir çizim.
 
 ## 3. Sıralama
 
-Üç tablo, aynı geçmiş tablosundan:
+Dört tahta. Üçü aynı geçmiş tablosundan:
 
 | Sekme | Ölçüt |
 | --- | --- |
@@ -135,6 +135,39 @@ bakılan bir şey, saniyede bir yenilenen bir şey değil.
 
 Listeye giremeyen kullanıcı da kendi sırasını görüyor: kaç kişinin önde
 olduğu sayılıyor, yani 400. sıradaki biri de bir sayı görüyor.
+
+### Dördüncü tahta: Puan (20 Eylül 2026)
+
+Yukarıdaki üçü kasıtlı olarak sadece anime. `UserDataRepository::stats()`
+manga okumayı anime izlemeden ayırırken tam da şu hatayı düzeltmişti: bir
+sayfa bir saniye değil, bir bölüm bir bölüm değil — mangayı bu üç tahtaya
+karıştırmak o hatayı geri getirirdi.
+
+Bunun yerine mangayı zaten adilce sayan tek yer kullanıldı: puan. Bölüm 20,
+manga bölümü 10 puan (`Points::PER_EPISODE` / `PER_CHAPTER`) — anime izlemek
+de manga okumak da zaten puan kazandırıyor, sadece sıralama bunu görmüyordu.
+
+`LeaderboardRepository::METRIC_POINTS` geçmiş tablosuna hiç dokunmuyor;
+doğrudan puan defterinden (`animeh_points`) okuyor:
+
+```sql
+SELECT user_id,
+       SUM(CASE WHEN delta > 0 THEN delta ELSE 0 END) AS value,
+       MIN(CASE WHEN delta > 0 THEN created_at END) AS first_seen
+FROM {puan tablosu}
+WHERE user_id > 0
+GROUP BY user_id
+HAVING value > 0
+ORDER BY value DESC, first_seen ASC
+```
+
+**Bakiye değil, kazanılan toplam** (`delta > 0` şartı). Mağazadan bir çerçeve
+almak bir sıralamayı düşürmemeli — düşseydi, mağazayı kullanmanın cezası
+sıralamada geri gitmek olurdu.
+
+Android tarafında Sıralama ekranına 4. sekme olarak eklendi
+(`BoardMetric.POINTS`), herkese açık profildeki `ranks` nesnesine de
+`points` alanı olarak.
 
 ---
 

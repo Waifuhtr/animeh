@@ -197,6 +197,36 @@ fun PublicProfileScreen(
                         }
                     }
 
+                    // Its own row, and only once there is something to say.
+                    // Reading is counted in chapters and pages; folding it
+                    // into the row above would mean adding chapters to
+                    // episodes and pages to seconds — the exact mistake the
+                    // server side of this endpoint was fixed to stop making.
+                    if (profile.stats.manga.any) {
+                        item {
+                            Row(
+                                Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Stat(
+                                    "${profile.stats.manga.chaptersCompleted}",
+                                    stringResource(R.string.profile_chapters_read),
+                                    Modifier.weight(1f),
+                                )
+                                Stat(
+                                    "${profile.stats.manga.pagesRead}",
+                                    stringResource(R.string.profile_pages_read),
+                                    Modifier.weight(1f),
+                                )
+                                Stat(
+                                    "${profile.stats.manga.worksCompleted}",
+                                    stringResource(R.string.profile_manga_completed),
+                                    Modifier.weight(1f),
+                                )
+                            }
+                        }
+                    }
+
                     profile.favoriteWork?.let { favorite ->
                         item { Header(stringResource(R.string.profile_favorite)) }
                         item {
@@ -257,14 +287,35 @@ fun PublicProfileScreen(
                         item { GenreWheel(profile.topGenres) }
                     }
 
-                    if (profile.recentWorks.isNotEmpty()) {
+                    // Two rails rather than one mixed list: a manga chapter is
+                    // not a watched episode, and showing both under "son
+                    // izledikleri" is what a viewer originally read as a bug
+                    // here, not a feature.
+                    val recentAnime = profile.recentWorks.filter { it.kind != "manga" }
+                    val recentManga = profile.recentWorks.filter { it.kind == "manga" }
+
+                    if (recentAnime.isNotEmpty()) {
                         item { Header(stringResource(R.string.profile_recent)) }
                         item {
                             LazyRow(
                                 contentPadding = PaddingValues(horizontal = 16.dp),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                             ) {
-                                items(profile.recentWorks, key = { it.id }) { work ->
+                                items(recentAnime, key = { it.id }) { work ->
+                                    RecentPoster(work, onClick = { onOpenWork(work.id) })
+                                }
+                            }
+                        }
+                    }
+
+                    if (recentManga.isNotEmpty()) {
+                        item { Header(stringResource(R.string.profile_recent_manga)) }
+                        item {
+                            LazyRow(
+                                contentPadding = PaddingValues(horizontal = 16.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                items(recentManga, key = { it.id }) { work ->
                                     RecentPoster(work, onClick = { onOpenWork(work.id) })
                                 }
                             }

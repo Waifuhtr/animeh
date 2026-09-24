@@ -38,6 +38,14 @@ data class ProfileStatsDto(
     @SerialName("works_started") val worksStarted: Int = 0,
     @SerialName("works_completed") val worksCompleted: Int = 0,
     val favorites: Int = 0,
+    /**
+     * Reading, counted apart from watching — see [MangaStatsDto].
+     *
+     * The server has always sent this; only [UserStatsDto], the own-profile
+     * shape, used to read it. A public profile asked the same endpoint for
+     * the same JSON and threw this part away unparsed.
+     */
+    val manga: MangaStatsDto = MangaStatsDto(),
 )
 
 @Serializable
@@ -52,6 +60,8 @@ data class ProfileWorkDto(
     @SerialName("banner_url") val bannerUrl: String = "",
     val score: Double = 0.0,
     @Serializable(with = LenientBoolean::class) val adult: Boolean = false,
+    /** "anime" or "manga" — which rail this belongs on. */
+    val kind: String = "anime",
 )
 
 @Serializable

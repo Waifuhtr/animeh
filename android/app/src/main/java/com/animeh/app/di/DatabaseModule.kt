@@ -30,4 +30,5 @@ object DatabaseModule {
     @Provides fun progressDao(db: AnimehDatabase): ProgressDao = db.progressDao()
     @Provides fun libraryDao(db: AnimehDatabase): LibraryDao = db.libraryDao()
     @Provides fun fontDao(db: AnimehDatabase): FontDao = db.fontDao()
+    @Provides fun snapshotDao(db: AnimehDatabase): SnapshotDao = db.snapshotDao()
 }

@@ -101,3 +101,20 @@ data class FontEntity(
     val sizeBytes: Long,
     val cachedAt: Long = System.currentTimeMillis(),
 )
+
+/**
+ * A screen's last known answer, whole, for the moment before a fresher one
+ * arrives.
+ *
+ * Everything above is a table shaped for one kind of screen: rails for the
+ * home screen, a join for continue-watching. A profile, a wallet balance or
+ * a page of the leaderboard does not need a shape of its own — it is drawn
+ * from one response object, so keeping that object, serialised, under a name
+ * the caller picks is enough. See [com.animeh.app.data.local.SnapshotCache].
+ */
+@Entity(tableName = "snapshots")
+data class SnapshotEntity(
+    @PrimaryKey val key: String,
+    val json: String,
+    val cachedAt: Long = System.currentTimeMillis(),
+)

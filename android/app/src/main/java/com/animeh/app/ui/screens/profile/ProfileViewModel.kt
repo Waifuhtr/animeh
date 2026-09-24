@@ -62,6 +62,25 @@ class ProfileViewModel @Inject constructor(
     // No `init { refresh() }`: the screen calls [refresh] whenever it comes
     // back into view, which covers the first time as well as every return
     // from the shop — where the balance and the frame have just changed.
+    //
+    // What init *does* do is paint whatever was true last time, so the first
+    // of those calls to [refresh] has something already on screen rather than
+    // a blank profile for however long the round trip takes.
+    init {
+        viewModelScope.launch {
+            repository.cachedProfile()?.let {
+                _stats.value = it.stats
+                _wallet.value = it.points
+                _theme.value = it.user.theme
+                _frame.value = it.user.frame
+            }
+            // The same order [refresh] fills the wallet in: the profile's
+            // copy first, then the heavier call's fuller one — history and
+            // all — over the top of it, just from what was last saved rather
+            // than the network.
+            rewards.cachedWallet()?.let { _wallet.value = it }
+        }
+    }
 
     /**
      * Send a picked image as the profile picture.

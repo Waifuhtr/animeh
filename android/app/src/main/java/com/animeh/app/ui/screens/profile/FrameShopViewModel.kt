@@ -46,6 +46,21 @@ class FrameShopViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
+            // Only on a genuinely empty screen: a reload after a purchase
+            // already has a full grid on screen, and overwriting it with
+            // whatever was cached before the purchase would undo it for the
+            // instant before the fresh copy lands.
+            if (_state.value.frames.isEmpty()) {
+                rewards.cachedFrames()?.let { cached ->
+                    _state.value = _state.value.copy(
+                        balance = cached.balance,
+                        equipped = cached.equipped,
+                        frames = cached.frames,
+                        selectedId = cached.equipped.takeIf { it > 0 } ?: cached.frames.firstOrNull()?.id ?: 0,
+                    )
+                }
+            }
+
             when (val result = rewards.frames()) {
                 is AppResult.Success -> _state.value = _state.value.copy(
                     loading = false,

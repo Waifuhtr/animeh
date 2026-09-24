@@ -14,11 +14,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
-/** The three boards, in the order the tabs show them. */
+/** The four boards, in the order the tabs show them. */
 enum class BoardMetric(val key: String, val label: String) {
     EPISODES(RewardsRepository.METRIC_EPISODES, "Bölüm"),
     SECONDS(RewardsRepository.METRIC_SECONDS, "Süre"),
     WORKS(RewardsRepository.METRIC_WORKS, "Anime"),
+    // Anime and manga together, in the one unit that already weighs a
+    // chapter fairly against an episode instead of pretending a page is a
+    // second — see LeaderboardRepository::METRIC_POINTS on the server.
+    POINTS(RewardsRepository.METRIC_POINTS, "Puan"),
 }
 
 @Immutable
@@ -63,7 +67,21 @@ class LeaderboardViewModel @Inject constructor(
 
     private fun load(metric: BoardMetric) {
         viewModelScope.launch {
-            put(metric, (_boards.value[metric] ?: BoardState()).copy(loading = true, error = null))
+            val current = _boards.value[metric] ?: BoardState()
+
+            // A board opened for the first time this process has nothing in
+            // [current] yet — that gap is what the disk cache fills, the same
+            // way the in-memory map already fills it on a second visit to a
+            // tab within one session.
+            val seeded = if (current.entries.isEmpty()) {
+                rewards.cachedLeaderboard(metric.key)?.let {
+                    current.copy(entries = it.entries, me = it.me)
+                } ?: current
+            } else {
+                current
+            }
+
+            put(metric, seeded.copy(loading = true, error = null))
 
             when (val result = rewards.leaderboard(metric.key, limit = 50)) {
                 is AppResult.Success -> put(
@@ -75,9 +93,15 @@ class LeaderboardViewModel @Inject constructor(
                     ),
                 )
 
+                // A board already on screen — cached or from the last load —
+                // is worth more than an error message over a blip; a metric
+                // with nothing to show yet still gets one.
                 is AppResult.Failure -> put(
                     metric,
-                    BoardState(loading = false, error = "Sıralama yüklenemedi."),
+                    seeded.copy(
+                        loading = false,
+                        error = if (seeded.entries.isEmpty()) "Sıralama yüklenemedi." else null,
+                    ),
                 )
             }
         }

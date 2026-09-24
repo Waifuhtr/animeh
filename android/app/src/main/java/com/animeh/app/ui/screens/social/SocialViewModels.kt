@@ -47,10 +47,20 @@ class ProfileDetailViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = UiState.Loading
-            _state.value = when (val result = social.profile(userId)) {
-                is AppResult.Success -> UiState.Success(result.data)
-                is AppResult.Failure -> UiState.Error(result.error)
+            // A profile already on screen — cached from a previous visit, or
+            // still showing from before this call — is worth more than a
+            // spinner or an error banner over a blip. Only a screen with
+            // nothing to show yet gets either.
+            if (_state.value !is UiState.Success) {
+                social.cachedProfile(userId)?.let { _state.value = UiState.Success(it) }
+            }
+            if (_state.value !is UiState.Success) _state.value = UiState.Loading
+
+            when (val result = social.profile(userId)) {
+                is AppResult.Success -> _state.value = UiState.Success(result.data)
+                is AppResult.Failure -> if (_state.value !is UiState.Success) {
+                    _state.value = UiState.Error(result.error)
+                }
             }
         }
     }
@@ -117,10 +127,16 @@ class FriendsViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
-            _state.value = UiState.Loading
-            _state.value = when (val result = social.friends()) {
-                is AppResult.Success -> UiState.Success(result.data)
-                is AppResult.Failure -> UiState.Error(result.error)
+            if (_state.value !is UiState.Success) {
+                social.cachedFriends()?.let { _state.value = UiState.Success(it) }
+            }
+            if (_state.value !is UiState.Success) _state.value = UiState.Loading
+
+            when (val result = social.friends()) {
+                is AppResult.Success -> _state.value = UiState.Success(result.data)
+                is AppResult.Failure -> if (_state.value !is UiState.Success) {
+                    _state.value = UiState.Error(result.error)
+                }
             }
         }
     }
@@ -373,6 +389,17 @@ class RoomsViewModel @Inject constructor(
 
     fun load() {
         viewModelScope.launch {
+            // The screen already treats a non-empty list as reason enough to
+            // hide both the spinner and the error state (see RoomsScreen), so
+            // seeding it from the last known rooms is the whole trick — a
+            // cold open shows what was true a moment ago instead of nothing
+            // while the network catches up.
+            if (_state.value.rooms.isEmpty()) {
+                social.cachedRooms().takeIf { it.isNotEmpty() }?.let { cached ->
+                    _state.update { it.copy(rooms = cached) }
+                }
+            }
+
             _state.update { it.copy(loading = true, error = null) }
 
             when (val result = social.rooms()) {

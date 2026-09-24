@@ -5,6 +5,7 @@ import com.animeh.app.core.AppError
 import com.animeh.app.core.AccountGate
 import com.animeh.app.core.AppResult
 import com.animeh.app.data.local.AnimehDatabase
+import com.animeh.app.data.local.SnapshotCache
 import com.animeh.app.data.prefs.AuthState
 import com.animeh.app.data.prefs.SessionStore
 import com.animeh.app.data.prefs.SettingsStore
@@ -34,6 +35,7 @@ class AuthRepository @Inject constructor(
     private val sessionStore: SessionStore,
     private val settingsStore: SettingsStore,
     private val database: AnimehDatabase,
+    private val snapshotCache: SnapshotCache,
 ) {
 
     val authState: StateFlow<AuthState> = sessionStore.state
@@ -133,6 +135,14 @@ class AuthRepository @Inject constructor(
                 if (result is AppResult.Success) sessionStore.updateUser(result.data)
             }
 
+    /**
+     * The stored profile, with nothing asked of the network.
+     *
+     * Exists so the profile screen can draw itself the instant it opens,
+     * exactly like `CatalogRepository.cachedHome` does for the home screen.
+     */
+    suspend fun cachedProfile(): ProfileDto? = snapshotCache.read(PROFILE_KEY)
+
     suspend fun refreshProfile(): AppResult<ProfileDto> =
         ApiErrorMapper.call({ it }) { userApi.profile() }
             .also { result ->
@@ -141,6 +151,7 @@ class AuthRepository @Inject constructor(
                     // The server's copy wins on a fresh sign-in, so preferences
                     // follow the account to a new device.
                     settingsStore.applyRemote(result.data.settings)
+                    snapshotCache.write(PROFILE_KEY, result.data)
                 }
             }
 
@@ -174,9 +185,14 @@ class AuthRepository @Inject constructor(
 
     private suspend fun clearLocalData() {
         // Watch history and library belong to the account that was signed in;
-        // the next person on this device must not inherit them.
+        // the next person on this device must not inherit them. Snapshots join
+        // them for the same reason — a wallet balance or a profile's stats are
+        // exactly as personal, and leaving them means the next person on this
+        // device sees the previous one's numbers for however long it takes the
+        // next network call to overwrite them.
         database.progressDao().clear()
         database.libraryDao().clear()
+        database.snapshotDao().clear()
     }
 
     /** A human-readable device name for the sessions list. */
@@ -189,6 +205,9 @@ class AuthRepository @Inject constructor(
 
     private companion object {
         const val MIN_PASSWORD_LENGTH = 8
+
+        /** Where the own profile snapshot lives; one row, one account at a time. */
+        const val PROFILE_KEY = "profile:me"
 
         /**
          * The server decides the real type from the bytes, so this is only what

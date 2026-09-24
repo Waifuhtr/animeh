@@ -4,6 +4,7 @@ import com.animeh.app.core.ClientLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -59,7 +60,7 @@ class VastClient @Inject constructor(
         val inherited = mutableListOf<String>()
 
         repeat(VastParser.MAX_REDIRECTS) {
-            val body = fetch(url) ?: return@withContext null
+            val body = fetchWithRetry(url) ?: return@withContext null
 
             when (val result = VastParser.parse(body)) {
                 is VastResult.Ad ->
@@ -120,6 +121,30 @@ class VastClient @Inject constructor(
         report(templates.map { it.replace("[ERRORCODE]", code.toString()) })
     }
 
+    /**
+     * [fetch], given one second chance before it counts as no fill.
+     *
+     * The request goes out at the worst possible moment: the instant an ad
+     * break starts is the instant the episode's own manifest and first
+     * segments are also fighting for the radio, on whatever connection the
+     * viewer has. A handshake that times out right there says nothing about
+     * whether an ad exists — only that this attempt landed on a bad
+     * millisecond. Without a retry that single moment cost the break for
+     * good, because the caller marks the slot shown the moment it decided to
+     * try, not the moment something actually played.
+     *
+     * One retry, not a loop: a server that is genuinely down should still
+     * fail fast, and the viewer is paused on a still frame for as long as
+     * this takes. A short gap before trying again is what turns a shared
+     * connection's momentary congestion into a normal-looking second
+     * attempt instead of the same bad millisecond twice.
+     */
+    private suspend fun fetchWithRetry(url: String): String? {
+        fetch(url)?.let { return it }
+        delay(RETRY_DELAY_MS)
+        return fetch(url)
+    }
+
     /** GET, or null. */
     private fun fetch(url: String): String? =
         runCatching {
@@ -154,6 +179,9 @@ class VastClient @Inject constructor(
 
     private companion object {
         const val MAX_HOPS_MESSAGE = "en fazla ${VastParser.MAX_REDIRECTS} adım izleniyor"
+
+        /** How long the second attempt waits for the first one's congestion to pass. */
+        const val RETRY_DELAY_MS = 1_500L
     }
 }
 

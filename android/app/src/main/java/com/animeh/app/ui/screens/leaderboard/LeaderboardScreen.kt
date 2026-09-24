@@ -457,4 +457,5 @@ private fun formatValue(value: Long, metric: BoardMetric): String = when (metric
     BoardMetric.SECONDS -> formatWatched(value)
     BoardMetric.EPISODES -> "$value bölüm"
     BoardMetric.WORKS -> "$value anime"
+    BoardMetric.POINTS -> "$value puan"
 }

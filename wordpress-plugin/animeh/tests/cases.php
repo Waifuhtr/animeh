@@ -1988,10 +1988,12 @@ describe( 'Leaderboard', function (): void {
 		same( array(), \Animeh\Storage\LeaderboardRepository::rank( array() ) );
 	} );
 
-	it( 'yalnızca bilinen üç ölçüt kabul edilir', function (): void {
+	it( 'yalnızca bilinen dört ölçüt kabul edilir', function (): void {
 		ok( \Animeh\Storage\LeaderboardRepository::valid( 'works' ) );
 		ok( \Animeh\Storage\LeaderboardRepository::valid( 'seconds' ) );
 		ok( \Animeh\Storage\LeaderboardRepository::valid( 'episodes' ) );
+		// Manga'nın tek başına durduğu tahta — diğer üçü anime'ye özel kalır.
+		ok( \Animeh\Storage\LeaderboardRepository::valid( 'points' ) );
 		// SQL’e giden tek şey bu isim olduğu için, listede olmayan hiçbir
 		// şeyin geçmemesi bir güvenlik kontrolü.
 		ok( ! \Animeh\Storage\LeaderboardRepository::valid( 'value; DROP TABLE' ) );

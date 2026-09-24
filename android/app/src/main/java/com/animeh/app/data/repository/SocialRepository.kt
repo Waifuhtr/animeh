@@ -1,6 +1,7 @@
 package com.animeh.app.data.repository
 
 import com.animeh.app.core.AppResult
+import com.animeh.app.data.local.SnapshotCache
 import com.animeh.app.data.remote.ApiErrorMapper
 import com.animeh.app.data.remote.PublicApi
 import com.animeh.app.data.remote.UserApi
@@ -33,10 +34,17 @@ import javax.inject.Singleton
 class SocialRepository @Inject constructor(
     private val publicApi: PublicApi,
     private val userApi: UserApi,
+    private val snapshotCache: SnapshotCache,
 ) {
+
+    suspend fun cachedProfile(userId: Long): PublicProfileDto? =
+        snapshotCache.read(profileKey(userId))
 
     suspend fun profile(userId: Long): AppResult<PublicProfileDto> =
         ApiErrorMapper.call { publicApi.profile(userId) }
+            .also { result ->
+                if (result is AppResult.Success) snapshotCache.write(profileKey(userId), result.data)
+            }
 
     /** Zero clears it, which is how someone stops showing one. */
     suspend fun setFavoriteWork(workId: Long): AppResult<ProfileWorkDto?> =
@@ -53,8 +61,13 @@ class SocialRepository @Inject constructor(
 
     // -- Friends ------------------------------------------------------------
 
+    suspend fun cachedFriends(): FriendsDto? = snapshotCache.read(FRIENDS_KEY)
+
     suspend fun friends(): AppResult<FriendsDto> =
         ApiErrorMapper.call { userApi.friends() }
+            .also { result ->
+                if (result is AppResult.Success) snapshotCache.write(FRIENDS_KEY, result.data)
+            }
 
     /**
      * Ask to be someone's friend, by whichever handle you have.
@@ -88,8 +101,13 @@ class SocialRepository @Inject constructor(
      * permission granted and a reachable phone — and a room somebody opened
      * should still be findable when none of that held.
      */
+    suspend fun cachedRooms(): List<RoomDto> = snapshotCache.read(ROOMS_KEY) ?: emptyList()
+
     suspend fun rooms(): AppResult<List<RoomDto>> =
         ApiErrorMapper.call({ it.rooms }) { userApi.rooms() }
+            .also { result ->
+                if (result is AppResult.Success) snapshotCache.write(ROOMS_KEY, result.data)
+            }
 
     suspend fun createRoom(episodeId: Long): AppResult<RoomDto> =
         ApiErrorMapper.call { userApi.createRoom(CreateRoomRequest(episodeId)) }
@@ -119,4 +137,12 @@ class SocialRepository @Inject constructor(
         note: String = "",
     ): AppResult<RecommendResultDto> =
         ApiErrorMapper.call { userApi.recommend(RecommendRequest(workId, userIds, note.trim())) }
+
+    private companion object {
+        const val FRIENDS_KEY = "friends"
+        const val ROOMS_KEY = "rooms"
+
+        /** One snapshot per profile looked at, not one shared slot for all of them. */
+        fun profileKey(userId: Long) = "profile:$userId"
+    }
 }

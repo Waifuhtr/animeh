@@ -292,10 +292,11 @@ final class UserDataRepository {
 	}
 
 	/**
-	 * The works someone has watched, newest first, one row each.
+	 * The works someone has watched or read, newest first, one row each.
 	 *
-	 * Feeds both halves of a profile: the "son izledikleri" rail draws the
-	 * first few, and the genre wheel is counted across the whole list.
+	 * Feeds two halves of a profile: the "son izledikleri" / "son okudukları"
+	 * rails split this by `kind`, and the genre wheel is counted across the
+	 * whole list regardless of it — a shared interest wheel, not two.
 	 *
 	 * @param int $user_id Whose.
 	 * @param int $limit   How many works.
@@ -309,7 +310,7 @@ final class UserDataRepository {
 
 		$rows = $wpdb->get_results( // phpcs:ignore WordPress.DB.PreparedSQL.NotPrepared, WordPress.DB.PreparedSQL.InterpolatedNotPrepared, WordPress.DB.DirectDatabaseQuery
 			$wpdb->prepare(
-				"SELECT w.id, w.slug, w.title, w.title_english, w.poster_url, w.genres, w.adult,
+				"SELECT w.id, w.slug, w.title, w.title_english, w.poster_url, w.genres, w.adult, w.kind,
 					MAX(h.updated_at) AS last_watched
 				 FROM {$history} h
 				 INNER JOIN {$works} w ON w.id = h.work_id

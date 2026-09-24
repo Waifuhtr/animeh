@@ -305,20 +305,33 @@ final class SocialController {
 		$data    = new UserDataRepository();
 		$watched = $data->watched_works( $user_id );
 
-		$recent = array();
-		$genres = array();
+		$recent        = array();
+		$genres        = array();
+		$recent_counts = array();
 
+		// Capped per kind rather than 12 across both: `$watched` is one list
+		// ordered by recency regardless of kind, and a viewer who watches daily
+		// but reads occasionally would otherwise never see a manga poster here
+		// at all — the anime rows alone fill the twelve before a chapter gets
+		// a turn.
 		foreach ( $watched as $row ) {
 			$list = json_decode( (string) $row['genres'], true );
 			$genres[] = is_array( $list ) ? $list : array();
 
-			if ( count( $recent ) < 12 ) {
+			$kind = (string) $row['kind'];
+			$recent_counts[ $kind ] = ( $recent_counts[ $kind ] ?? 0 ) + 1;
+
+			if ( $recent_counts[ $kind ] <= 12 ) {
 				$recent[] = array(
 					'id'         => (int) $row['id'],
 					'slug'       => (string) $row['slug'],
 					'title'      => (string) $row['title'],
 					'poster_url' => (string) $row['poster_url'],
 					'adult'      => (bool) $row['adult'],
+					// So the app can draw "son izledikleri" and "son
+					// okudukları" as two rails instead of calling a read
+					// chapter a watched episode.
+					'kind'       => $kind,
 				);
 			}
 		}
@@ -365,6 +378,7 @@ final class SocialController {
 					'works'    => (int) LeaderboardRepository::standing( LeaderboardRepository::METRIC_WORKS, $user_id )['rank'],
 					'seconds'  => (int) LeaderboardRepository::standing( LeaderboardRepository::METRIC_SECONDS, $user_id )['rank'],
 					'episodes' => (int) LeaderboardRepository::standing( LeaderboardRepository::METRIC_EPISODES, $user_id )['rank'],
+					'points'   => (int) LeaderboardRepository::standing( LeaderboardRepository::METRIC_POINTS, $user_id )['rank'],
 				),
 				'favorite_work' => $favorite,
 				'top_genres'    => GenreTally::top( $genres ),

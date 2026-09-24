@@ -189,3 +189,16 @@ interface FontDao {
     @Query("DELETE FROM fonts")
     suspend fun clear()
 }
+
+@Dao
+interface SnapshotDao {
+
+    @Query("SELECT * FROM snapshots WHERE `key` = :key")
+    suspend fun get(key: String): SnapshotEntity?
+
+    @Upsert
+    suspend fun put(entity: SnapshotEntity)
+
+    @Query("DELETE FROM snapshots")
+    suspend fun clear()
+}

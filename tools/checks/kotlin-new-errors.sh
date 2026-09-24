@@ -38,6 +38,16 @@ trap 'rm -rf "$WORK"' EXIT
 # unresolved assertions, those land in both runs, cancel out, and the test
 # sources end up effectively unchecked — a new test file's real mistakes
 # arrive as indistinguishable noise. With it they compile like anything else.
+#
+# kotlinx.serialization is on it for the same reason, and it once mattered
+# more: `Json.encodeToString(value)` is ambiguous without importing the
+# top-level `kotlinx.serialization.encodeToString` — unqualified, it binds to
+# `StringFormat`'s own two-argument member instead, and the wrong overload
+# reports a missing parameter rather than a missing import. With the package
+# unresolved that whole failure was indistinguishable from androidx noise, and
+# it reached CI once for exactly that reason. Both jars ship inside Gradle's
+# own lib directory, the same place the compiler and JUnit come from.
+#
 # Globbed, so a Gradle upgrade does not silently stop this from running.
 L="$(dirname "$(ls /opt/gradle-*/lib/kotlin-compiler-embeddable-*.jar \
   "${GRADLE_USER_HOME:-$HOME/.gradle}"/wrapper/dists/*/*/gradle-*/lib/kotlin-compiler-embeddable-*.jar \
@@ -56,7 +66,7 @@ compile_tree() {
   out="$(mktemp -d)"
   java -cp "$CP" org.jetbrains.kotlin.cli.jvm.K2JVMCompiler \
     -no-stdlib -no-reflect \
-    -classpath "$(ls "$L"/kotlin-stdlib-*.jar | head -1):$(ls "$L"/kotlinx-coroutines-core-jvm-*.jar | head -1):$(ls "$L"/annotations-*.jar | head -1):$(ls "$L"/junit-4*.jar | head -1):$(ls "$L"/hamcrest-core-*.jar | head -1)" \
+    -classpath "$(ls "$L"/kotlin-stdlib-*.jar | head -1):$(ls "$L"/kotlinx-coroutines-core-jvm-*.jar | head -1):$(ls "$L"/kotlinx-serialization-core-jvm-*.jar | head -1):$(ls "$L"/kotlinx-serialization-json-jvm-*.jar | head -1):$(ls "$L"/annotations-*.jar | head -1):$(ls "$L"/junit-4*.jar | head -1):$(ls "$L"/hamcrest-core-*.jar | head -1)" \
     -d "$out" -nowarn $(find "$tree" -name '*.kt') 2>&1 > /dev/null \
     | grep -E "error: " \
     | sed -E "s#^.*/app/src/#app/src/#; s#:[0-9]+:[0-9]+: error: #  #" \

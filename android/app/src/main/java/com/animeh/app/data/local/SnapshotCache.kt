@@ -3,6 +3,8 @@ package com.animeh.app.data.local
 import com.animeh.app.data.local.dao.SnapshotDao
 import com.animeh.app.data.local.entity.SnapshotEntity
 import kotlinx.serialization.SerializationException
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import javax.inject.Inject
 import javax.inject.Singleton
